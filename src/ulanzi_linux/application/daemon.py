@@ -1,0 +1,340 @@
+"""Daemon that binds deck button events to host-side actions.
+
+Runs up to four concurrent concerns:
+    * ``_heartbeat_loop``   — periodic watchdog ping so firmware stays in
+                              host-driven mode and doesn't fall back to the
+                              standalone 'Ulanzi Studio' screen.
+    * ``_event_loop``       — consumes button events and dispatches actions,
+                              intercepting ``SwitchPageAction`` before it
+                              reaches the runner (paging is a daemon concern,
+                              not a host action).
+    * optional config watch — polls the YAML file and triggers
+                              ``reload_config`` on change, keeping the
+                              running deck in sync with disk edits without
+                              restart.
+    * ``stop_event`` watch  — graceful shutdown on SIGINT/SIGTERM.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+
+import structlog
+
+from ulanzi_linux.application.action_runner import ActionRunner
+from ulanzi_linux.application.config_loader import load_deck_config
+from ulanzi_linux.application.config_watcher import ConfigWatcher
+from ulanzi_linux.application.deck_service import DeckService
+from ulanzi_linux.domain.button_config import (
+    DeckConfig,
+    SwitchPageAction,
+)
+from ulanzi_linux.domain.commands import SmallWindowMode
+from ulanzi_linux.domain.events import ButtonEvent
+from ulanzi_linux.infrastructure.system_metrics import (
+    ProcSystemMetrics,
+    SystemMetricsReader,
+)
+
+logger = structlog.get_logger(__name__)
+
+# Firmware watchdog fires around the 5s mark; we ping well below that to
+# tolerate scheduling jitter and USB latency.
+DEFAULT_HEARTBEAT_INTERVAL_S: float = 2.0
+
+
+class DeckDaemon:
+    """Glue: pushes layout, heartbeats the firmware, runs actions on press.
+
+    Holds the currently active page name as mutable state; ``switch_to``
+    and ``reload_config`` are the only supported mutations so callers
+    cannot desync the displayed layout from the in-memory page.
+    """
+
+    def __init__(
+        self,
+        service: DeckService,
+        config: DeckConfig,
+        runner: ActionRunner | None = None,
+        *,
+        heartbeat_interval_s: float = DEFAULT_HEARTBEAT_INTERVAL_S,
+        metrics_reader: SystemMetricsReader | None = None,
+    ) -> None:
+        self._service = service
+        self._config = config
+        self._runner = runner or ActionRunner()
+        self._heartbeat_interval_s = heartbeat_interval_s
+        # Lazily default to /proc-backed metrics so tests can inject fakes.
+        self._metrics_reader: SystemMetricsReader = (
+            metrics_reader or ProcSystemMetrics()
+        )
+        self._current_page: str = config.default_page
+        # Guards reload_config / switch_to against racing the event loop
+        # uploading a stale layout mid-swap.
+        self._state_lock = asyncio.Lock()
+
+    # ------------------------------------------------------------------ #
+    # Public API                                                         #
+    # ------------------------------------------------------------------ #
+
+    @property
+    def current_page(self) -> str:
+        return self._current_page
+
+    @property
+    def config(self) -> DeckConfig:
+        return self._config
+
+    async def sync_layout(self) -> None:
+        """Push the current page's icons/labels to the device."""
+        async with self._state_lock:
+            await self._push_page(self._current_page)
+
+    async def switch_to(self, page_name: str) -> None:
+        """Switch active page and upload its layout.
+
+        Silently no-ops when the requested page is already active to avoid
+        redundant USB traffic.
+        """
+        async with self._state_lock:
+            if page_name == self._current_page:
+                logger.debug("switch_page_noop", page=page_name)
+                return
+            if page_name not in self._config.pages:
+                logger.warning(
+                    "switch_page_unknown",
+                    requested=page_name,
+                    known=list(self._config.pages.keys()),
+                )
+                return
+            self._current_page = page_name
+            await self._push_page(page_name)
+            logger.info("page_switched", page=page_name)
+
+    async def reload_config(self, path: str | Path) -> None:
+        """Atomically swap the running config for the one on disk.
+
+        Parse + validation happens *before* touching daemon state — a
+        broken YAML leaves the previous config running and surfaces the
+        error in logs rather than bricking the deck mid-edit.
+
+        The current page is preserved across reload when it still exists
+        in the new config; otherwise we fall back to the new default.
+        """
+        try:
+            new_config = load_deck_config(path)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "config_reload_parse_failed",
+                path=str(path),
+                error=str(exc),
+            )
+            return
+
+        async with self._state_lock:
+            previous_page = self._current_page
+            if previous_page in new_config.pages:
+                next_page = previous_page
+            else:
+                next_page = new_config.default_page
+                logger.info(
+                    "config_reload_page_changed",
+                    previous=previous_page,
+                    next=next_page,
+                    reason="page_not_in_new_config",
+                )
+            self._config = new_config
+            self._current_page = next_page
+            await self._push_page(next_page)
+            logger.info(
+                "config_reloaded",
+                path=str(path),
+                pages=list(new_config.pages.keys()),
+                active_page=next_page,
+                fixed_buttons=len(new_config.fixed_buttons),
+            )
+
+    async def run(
+        self,
+        *,
+        stop_event: asyncio.Event | None = None,
+        watcher: ConfigWatcher | None = None,
+    ) -> None:
+        """Run heartbeat, event loop and (optional) config watcher.
+
+        The event loop blocks inside the service's async iterator, so a
+        cooperative ``stop_event.is_set()`` poll is not sufficient — we
+        cancel the task when the stop signal fires and swallow the
+        resulting ``CancelledError``.
+        """
+        stop = stop_event or asyncio.Event()
+        sw_cfg = self._config.small_window
+        logger.info(
+            "daemon_started",
+            pages=list(self._config.pages.keys()),
+            default_page=self._current_page,
+            fixed_buttons=len(self._config.fixed_buttons),
+            watch=watcher is not None,
+            small_window=sw_cfg.enabled,
+        )
+        tasks: list[asyncio.Task[None]] = [
+            asyncio.create_task(
+                self._event_loop(stop), name="ulanzi_daemon_events"
+            ),
+        ]
+        # Pick exactly one watchdog-satisfying loop. Both send
+        # SET_SMALL_WINDOW_DATA; running both would race to overwrite
+        # whatever the other wrote.
+        if sw_cfg.enabled:
+            tasks.append(
+                asyncio.create_task(
+                    self._small_window_loop(stop),
+                    name="ulanzi_daemon_small_window",
+                )
+            )
+        else:
+            tasks.append(
+                asyncio.create_task(
+                    self._heartbeat_loop(stop),
+                    name="ulanzi_daemon_heartbeat",
+                )
+            )
+        if watcher is not None:
+            tasks.append(
+                asyncio.create_task(
+                    watcher.run(stop), name="ulanzi_daemon_config_watch"
+                )
+            )
+        try:
+            await stop.wait()
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            for task in tasks:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(
+                        "daemon_task_error",
+                        task=task.get_name(),
+                        error=str(exc),
+                    )
+            logger.info("daemon_stopped")
+
+    # ------------------------------------------------------------------ #
+    # Internals                                                          #
+    # ------------------------------------------------------------------ #
+
+    async def _push_page(self, page_name: str) -> None:
+        buttons = self._config.buttons_for(page_name)
+        await self._service._device.set_buttons(buttons)  # noqa: SLF001
+        logger.info(
+            "layout_synced",
+            page=page_name,
+            buttons=len(buttons),
+        )
+
+    async def _heartbeat_loop(self, stop_event: asyncio.Event) -> None:
+        logger.info("heartbeat_started", interval_s=self._heartbeat_interval_s)
+        try:
+            while not stop_event.is_set():
+                try:
+                    await self._service._device.keep_alive()  # noqa: SLF001
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("heartbeat_failed", error=str(exc))
+                try:
+                    await asyncio.wait_for(
+                        stop_event.wait(), timeout=self._heartbeat_interval_s
+                    )
+                except asyncio.TimeoutError:
+                    pass  # normal tick
+        finally:
+            logger.info("heartbeat_stopped")
+
+    async def _small_window_loop(self, stop_event: asyncio.Event) -> None:
+        """Push CPU / memory / date+time into the D200 small window.
+
+        Doubles as the firmware watchdog ping — same command, same
+        cadence, so we don't need the separate heartbeat loop when this
+        is running. CPU requires a priming read because ``/proc/stat``
+        deltas are meaningless on the first sample.
+        """
+        sw_cfg = self._config.small_window
+        interval = sw_cfg.interval_s
+        # Put the window in STATS mode once up-front; the device remembers
+        # it until we swap modes or unplug.
+        try:
+            await self._service._device.set_small_window_mode(  # noqa: SLF001
+                SmallWindowMode.STATS
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("small_window_mode_set_failed", error=str(exc))
+
+        # Prime the CPU delta baseline so the first real tick is accurate.
+        try:
+            self._metrics_reader.read_cpu_percent()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("metrics_prime_failed", error=str(exc))
+
+        logger.info("small_window_started", interval_s=interval)
+        try:
+            while not stop_event.is_set():
+                try:
+                    cpu = self._metrics_reader.read_cpu_percent()
+                    mem = self._metrics_reader.read_memory_percent()
+                    time_str = self._metrics_reader.format_time(
+                        sw_cfg.time_format
+                    )
+                    await self._service._device.set_small_window_data(  # noqa: SLF001
+                        cpu=cpu, mem=mem, gpu=0, time_str=time_str
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    # Never let a metrics hiccup bring down the watchdog
+                    # ping — the device would fall back to Ulanzi Studio.
+                    logger.warning("small_window_tick_failed", error=str(exc))
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=interval)
+                except asyncio.TimeoutError:
+                    pass  # normal tick
+        finally:
+            logger.info("small_window_stopped")
+
+    async def _event_loop(self, stop_event: asyncio.Event) -> None:
+        async for event in self._service.listen():
+            if stop_event.is_set():
+                break
+            if not isinstance(event, ButtonEvent):
+                continue
+            if not event.pressed:
+                continue  # react on press only; could be made configurable
+            button = self._config.button_at(self._current_page, event.index)
+            if button is None or button.action is None:
+                logger.debug(
+                    "no_action_bound",
+                    index=event.index,
+                    page=self._current_page,
+                )
+                continue
+            # Paging is handled by the daemon, not the runner — keeps the
+            # runner ignorant of deck-internal state and prevents a
+            # subprocess from being spawned for a page switch.
+            if isinstance(button.action, SwitchPageAction):
+                await self.switch_to(button.action.page)
+                continue
+            try:
+                await self._runner.run(button.action)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "action_failed",
+                    index=event.index,
+                    page=self._current_page,
+                    action=repr(button.action),
+                    error=str(exc),
+                )
+
+
+__all__ = ["DeckDaemon", "DEFAULT_HEARTBEAT_INTERVAL_S"]
