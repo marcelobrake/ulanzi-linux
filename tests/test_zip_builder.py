@@ -91,7 +91,7 @@ def test_full_upload_fills_missing_buttons_with_black_tiles(fake_icon: Path) -> 
         names = zf.namelist()
     assert len(manifest) == 14
     assert "icons/13.png" in names
-    assert manifest["1_0"]["ViewParam"] == [{"Icon": "icons/1.png"}]
+    assert manifest["1_0"]["ViewParam"] == [{"Text": "", "Icon": "icons/1.png"}]
 
 
 def test_full_upload_preserves_button_14(fake_icon: Path) -> None:

@@ -206,6 +206,9 @@ class UlanziD200Device(DeckDevice):
 
     async def set_small_window_mode(self, mode: SmallWindowMode) -> None:
         self._cached_small_window_mode = mode
+        if mode == SmallWindowMode.CLOCK and self._last_small_window_data is None:
+            logger.info("small_window_mode_set", mode=mode.name, deferred=True)
+            return
         if self._last_small_window_data is not None:
             cpu, mem, gpu, time_str = self._last_small_window_data
         else:

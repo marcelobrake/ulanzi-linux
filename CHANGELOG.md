@@ -7,6 +7,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] — 2026-04-18
+
+### Fixed
+
+- Fixed full layout uploads to clear stale button labels by always sending
+  an explicit empty `Text` field for blank buttons. This prevents old
+  captions from surviving after a reset or a hot reload to an empty slot.
+- Fixed the first `CLOCK` small-window update to avoid an empty mode packet,
+  and restored `gpu=0` on metric payloads so the firmware receives the
+  expected `mode|cpu|mem|time|gpu` shape during live refresh.
+
 ## [0.1.3] — 2026-04-18
 
 ### Fixed
@@ -95,6 +106,7 @@ Reverse-engineering stood on the shoulders of
 [`UlanziDeckPlugin-SDK`](https://github.com/UlanziTechnology/UlanziDeckPlugin-SDK)
 was used to cross-check manifest and icon sizing.
 
+[0.1.4]: https://github.com/marcelobrake/ulanzi-linux/releases/tag/v0.1.4
 [0.1.3]: https://github.com/marcelobrake/ulanzi-linux/releases/tag/v0.1.3
 [0.1.2]: https://github.com/marcelobrake/ulanzi-linux/releases/tag/v0.1.2
 [0.1.1]: https://github.com/marcelobrake/ulanzi-linux/releases/tag/v0.1.1

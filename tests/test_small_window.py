@@ -245,7 +245,7 @@ async def test_small_window_loop_pushes_cpu_mem_time() -> None:
     last = fake.small_window_data_calls[-1]
     assert last["cpu"] == 42
     assert last["mem"] == 42
-    assert last["gpu"] is None
+    assert last["gpu"] == 0
     assert last["time_str"] == "14:32"
     assert metrics.last_format_fmt == "%H:%M"
     # Heartbeat must NOT have run — small_window subsumes it.

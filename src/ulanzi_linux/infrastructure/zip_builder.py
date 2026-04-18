@@ -94,9 +94,9 @@ def _build_manifest(configs: list[ButtonConfig]) -> dict:
         idx = int(cfg.index)
         row = idx // _D200_COLS
         col = idx % _D200_COLS
-        view_param: dict = {}
-        if cfg.label:
-            view_param["Text"] = cfg.label
+        # Always send Text, even when blank, so a full upload clears any
+        # stale label previously rendered by the firmware.
+        view_param: dict = {"Text": cfg.label or ""}
         # Icon filename uses the flat index for uniqueness, referenced from manifest.
         view_param["Icon"] = f"icons/{idx}.png"
         manifest[f"{col}_{row}"] = {
