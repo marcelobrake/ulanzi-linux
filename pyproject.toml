@@ -12,7 +12,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "Marcelo Brake", email = "marcelo@marcelobrake.eti.br" }]
 keywords = ["ulanzi", "streamdeck", "stream-deck", "d200", "linux", "hid"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
