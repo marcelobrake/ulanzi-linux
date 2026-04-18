@@ -44,6 +44,20 @@ function makeEmptyButton(index, fixed = false) {
     };
 }
 
+function makeResetEditor(defaultPage = "main") {
+    return {
+        default_page: defaultPage,
+        pages: [{ name: defaultPage, buttons: [] }],
+        fixed_buttons: [],
+        small_window: {
+            enabled: true,
+            interval_s: 2.0,
+            time_format: "%H:%M",
+            show_metrics: false,
+        },
+    };
+}
+
 window.editorApp = function editorApp() {
     return {
         health: { ok: false, version: "", config_path: "", devices_found: 0 },
@@ -120,7 +134,9 @@ window.editorApp = function editorApp() {
                 enabled: false,
                 interval_s: 2.0,
                 time_format: "%H:%M",
+                show_metrics: true,
             };
+            editor.small_window.show_metrics = editor.small_window.show_metrics !== false;
             return editor;
         },
 
@@ -308,8 +324,25 @@ window.editorApp = function editorApp() {
                     enabled: Boolean(this.editor.small_window.enabled),
                     interval_s: Number(this.editor.small_window.interval_s),
                     time_format: this.editor.small_window.time_format,
+                    show_metrics: this.editor.small_window.show_metrics !== false,
                 },
             };
+        },
+
+        async resetDeck() {
+            if (!window.confirm("Resetar o deck vai remover todos os botões configurados e deixar o visor só com a hora. Continuar?")) {
+                return;
+            }
+            const defaultPage = this.editor?.default_page || this.selectedPage || "main";
+            this.editor = this.normalizeEditor({
+                ...(this.editor || {}),
+                ...makeResetEditor(defaultPage),
+            });
+            this.selectedPage = this.editor.default_page;
+            this.selectSlot(0);
+            this.dirty = true;
+            this.setStatus("Deck resetado. Salvando...", "warn");
+            await this.saveDeck();
         },
 
         async validateDeck() {
@@ -501,6 +534,15 @@ window.editorApp = function editorApp() {
 
         get pageOptions() {
             return this.editor?.pages.map((page) => page.name) || [];
+        },
+
+        get smallWindowSummary() {
+            if (!this.editor?.small_window?.enabled) {
+                return "Desligado";
+            }
+            return this.editor.small_window.show_metrics === false
+                ? "Somente hora"
+                : "Hora + CPU/Mem";
         },
     };
 };

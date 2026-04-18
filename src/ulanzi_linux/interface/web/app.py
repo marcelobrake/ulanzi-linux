@@ -166,6 +166,7 @@ def _config_to_editor_response(
             enabled=cfg.small_window.enabled,
             interval_s=cfg.small_window.interval_s,
             time_format=cfg.small_window.time_format,
+            show_metrics=cfg.small_window.show_metrics,
         ),
     )
 
@@ -271,6 +272,7 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
             "enabled": req.small_window.enabled,
             "interval_s": req.small_window.interval_s,
             "time_format": req.small_window.time_format,
+            "show_metrics": req.small_window.show_metrics,
         },
         "pages": pages_doc,
     }

@@ -27,6 +27,7 @@
   </div>
 
   <div class="topbar-actions">
+    <button class="danger" @click="resetDeck()" :disabled="busy">Reset</button>
     <button @click="refreshFromDisk()" :disabled="busy">Recarregar</button>
     <button @click="validateDeck()" :disabled="busy">Validar</button>
     <button class="primary" @click="saveDeck()" :disabled="busy || !dirty">
@@ -48,7 +49,7 @@
 
       <div class="small-window-card" x-show="editor">
         <span>Small window</span>
-        <strong x-text="editor?.small_window?.enabled ? 'Ativo' : 'Desligado'"></strong>
+        <strong x-text="smallWindowSummary"></strong>
         <small x-text="editor?.small_window?.time_format || '%H:%M'"></small>
       </div>
     </div>
@@ -259,7 +260,15 @@
         <input type="checkbox"
                x-model="editor.small_window.enabled"
                @change="dirty = true" />
-        <span>Ativar métricas no visor lateral</span>
+        <span>Ativar small window</span>
+      </label>
+
+      <label class="toggle-row">
+        <input type="checkbox"
+               x-model="editor.small_window.show_metrics"
+               @change="dirty = true"
+               :disabled="!editor.small_window.enabled" />
+        <span>Mostrar CPU e memória sob a hora</span>
       </label>
 
       <label class="field">

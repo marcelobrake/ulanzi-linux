@@ -93,6 +93,7 @@ class EditorSmallWindowModel(BaseModel):
     enabled: bool = False
     interval_s: float = 2.0
     time_format: str = DEFAULT_TIME_FORMAT
+    show_metrics: bool = True
 
 
 class EditorConfigResponse(BaseModel):
