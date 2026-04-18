@@ -49,7 +49,7 @@
       <div class="small-window-card" x-show="editor">
         <span>Small window</span>
         <strong x-text="editor?.small_window?.enabled ? 'Ativo' : 'Desligado'"></strong>
-        <small x-text="editor?.small_window?.time_format || '%d/%m %H:%M'"></small>
+        <small x-text="editor?.small_window?.time_format || '%H:%M'"></small>
       </div>
     </div>
 
@@ -277,7 +277,7 @@
         <input type="text"
                x-model="editor.small_window.time_format"
                @input="dirty = true"
-               placeholder="%d/%m %H:%M" />
+               placeholder="%H:%M" />
       </label>
     </div>
 

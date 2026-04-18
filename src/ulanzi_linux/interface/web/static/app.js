@@ -119,7 +119,7 @@ window.editorApp = function editorApp() {
             editor.small_window = editor.small_window || {
                 enabled: false,
                 interval_s: 2.0,
-                time_format: "%d/%m %H:%M",
+                time_format: "%H:%M",
             };
             return editor;
         },
