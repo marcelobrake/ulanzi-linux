@@ -21,28 +21,28 @@ from ulanzi_linux.interface.web.app import (
 )
 
 
-VALID_YAML = """\
-default_page: main
-small_window:
-    enabled: true
-    interval_s: 2.0
-    show_metrics: true
-pages:
-    main:
-        buttons:
-            - index: 0
-                label: Term
-                action: { type: shell, cmd: gnome-terminal }
-    media:
-        buttons:
-            - index: 0
-                label: Play
-                action: { type: shortcut, keys: XF86AudioPlay }
-fixed_buttons:
-    - index: 10
-        label: Main
-        action: { type: switch_page, page: main }
-"""
+VALID_YAML = (
+    "default_page: main\n"
+    "small_window:\n"
+    "  enabled: true\n"
+    "  interval_s: 2.0\n"
+    "  show_metrics: true\n"
+    "pages:\n"
+    "  main:\n"
+    "    buttons:\n"
+    "      - index: 0\n"
+    "        label: Term\n"
+    "        action: { type: shell, cmd: gnome-terminal }\n"
+    "  media:\n"
+    "    buttons:\n"
+    "      - index: 0\n"
+    "        label: Play\n"
+    "        action: { type: shortcut, keys: XF86AudioPlay }\n"
+    "fixed_buttons:\n"
+    "  - index: 10\n"
+    "    label: Main\n"
+    "    action: { type: switch_page, page: main }\n"
+)
 
 BROKEN_YAML_UNKNOWN_ACTION = """\
 default_page: main
