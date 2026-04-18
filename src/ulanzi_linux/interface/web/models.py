@@ -11,7 +11,11 @@ We keep these separate from the domain dataclasses (``ButtonConfig``,
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+from ulanzi_linux.domain.button_config import DEFAULT_TIME_FORMAT
 
 
 class ConfigGetResponse(BaseModel):
@@ -56,6 +60,72 @@ class ValidationSummary(BaseModel):
     small_window_enabled: bool = False
 
 
+class EditorActionModel(BaseModel):
+    """Structured action payload used by the visual editor."""
+
+    type: Literal["none", "shell", "shortcut", "url", "switch_page"] = "none"
+    cmd: str = ""
+    keys: str = ""
+    url: str = ""
+    page: str = ""
+
+
+class EditorButtonModel(BaseModel):
+    """Visual editor representation of a single button."""
+
+    index: int
+    label: str = ""
+    icon_path: str | None = None
+    preview_url: str | None = None
+    action: EditorActionModel = Field(default_factory=EditorActionModel)
+
+
+class EditorPageModel(BaseModel):
+    """Named page used by the visual editor."""
+
+    name: str
+    buttons: list[EditorButtonModel] = Field(default_factory=list)
+
+
+class EditorSmallWindowModel(BaseModel):
+    """Small-window config surfaced in the visual editor."""
+
+    enabled: bool = False
+    interval_s: float = 2.0
+    time_format: str = DEFAULT_TIME_FORMAT
+
+
+class EditorConfigResponse(BaseModel):
+    """Full structured config consumed by the visual editor."""
+
+    path: str
+    config_exists: bool
+    default_page: str
+    pages: list[EditorPageModel] = Field(default_factory=list)
+    fixed_buttons: list[EditorButtonModel] = Field(default_factory=list)
+    small_window: EditorSmallWindowModel = Field(
+        default_factory=EditorSmallWindowModel
+    )
+
+
+class EditorConfigPutRequest(BaseModel):
+    """Structured config the visual editor wants to persist."""
+
+    default_page: str
+    pages: list[EditorPageModel] = Field(default_factory=list)
+    fixed_buttons: list[EditorButtonModel] = Field(default_factory=list)
+    small_window: EditorSmallWindowModel = Field(
+        default_factory=EditorSmallWindowModel
+    )
+
+
+class AssetUploadResponse(BaseModel):
+    """Metadata for an uploaded icon asset."""
+
+    path: str
+    preview_url: str
+
+
 class DeviceSummary(BaseModel):
     """Enumerated D200 device info."""
 
@@ -77,10 +147,17 @@ class HealthResponse(BaseModel):
 
 
 __all__ = [
+    "AssetUploadResponse",
     "ConfigGetResponse",
     "ConfigPutRequest",
     "ConfigValidateRequest",
     "DeviceSummary",
+    "EditorActionModel",
+    "EditorButtonModel",
+    "EditorConfigPutRequest",
+    "EditorConfigResponse",
+    "EditorPageModel",
+    "EditorSmallWindowModel",
     "HealthResponse",
     "PageSummary",
     "ValidationSummary",
