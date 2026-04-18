@@ -149,6 +149,7 @@ def test_get_editor_returns_structured_config(
     assert body["default_page"] == "main"
     assert body["pages"][0]["name"] == "main"
     assert body["small_window"]["show_metrics"] is True
+    assert body["pages"][0]["buttons"][0]["text_style"]["background_color"] == "#111827"
 
 
 def test_get_config_returns_404_when_missing(tmp_path: Path) -> None:
@@ -181,6 +182,84 @@ def test_validate_endpoint_returns_error_for_bad_yaml(
     body = r.json()
     assert body["ok"] is False
     assert "self_destruct" in body["error"]
+
+
+def test_editor_validate_accepts_info_window_action_slot(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    payload = c.get("/api/editor").json()
+    payload["fixed_buttons"].append(
+        {
+            "index": 13,
+            "label": "Wide",
+            "icon_path": None,
+            "action": {
+                "type": "url",
+                "cmd": "",
+                "keys": "",
+                "url": "https://example.com",
+                "page": "",
+            },
+        }
+    )
+    r = c.post("/api/editor/validate", json=payload)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+
+
+def test_put_editor_persists_info_window_action_without_visuals(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, path = client
+    payload = c.get("/api/editor").json()
+    payload["fixed_buttons"].append(
+        {
+            "index": 13,
+            "label": "Ignored",
+            "icon_path": "~/.config/ulanzi/icons/ignored.png",
+            "action": {
+                "type": "url",
+                "cmd": "",
+                "keys": "",
+                "url": "https://example.com/info",
+                "page": "",
+            },
+        }
+    )
+
+    r = c.put("/api/editor", json=payload)
+    assert r.status_code == 200
+    saved = path.read_text()
+    assert "index: 13" in saved
+    assert "https://example.com/info" in saved
+    assert "ignored.png" not in saved
+    assert "label: Ignored" not in saved
+
+
+def test_put_editor_persists_text_style_for_text_only_button(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, path = client
+    payload = c.get("/api/editor").json()
+    payload["pages"][0]["buttons"][0]["icon_path"] = None
+    payload["pages"][0]["buttons"][0]["text_style"] = {
+        "background_color": "#112233",
+        "text_color": "#F0E1D2",
+        "bold": True,
+        "italic": True,
+        "underline": True,
+        "font_family": "Liberation Serif",
+        "font_size": 38,
+    }
+
+    r = c.put("/api/editor", json=payload)
+    assert r.status_code == 200
+    saved = path.read_text()
+    assert "text_style:" in saved
+    assert "background_color: '#112233'" in saved
+    assert 'font_family: Liberation Serif' in saved
 
 
 def test_put_config_persists_valid_yaml(

@@ -17,6 +17,7 @@ Design notes:
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Callable, Iterable
 from typing import Final, TypeAlias
 
@@ -52,6 +53,15 @@ TransportFactory: TypeAlias = Callable[[], HidTransport]
 
 DEFAULT_RECONNECT_POLL_INTERVAL_S: float = 1.0
 
+DEFAULT_LABEL_STYLE: Final[dict[str, object]] = {
+    "Align": "bottom",
+    "Color": 0xFFFFFF,
+    "FontName": "Roboto",
+    "ShowTitle": True,
+    "Size": 10,
+    "Weight": 80,
+}
+
 
 # Physical specification of the Ulanzi Stream Pad D200.
 # VID/PID and grid confirmed against real hardware (Zkswe/ulanzi).
@@ -59,7 +69,7 @@ D200_SPEC: Final[DeckSpec] = DeckSpec(
     name="Ulanzi Stream Pad D200",
     usb_vendor_id=0x2207,
     usb_product_id=0x0019,
-    button_count=14,
+    button_count=13,
     button_rows=3,
     button_cols=5,
     icon_width=196,
@@ -94,6 +104,7 @@ class UlanziD200Device(DeckDevice):
         self._last_small_window_data: tuple[
             int | None, int | None, int | None, str | None
         ] | None = None
+        self._label_style_applied = False
         self._button_state: dict[int, ButtonConfig] = {}
         self._button_state_is_full = False
 
@@ -206,7 +217,7 @@ class UlanziD200Device(DeckDevice):
 
     async def set_small_window_mode(self, mode: SmallWindowMode) -> None:
         self._cached_small_window_mode = mode
-        if mode == SmallWindowMode.CLOCK and self._last_small_window_data is None:
+        if mode != SmallWindowMode.BACKGROUND and self._last_small_window_data is None:
             logger.info("small_window_mode_set", mode=mode.name, deferred=True)
             return
         if self._last_small_window_data is not None:
@@ -250,6 +261,7 @@ class UlanziD200Device(DeckDevice):
     ) -> None:
         configs_tuple = tuple(configs)
         self._remember_buttons(configs_tuple, partial=partial)
+        await self._ensure_label_style()
         blob = build_buttons_zip(configs_tuple, fill_missing=not partial)
         command = (
             OutgoingCommand.PARTIALLY_UPDATE_BUTTONS
@@ -536,6 +548,13 @@ class UlanziD200Device(DeckDevice):
                 str(self._cached_brightness).encode("ascii"),
             )
 
+        if self._label_style_applied:
+            await self._send_raw(
+                transport,
+                OutgoingCommand.SET_LABEL_STYLE,
+                self._label_style_payload(),
+            )
+
         buttons = self._buttons_for_restore()
         if buttons:
             command = (
@@ -582,6 +601,23 @@ class UlanziD200Device(DeckDevice):
                 key=lambda item: item[0],
             )
         )
+
+    async def _ensure_label_style(self) -> None:
+        if self._label_style_applied:
+            return
+        await self._send(
+            OutgoingCommand.SET_LABEL_STYLE,
+            self._label_style_payload(),
+        )
+        self._label_style_applied = True
+        logger.info("label_style_set", show_title=True, font_name="Roboto")
+
+    @staticmethod
+    def _label_style_payload() -> bytes:
+        return json.dumps(
+            DEFAULT_LABEL_STYLE,
+            separators=(",", ":"),
+        ).encode("utf-8")
 
     @staticmethod
     def _build_small_window_payload(

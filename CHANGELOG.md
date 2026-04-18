@@ -7,6 +7,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-04-18
+
+### Added
+
+- Added text-only button rendering with per-button `text_style` options,
+  including background color, font color, bold, italic, underline, font
+  family and font size. Text-only buttons are now rendered into the tile
+  itself and stay centered both vertically and horizontally.
+- Added visual editor controls for text-only button formatting, with live
+  color pickers and a smaller deck preview that fits more comfortably
+  without forcing unnecessary scrolling.
+
+### Changed
+
+- The info window touch area (index `13`) remains excluded from visual ZIP
+  uploads, but is now supported end-to-end in the YAML/editor as an
+  action-only slot.
+
+### Fixed
+
+- Fixed the small-window clock wire value to send a firmware-compatible
+  `HH:MM:SS` payload again, preventing regressions where the D200 fell
+  back to `00:00`.
+- Fixed URL actions triggered by the user daemon to prefer desktop
+  launchers such as `xdg-open` and `gio`, which are more reliable than
+  the stdlib browser launcher in a systemd user service context.
+
+## [0.1.5] — 2026-04-18
+
+### Fixed
+
+- Corrected the D200 layout model back to 13 physical buttons plus the
+  separate wide info window. The web editor now reserves the lower-right
+  wide slot for the small-window panel instead of treating it as a
+  clickable button.
+- Fixed full button uploads to emit empty `ViewParam` entries for blank
+  buttons, matching the strmdck protocol shape and allowing resets to
+  clear stale button content reliably.
+- Normalized small-window clock updates to always send an `HH:MM:SS`
+  compatible wire value to the device, even when the UI is configured to
+  display only `HH:MM`.
+
 ## [0.1.4] — 2026-04-18
 
 ### Fixed
@@ -106,6 +148,7 @@ Reverse-engineering stood on the shoulders of
 [`UlanziDeckPlugin-SDK`](https://github.com/UlanziTechnology/UlanziDeckPlugin-SDK)
 was used to cross-check manifest and icon sizing.
 
+[0.1.5]: https://github.com/marcelobrake/ulanzi-linux/releases/tag/v0.1.5
 [0.1.4]: https://github.com/marcelobrake/ulanzi-linux/releases/tag/v0.1.4
 [0.1.3]: https://github.com/marcelobrake/ulanzi-linux/releases/tag/v0.1.3
 [0.1.2]: https://github.com/marcelobrake/ulanzi-linux/releases/tag/v0.1.2

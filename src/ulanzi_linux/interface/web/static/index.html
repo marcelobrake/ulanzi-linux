@@ -41,9 +41,9 @@
     <div class="panel-card panel-head">
       <div>
         <p class="eyebrow">Simulador</p>
-        <h2>Layout com 14 botões</h2>
+        <h2>Layout com 13 botões + info window acionável</h2>
         <p class="muted">
-          3 linhas: 5 + 5 + 4, com o último botão da terceira linha ocupando 2 colunas.
+          3 linhas: 5 + 5 + 3 botões físicos, com o bloco largo inferior direito exibindo o small window e aceitando ação ao toque.
         </p>
       </div>
 
@@ -108,7 +108,13 @@
               <template x-if="slot.preview_url">
                 <img class="deck-icon" :src="slot.preview_url" alt="Ícone do botão" />
               </template>
-              <template x-if="!slot.preview_url">
+              <template x-if="!slot.preview_url && slot.textOnly">
+                <div class="deck-text-tile" :style="tileStyleFor(slot.text_style)">
+                  <span :style="textStyleFor(slot.text_style)"
+                        x-text="slot.label"></span>
+                </div>
+              </template>
+              <template x-if="!slot.preview_url && !slot.textOnly">
                 <span class="deck-placeholder" x-text="slot.span === 2 ? '2x1' : '1x1'"></span>
               </template>
             </div>
@@ -146,7 +152,12 @@
         <span>Aparece em todas as páginas</span>
       </label>
 
-      <label class="field">
+      <p class="muted" x-show="selectedIndex === 13">
+        O info window aceita ação ao toque, mas não usa rótulo nem ícone próprios.
+        O conteúdo visual continua vindo do painel Small window abaixo.
+      </p>
+
+      <label class="field" x-show="selectedIndex !== 13">
         <span>Rótulo</span>
         <input type="text"
                x-model="buttonForm.label"
@@ -154,15 +165,21 @@
                placeholder="Ex.: Terminal" />
       </label>
 
-      <div class="field">
+      <div class="field" x-show="selectedIndex !== 13">
         <span>Imagem</span>
         <div class="image-editor">
           <div class="image-preview" :class="currentPreviewUrl ? '' : 'empty'">
             <template x-if="currentPreviewUrl">
               <img :src="currentPreviewUrl" alt="Prévia do ícone" />
             </template>
+            <template x-if="!currentPreviewUrl && currentTextOnlyPreview">
+              <div class="text-tile-preview" :style="currentTextTileStyle">
+                <span :style="currentTextLabelStyle"
+                      x-text="buttonForm.label"></span>
+              </div>
+            </template>
             <template x-if="!currentPreviewUrl">
-              <span>Sem imagem</span>
+              <span x-show="!currentTextOnlyPreview">Sem imagem</span>
             </template>
           </div>
 
@@ -238,6 +255,84 @@
         </label>
       </template>
 
+      <div class="field" x-show="showTextStyleControls">
+        <span>Texto sem imagem</span>
+        <p class="muted compact-copy">
+          Quando o botão não tem imagem, o texto é renderizado centralizado no próprio tile.
+        </p>
+
+        <div class="text-style-grid">
+          <label class="field color-field">
+            <span>Fundo</span>
+            <div class="color-row">
+              <input type="color"
+                     x-model="buttonForm.text_style.background_color"
+                     @input="syncSelectedButton()" />
+              <strong x-text="buttonForm.text_style.background_color"></strong>
+            </div>
+          </label>
+
+          <label class="field color-field">
+            <span>Fonte</span>
+            <div class="color-row">
+              <input type="color"
+                     x-model="buttonForm.text_style.text_color"
+                     @input="syncSelectedButton()" />
+              <strong x-text="buttonForm.text_style.text_color"></strong>
+            </div>
+          </label>
+
+          <label class="field text-style-field">
+            <span>Família</span>
+            <select x-model="buttonForm.text_style.font_family"
+                    @change="syncSelectedButton()">
+              <template x-for="font in fontOptions" :key="font">
+                <option :value="font" x-text="font"></option>
+              </template>
+            </select>
+          </label>
+
+          <label class="field text-style-field">
+            <span>Tamanho</span>
+            <div class="range-row">
+              <input type="range"
+                     min="12"
+                     max="96"
+                     step="1"
+                     x-model="buttonForm.text_style.font_size"
+                     @input="syncSelectedButton()" />
+              <input class="range-value"
+                     type="number"
+                     min="12"
+                     max="96"
+                     x-model="buttonForm.text_style.font_size"
+                     @input="syncSelectedButton()" />
+            </div>
+          </label>
+        </div>
+
+        <div class="style-toggle-row">
+          <button type="button"
+                  class="style-chip"
+                  :class="buttonForm.text_style.bold ? 'active' : ''"
+                  @click="buttonForm.text_style.bold = !buttonForm.text_style.bold; syncSelectedButton()">
+            Negrito
+          </button>
+          <button type="button"
+                  class="style-chip"
+                  :class="buttonForm.text_style.italic ? 'active' : ''"
+                  @click="buttonForm.text_style.italic = !buttonForm.text_style.italic; syncSelectedButton()">
+            Itálico
+          </button>
+          <button type="button"
+                  class="style-chip"
+                  :class="buttonForm.text_style.underline ? 'active' : ''"
+                  @click="buttonForm.text_style.underline = !buttonForm.text_style.underline; syncSelectedButton()">
+            Sublinhado
+          </button>
+        </div>
+      </div>
+
       <div class="card-actions">
         <button @click="resetSelectedButton()" :disabled="busy">
           Descartar alterações do botão
@@ -268,7 +363,7 @@
                x-model="editor.small_window.show_metrics"
                @change="dirty = true"
                :disabled="!editor.small_window.enabled" />
-        <span>Mostrar CPU e memória sob a hora</span>
+        <span>Mostrar CPU e memória junto do relógio</span>
       </label>
 
       <label class="field">

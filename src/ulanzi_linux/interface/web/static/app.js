@@ -12,7 +12,16 @@ const DECK_LAYOUT = Object.freeze([
     { index: 10, row: 3, column: 1, span: 1 },
     { index: 11, row: 3, column: 2, span: 1 },
     { index: 12, row: 3, column: 3, span: 1 },
-    { index: 13, row: 3, column: 4, span: 2 },
+    { index: 13, row: 3, column: 4, span: 2, kind: "info" },
+]);
+
+const INFO_WINDOW_INDEX = 13;
+const FONT_OPTIONS = Object.freeze([
+    "DejaVu Sans",
+    "DejaVu Serif",
+    "DejaVu Sans Mono",
+    "Liberation Sans",
+    "Liberation Serif",
 ]);
 
 const ACTION_LABELS = Object.freeze({
@@ -33,6 +42,18 @@ function emptyAction() {
     };
 }
 
+function emptyTextStyle() {
+    return {
+        background_color: "#111827",
+        text_color: "#F8FAFC",
+        bold: false,
+        italic: false,
+        underline: false,
+        font_family: "DejaVu Sans",
+        font_size: 30,
+    };
+}
+
 function makeEmptyButton(index, fixed = false) {
     return {
         index,
@@ -41,6 +62,7 @@ function makeEmptyButton(index, fixed = false) {
         preview_url: "",
         fixed,
         action: emptyAction(),
+        text_style: emptyTextStyle(),
     };
 }
 
@@ -71,6 +93,7 @@ window.editorApp = function editorApp() {
         selectedIndex: 0,
         buttonForm: null,
         newPageName: "",
+        fontOptions: FONT_OPTIONS,
 
         async init() {
             await this.refreshHealth();
@@ -127,9 +150,13 @@ window.editorApp = function editorApp() {
             const editor = JSON.parse(JSON.stringify(payload));
             editor.pages = (editor.pages || []).map((page) => ({
                 name: page.name,
-                buttons: (page.buttons || []).map((button) => this.normalizeButton(button)),
+                buttons: (page.buttons || [])
+                    .map((button) => this.normalizeButton(button))
+                    .filter((button) => this.isEditableSlot(button.index)),
             }));
-            editor.fixed_buttons = (editor.fixed_buttons || []).map((button) => this.normalizeButton(button));
+            editor.fixed_buttons = (editor.fixed_buttons || [])
+                .map((button) => this.normalizeButton(button))
+                .filter((button) => this.isEditableSlot(button.index));
             editor.small_window = editor.small_window || {
                 enabled: false,
                 interval_s: 2.0,
@@ -141,17 +168,31 @@ window.editorApp = function editorApp() {
         },
 
         normalizeButton(button) {
+            const infoWindow = this.isInfoWindowSlot(button.index);
             return {
                 index: button.index,
-                label: button.label || "",
-                icon_path: button.icon_path || "",
-                preview_url: button.preview_url || this.assetUrl(button.icon_path),
+                label: infoWindow ? "" : (button.label || ""),
+                icon_path: infoWindow ? "" : (button.icon_path || ""),
+                preview_url: infoWindow ? "" : (button.preview_url || this.assetUrl(button.icon_path)),
                 action: { ...emptyAction(), ...(button.action || {}) },
+                text_style: this.normalizeTextStyle(button.text_style),
             };
+        },
+
+        normalizeTextStyle(style) {
+            return { ...emptyTextStyle(), ...(style || {}) };
         },
 
         assetUrl(path) {
             return path ? `/api/asset?path=${encodeURIComponent(path)}` : "";
+        },
+
+        isInfoWindowSlot(index) {
+            return index === INFO_WINDOW_INDEX;
+        },
+
+        isEditableSlot(index) {
+            return DECK_LAYOUT.some((slot) => slot.index === index);
         },
 
         findButton(buttons, index) {
@@ -195,6 +236,7 @@ window.editorApp = function editorApp() {
                 preview_url: source.preview_url || this.assetUrl(source.icon_path),
                 fixed: Boolean(fixedButton),
                 action: { ...emptyAction(), ...(source.action || {}) },
+                text_style: this.normalizeTextStyle(source.text_style),
             };
         },
 
@@ -215,12 +257,16 @@ window.editorApp = function editorApp() {
         },
 
         buildStateButtonFromForm() {
+            const actionOnly = this.isInfoWindowSlot(this.selectedIndex);
             return {
                 index: this.selectedIndex,
-                label: this.buttonForm.label || "",
-                icon_path: this.buttonForm.icon_path || "",
-                preview_url: this.buttonForm.preview_url || this.assetUrl(this.buttonForm.icon_path),
+                label: actionOnly ? "" : (this.buttonForm.label || ""),
+                icon_path: actionOnly ? "" : (this.buttonForm.icon_path || ""),
+                preview_url: actionOnly ? "" : (this.buttonForm.preview_url || this.assetUrl(this.buttonForm.icon_path)),
                 action: this.normalizeActionFromForm(),
+                text_style: actionOnly
+                    ? emptyTextStyle()
+                    : this.normalizeTextStyle(this.buttonForm.text_style),
             };
         },
 
@@ -309,6 +355,35 @@ window.editorApp = function editorApp() {
                 label: button.label || "",
                 icon_path: button.icon_path || null,
                 action: { ...emptyAction(), ...(button.action || {}) },
+                text_style: this.normalizeTextStyle(button.text_style),
+            };
+        },
+
+        hasTextOnlyPreview(button) {
+            return Boolean(
+                button
+                && !button.preview_url
+                && !(button.icon_path || "").trim()
+                && (button.label || "").trim(),
+            );
+        },
+
+        tileStyleFor(style) {
+            const normalized = this.normalizeTextStyle(style);
+            return {
+                background: normalized.background_color,
+            };
+        },
+
+        textStyleFor(style, scale = 0.42) {
+            const normalized = this.normalizeTextStyle(style);
+            return {
+                color: normalized.text_color,
+                fontFamily: `"${normalized.font_family}", var(--font-sans)`,
+                fontSize: `${Math.max(12, Math.round(normalized.font_size * scale))}px`,
+                fontWeight: normalized.bold ? "700" : "500",
+                fontStyle: normalized.italic ? "italic" : "normal",
+                textDecoration: normalized.underline ? "underline" : "none",
             };
         },
 
@@ -477,6 +552,7 @@ window.editorApp = function editorApp() {
                 selected: slot.index === this.selectedIndex,
                 fixed: slot.fixed,
                 empty: slot.empty,
+                info: this.isInfoWindowSlot(slot.index),
                 wide: slot.span === 2,
             };
         },
@@ -493,12 +569,29 @@ window.editorApp = function editorApp() {
                 const fixedButton = this.findButton(this.editor?.fixed_buttons || [], slot.index);
                 const pageButton = this.findButton(pageButtons, slot.index);
                 const button = fixedButton || pageButton;
+                if (this.isInfoWindowSlot(slot.index)) {
+                    return {
+                        ...slot,
+                        fixed: Boolean(fixedButton),
+                        empty: !this.editor?.small_window?.enabled,
+                        label: "Small window",
+                        preview_url: "",
+                        textOnly: false,
+                        text_style: emptyTextStyle(),
+                        actionLabel: button
+                            ? this.actionLabel(button?.action?.type || "none")
+                            : this.smallWindowSummary,
+                        placeholder: "Info window",
+                    };
+                }
                 return {
                     ...slot,
                     fixed: Boolean(fixedButton),
                     empty: !button,
                     label: button?.label || "",
                     preview_url: button?.preview_url || this.assetUrl(button?.icon_path),
+                    textOnly: this.hasTextOnlyPreview(button),
+                    text_style: this.normalizeTextStyle(button?.text_style),
                     actionLabel: this.actionLabel(button?.action?.type || "none"),
                     placeholder: slot.span === 2
                         ? `Botão ${slot.index + 1} · 2x1`
@@ -509,6 +602,18 @@ window.editorApp = function editorApp() {
 
         get currentPreviewUrl() {
             return this.buttonForm?.preview_url || this.assetUrl(this.buttonForm?.icon_path);
+        },
+
+        get currentTextOnlyPreview() {
+            return this.hasTextOnlyPreview(this.buttonForm);
+        },
+
+        get showTextStyleControls() {
+            return Boolean(
+                this.buttonForm
+                && this.selectedIndex !== INFO_WINDOW_INDEX
+                && !(this.buttonForm.icon_path || "").trim(),
+            );
         },
 
         get shortPath() {
@@ -527,6 +632,9 @@ window.editorApp = function editorApp() {
             if (!slot) {
                 return "Botão";
             }
+            if (this.isInfoWindowSlot(slot.index)) {
+                return "Info window · ação ao toque";
+            }
             const size = slot.span === 2 ? "2x1" : "1x1";
             return `Botão ${slot.index + 1} · ${size}`;
         },
@@ -542,6 +650,14 @@ window.editorApp = function editorApp() {
             return this.editor.small_window.show_metrics === false
                 ? "Somente hora"
                 : "Hora + CPU/Mem";
+        },
+
+        get currentTextTileStyle() {
+            return this.tileStyleFor(this.buttonForm?.text_style);
+        },
+
+        get currentTextLabelStyle() {
+            return this.textStyleFor(this.buttonForm?.text_style, 0.72);
         },
     };
 };

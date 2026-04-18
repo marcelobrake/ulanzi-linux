@@ -32,6 +32,11 @@ the USB device. If a daemon is running in parallel
 (`systemctl --user status ulanzi-linux.service`), its `ConfigWatcher`
 picks the new file up within about a second — no restart needed.
 
+The visual editor also supports text-only buttons: when a slot has no
+image, the label is previewed centered in the tile and you can tweak
+background color, text color, weight, italic, underline, font family and
+font size directly from the inspector.
+
 ## Design
 
 The UI is three small files under

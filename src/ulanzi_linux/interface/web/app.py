@@ -47,9 +47,14 @@ from ulanzi_linux.application.config_loader import load_deck_config
 from ulanzi_linux.domain.button_config import (
     ButtonConfig,
     DeckConfig,
+    DEFAULT_TEXT_BACKGROUND_COLOR,
+    DEFAULT_TEXT_COLOR,
+    DEFAULT_TEXT_FONT_FAMILY,
+    DEFAULT_TEXT_FONT_SIZE,
     ShellAction,
     ShortcutAction,
     SwitchPageAction,
+    TextStyle,
     UrlAction,
 )
 from ulanzi_linux.infrastructure.hid_transport import enumerate_hid_devices
@@ -66,6 +71,7 @@ from ulanzi_linux.interface.web.models import (
     EditorConfigResponse,
     EditorPageModel,
     EditorSmallWindowModel,
+    EditorTextStyleModel,
     HealthResponse,
     PageSummary,
     ValidationSummary,
@@ -75,6 +81,7 @@ logger = structlog.get_logger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 EDITOR_BUTTON_INDICES = frozenset(range(14))
+INFO_WINDOW_INDEX = 13
 EDITOR_DEFAULT_PAGE = "main"
 HOME_DIR = Path.home()
 SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -133,14 +140,27 @@ def _action_to_editor(action: object | None) -> EditorActionModel:
     raise TypeError(f"unsupported action type: {type(action)!r}")
 
 
+def _text_style_to_editor(style: TextStyle) -> EditorTextStyleModel:
+    return EditorTextStyleModel(
+        background_color=style.background_color,
+        text_color=style.text_color,
+        bold=style.bold,
+        italic=style.italic,
+        underline=style.underline,
+        font_family=style.font_family,
+        font_size=style.font_size,
+    )
+
+
 def _button_to_editor(button: ButtonConfig) -> EditorButtonModel:
-    icon_path = _compact_path(button.icon_path)
+    icon_path = None if button.index == INFO_WINDOW_INDEX else _compact_path(button.icon_path)
     return EditorButtonModel(
         index=button.index,
-        label=button.label,
+        label="" if button.index == INFO_WINDOW_INDEX else button.label,
         icon_path=icon_path,
         preview_url=_asset_preview_url(icon_path),
         action=_action_to_editor(button.action),
+        text_style=_text_style_to_editor(button.text_style),
     )
 
 
@@ -225,10 +245,22 @@ def _editor_action_to_doc(action: EditorActionModel) -> dict[str, str] | None:
 
 def _editor_button_to_doc(button: EditorButtonModel) -> dict[str, Any]:
     doc: dict[str, Any] = {"index": button.index}
-    if button.label:
+    if button.index != INFO_WINDOW_INDEX and button.label:
         doc["label"] = button.label
-    if button.icon_path:
+    if button.index != INFO_WINDOW_INDEX and button.icon_path:
         doc["icon"] = button.icon_path
+    if button.index != INFO_WINDOW_INDEX:
+        style = button.text_style
+        if style.model_dump() != EditorTextStyleModel().model_dump():
+            doc["text_style"] = {
+                "background_color": style.background_color,
+                "text_color": style.text_color,
+                "bold": style.bold,
+                "italic": style.italic,
+                "underline": style.underline,
+                "font_family": style.font_family,
+                "font_size": style.font_size,
+            }
     action = _editor_action_to_doc(button.action)
     if action is not None:
         doc["action"] = action

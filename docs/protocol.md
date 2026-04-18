@@ -81,7 +81,7 @@ turns the backlight off; `"100"` is maximum.
 offset  size  field     notes
 ------  ----  --------  -----------------------------------
 0x00    1     state     firmware-internal, retained for observability
-0x01    1     index     0..12 on the D200 (3x5 layout, 13 active)
+0x01    1     index     0..13 on the D200 (`0..12` buttons, `13` = info window touch area)
 0x02    1     const     always 0x01
 0x03    1     pressed   0x01 on press, 0x00 on release
 ```

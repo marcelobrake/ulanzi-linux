@@ -15,7 +15,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from ulanzi_linux.domain.button_config import DEFAULT_TIME_FORMAT
+from ulanzi_linux.domain.button_config import (
+    DEFAULT_TEXT_BACKGROUND_COLOR,
+    DEFAULT_TEXT_COLOR,
+    DEFAULT_TEXT_FONT_FAMILY,
+    DEFAULT_TEXT_FONT_SIZE,
+    DEFAULT_TIME_FORMAT,
+)
 
 
 class ConfigGetResponse(BaseModel):
@@ -70,6 +76,18 @@ class EditorActionModel(BaseModel):
     page: str = ""
 
 
+class EditorTextStyleModel(BaseModel):
+    """Visual options for text-only buttons."""
+
+    background_color: str = DEFAULT_TEXT_BACKGROUND_COLOR
+    text_color: str = DEFAULT_TEXT_COLOR
+    bold: bool = False
+    italic: bool = False
+    underline: bool = False
+    font_family: str = DEFAULT_TEXT_FONT_FAMILY
+    font_size: int = DEFAULT_TEXT_FONT_SIZE
+
+
 class EditorButtonModel(BaseModel):
     """Visual editor representation of a single button."""
 
@@ -78,6 +96,7 @@ class EditorButtonModel(BaseModel):
     icon_path: str | None = None
     preview_url: str | None = None
     action: EditorActionModel = Field(default_factory=EditorActionModel)
+    text_style: EditorTextStyleModel = Field(default_factory=EditorTextStyleModel)
 
 
 class EditorPageModel(BaseModel):
@@ -159,6 +178,7 @@ __all__ = [
     "EditorConfigResponse",
     "EditorPageModel",
     "EditorSmallWindowModel",
+    "EditorTextStyleModel",
     "HealthResponse",
     "PageSummary",
     "ValidationSummary",

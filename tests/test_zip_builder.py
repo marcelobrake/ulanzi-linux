@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from ulanzi_linux.domain.button_config import ButtonConfig
+from ulanzi_linux.domain.button_config import ButtonConfig, TextStyle
 from ulanzi_linux.infrastructure.zip_builder import (
     ICON_SIZE,
     build_buttons_zip,
@@ -72,7 +72,7 @@ def test_icon_size_is_native_196(fake_icon: Path) -> None:
 def test_boundary_bytes_avoid_invalid_markers(fake_icon: Path) -> None:
     """Every 1024-byte frame boundary must skip 0x00 and 0x7C."""
     configs = [
-        ButtonConfig(index=i, icon_path=fake_icon, label=f"B{i}") for i in range(14)
+        ButtonConfig(index=i, icon_path=fake_icon, label=f"B{i}") for i in range(13)
     ]
     blob = build_buttons_zip(configs)
     for offset in range(1016, len(blob), 1024):
@@ -89,19 +89,54 @@ def test_full_upload_fills_missing_buttons_with_black_tiles(fake_icon: Path) -> 
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
         manifest = json.loads(zf.read("manifest.json"))
         names = zf.namelist()
-    assert len(manifest) == 14
-    assert "icons/13.png" in names
-    assert manifest["1_0"]["ViewParam"] == [{"Text": "", "Icon": "icons/1.png"}]
+    assert len(manifest) == 13
+    assert "icons/12.png" not in names
+    assert manifest["1_0"]["ViewParam"] == [{}]
 
 
-def test_full_upload_preserves_button_14(fake_icon: Path) -> None:
+def test_label_only_button_renders_text_tile_without_manifest_text() -> None:
     blob = build_buttons_zip(
-        [ButtonConfig(index=13, icon_path=fake_icon, label="Wide")],
+        [ButtonConfig(index=0, label="OpenAI")],
         fill_missing=True,
     )
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
         manifest = json.loads(zf.read("manifest.json"))
         names = zf.namelist()
-    assert "icons/13.png" in names
-    assert manifest["3_2"]["ViewParam"][0]["Text"] == "Wide"
-    assert manifest["3_2"]["ViewParam"][0]["Icon"] == "icons/13.png"
+        img = Image.open(io.BytesIO(zf.read("icons/0.png")))
+    assert "icons/0.png" in names
+    assert manifest["0_0"]["ViewParam"][0]["Icon"] == "icons/0.png"
+    assert "Text" not in manifest["0_0"]["ViewParam"][0]
+    assert img.size == ICON_SIZE
+
+
+def test_text_only_button_uses_configured_background_color() -> None:
+    blob = build_buttons_zip(
+        [
+            ButtonConfig(
+                index=0,
+                label="Hi",
+                text_style=TextStyle(background_color="#AA1122"),
+            )
+        ]
+    )
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        img = Image.open(io.BytesIO(zf.read("icons/0.png"))).convert("RGBA")
+    assert img.getpixel((4, 4)) == (170, 17, 34, 255)
+
+
+def test_full_upload_preserves_last_physical_button(fake_icon: Path) -> None:
+    blob = build_buttons_zip(
+        [ButtonConfig(index=12, icon_path=fake_icon, label="Last")],
+        fill_missing=True,
+    )
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+        names = zf.namelist()
+    assert "icons/12.png" in names
+    assert manifest["2_2"]["ViewParam"][0]["Text"] == "Last"
+    assert manifest["2_2"]["ViewParam"][0]["Icon"] == "icons/12.png"
+
+
+def test_rejects_info_window_index_as_button(fake_icon: Path) -> None:
+    with pytest.raises(ValueError, match="supported D200 grid"):
+        build_buttons_zip([ButtonConfig(index=13, icon_path=fake_icon, label="Wide")])

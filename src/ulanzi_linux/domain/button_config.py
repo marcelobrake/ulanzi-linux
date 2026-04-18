@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+import re
 
 
 # ---------------------------------------------------------------------- #
@@ -61,6 +62,55 @@ class SwitchPageAction:
 Action = ShellAction | ShortcutAction | UrlAction | SwitchPageAction
 
 
+_HEX_COLOR_RE = re.compile(r"^#?[0-9A-Fa-f]{6}$")
+
+DEFAULT_TEXT_BACKGROUND_COLOR = "#111827"
+DEFAULT_TEXT_COLOR = "#F8FAFC"
+DEFAULT_TEXT_FONT_FAMILY = "DejaVu Sans"
+DEFAULT_TEXT_FONT_SIZE = 30
+
+
+def _normalize_hex_color(value: str) -> str:
+    cleaned = value.strip()
+    if not _HEX_COLOR_RE.fullmatch(cleaned):
+        raise ValueError(
+            "text color values must be 6-digit hex strings like #112233"
+        )
+    return f"#{cleaned.lstrip('#').upper()}"
+
+
+@dataclass(frozen=True, slots=True)
+class TextStyle:
+    """Visual treatment for text-only buttons rendered into the icon tile."""
+
+    background_color: str = DEFAULT_TEXT_BACKGROUND_COLOR
+    text_color: str = DEFAULT_TEXT_COLOR
+    bold: bool = False
+    italic: bool = False
+    underline: bool = False
+    font_family: str = DEFAULT_TEXT_FONT_FAMILY
+    font_size: int = DEFAULT_TEXT_FONT_SIZE
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "background_color",
+            _normalize_hex_color(self.background_color),
+        )
+        object.__setattr__(
+            self,
+            "text_color",
+            _normalize_hex_color(self.text_color),
+        )
+        font_family = self.font_family.strip() or DEFAULT_TEXT_FONT_FAMILY
+        object.__setattr__(self, "font_family", font_family)
+        if not 12 <= self.font_size <= 96:
+            raise ValueError("text_style.font_size must be in 12..96")
+
+    def is_default(self) -> bool:
+        return self == TextStyle()
+
+
 # ---------------------------------------------------------------------- #
 # Buttons and pages                                                      #
 # ---------------------------------------------------------------------- #
@@ -74,6 +124,7 @@ class ButtonConfig:
     icon_path: Path | None = None
     label: str = ""
     action: Action | None = None
+    text_style: TextStyle = field(default_factory=TextStyle)
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +256,10 @@ __all__ = [
     "Action",
     "ButtonConfig",
     "DEFAULT_PAGE_NAME",
+    "DEFAULT_TEXT_BACKGROUND_COLOR",
+    "DEFAULT_TEXT_COLOR",
+    "DEFAULT_TEXT_FONT_FAMILY",
+    "DEFAULT_TEXT_FONT_SIZE",
     "DEFAULT_TIME_FORMAT",
     "DeckConfig",
     "Page",
@@ -214,5 +269,6 @@ __all__ = [
     "SMALL_WINDOW_MIN_INTERVAL_S",
     "SmallWindowConfig",
     "SwitchPageAction",
+    "TextStyle",
     "UrlAction",
 ]

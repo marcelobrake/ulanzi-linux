@@ -38,7 +38,7 @@ class RecordingFakeDeck(DeckDevice):
             name="FakeDeck",
             usb_vendor_id=0x1234,
             usb_product_id=0x5678,
-            button_count=14,
+            button_count=13,
             button_rows=3,
             button_cols=5,
             icon_width=196,
@@ -120,7 +120,14 @@ class FakeMetrics(SystemMetricsReader):
 
     def format_time(self, fmt: str) -> str:
         self.time_reads += 1
-        self.last_format_fmt = fmt
+        if fmt != "%S":
+            self.last_format_fmt = fmt
+        if fmt == "%S":
+            if len(self.time_str_const) == 8:
+                return self.time_str_const.split(":")[2]
+            return "00"
+        if fmt == "%H:%M:%S" and len(self.time_str_const) == 5:
+            return f"{self.time_str_const}:00"
         return self.time_str_const
 
 
@@ -163,9 +170,9 @@ def test_small_window_payload_uses_clock_wire_format() -> None:
         cpu=17,
         mem=63,
         gpu=0,
-        time_str="14:32",
+        time_str="14:32:00",
     )
-    assert payload == b"1|17|63|14:32|0"
+    assert payload == b"1|17|63|14:32:00|0"
 
 
 def test_small_window_rejects_interval_below_floor() -> None:
@@ -237,8 +244,6 @@ async def test_small_window_loop_pushes_cpu_mem_time() -> None:
             _stop_after_a_few_ticks(),
         )
 
-    # Mode was set to CLOCK at least once on start so the firmware uses the
-    # large clock layout with stats underneath.
     assert SmallWindowMode.CLOCK in fake.small_window_modes
     # We pushed at least one real data packet with the mocked values.
     assert fake.small_window_data_calls, "expected at least one data push"
@@ -246,7 +251,7 @@ async def test_small_window_loop_pushes_cpu_mem_time() -> None:
     assert last["cpu"] == 42
     assert last["mem"] == 42
     assert last["gpu"] == 0
-    assert last["time_str"] == "14:32"
+    assert last["time_str"] == "14:32:00"
     assert metrics.last_format_fmt == "%H:%M"
     # Heartbeat must NOT have run — small_window subsumes it.
     assert fake.keep_alive_calls == 0
@@ -298,11 +303,12 @@ async def test_small_window_can_run_in_time_only_mode() -> None:
         )
 
     assert fake.small_window_data_calls
+    assert SmallWindowMode.CLOCK in fake.small_window_modes
     last = fake.small_window_data_calls[-1]
     assert last["cpu"] is None
     assert last["mem"] is None
     assert last["gpu"] is None
-    assert last["time_str"] == "14:32"
+    assert last["time_str"] == "14:32:00"
     assert metrics.mem_reads == 0
 
 

@@ -98,9 +98,25 @@ async def test_write_failure_reconnects_and_replays_cached_state() -> None:
     assert first.closed is True
     codes = _framed_command_codes(second.writes)
     assert int(OutgoingCommand.SET_BRIGHTNESS) in codes
+    assert int(OutgoingCommand.SET_LABEL_STYLE) in codes
     assert int(OutgoingCommand.SET_BUTTONS) in codes
     assert int(OutgoingCommand.SET_SMALL_WINDOW_DATA) in codes
     assert b"1|11|22|18:42|0" in _framed_payloads(second.writes)
+
+
+@pytest.mark.asyncio
+async def test_first_button_upload_applies_default_label_style() -> None:
+    transport = FakeTransport()
+    device = UlanziD200Device(transport)
+
+    await device.set_buttons((ButtonConfig(index=0, label="A"),))
+    await device.close()
+
+    codes = _framed_command_codes(transport.writes)
+    assert codes[:2] == [
+        int(OutgoingCommand.SET_LABEL_STYLE),
+        int(OutgoingCommand.SET_BUTTONS),
+    ]
 
 
 @pytest.mark.asyncio

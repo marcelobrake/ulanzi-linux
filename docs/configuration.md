@@ -95,15 +95,51 @@ pages:
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `index` | int | yes | Physical button position (0-based). The D200 exposes indices 0–13. |
+| `index` | int | yes | Physical touch position (0-based). The D200 renders buttons only on indices 0–12. Index 13 is the wide info window: it can trigger an action on touch, but its visual content still comes from `small_window`. |
 | `label` | string | no | Text rendered on the button. Defaults to `""`. |
 | `icon` | string (path) | no | PNG/JPG path. `~` is expanded. Icons are resized to the D200's expected format automatically. |
+| `text_style` | object | no | Used when the button has no `icon`. The label is rendered into the tile itself, centered both vertically and horizontally. |
 | `action` | object | no | What to run on press. If absent, the button is visual-only. See §5. |
 
 `index` uniqueness is enforced **across** page + fixed buttons. A page
 cannot reuse an index used by `fixed_buttons` — the config loader
 raises `ValueError` with the colliding indices before the device is
 touched.
+
+### `text_style`
+
+Optional block for text-only buttons:
+
+```yaml
+pages:
+  main:
+    buttons:
+      - index: 0
+        label: OpenAI
+        text_style:
+          background_color: "#102030"
+          text_color: "#F0F0F0"
+          bold: true
+          italic: false
+          underline: false
+          font_family: DejaVu Sans
+          font_size: 34
+```
+
+Supported fields:
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `background_color` | hex color | `#111827` |
+| `text_color` | hex color | `#F8FAFC` |
+| `bold` | bool | `false` |
+| `italic` | bool | `false` |
+| `underline` | bool | `false` |
+| `font_family` | string | `DejaVu Sans` |
+| `font_size` | int | `30` |
+
+These settings are ignored when `icon` is present, because the firmware's
+own label overlay is then used for the caption.
 
 ## 5. Actions
 
@@ -179,7 +215,8 @@ fixed_buttons:
 ```
 
 Indices in `fixed_buttons` **cannot** collide with any page button
-index — validation fails at load time.
+index — validation fails at load time. Index 13 is valid here too, but
+only as an action target; icon/label are ignored for that slot.
 
 ## 7. Legacy single-page schema
 
