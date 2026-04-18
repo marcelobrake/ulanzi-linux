@@ -1,0 +1,82 @@
+# Multi-page ulanzi-linux deck configuration.
+#
+# D200 grid is 3 rows x 5 cols; indices 0..9 are the top two rows, and the
+# bottom row (indices 10..12) is a common convention for page-switchers.
+#
+# Copy to ~/.config/ulanzi/deck.yaml and run:
+#   ulanzi-linux daemon ~/.config/ulanzi/deck.yaml
+
+default_page: main
+
+# Status panel (left side) — CPU%, memory% and local date/time.
+# Refresh cadence must stay under the ~5s firmware watchdog so the device
+# doesn't fall back to standalone 'Ulanzi Studio' mode.
+small_window:
+  enabled: true
+  interval_s: 2.0
+  time_format: "%d/%m %H:%M"  # day/month hour:minute
+
+# Buttons that render on every page. Typically the physical bottom row used
+# as switchers, but any index works — it just can't collide with a page's
+# own buttons.
+fixed_buttons:
+  - index: 10
+    label: Main
+    action: { type: switch_page, page: main }
+
+  - index: 11
+    label: Media
+    action: { type: switch_page, page: media }
+
+  - index: 12
+    label: Dev
+    action: { type: switch_page, page: dev }
+
+pages:
+  main:
+    buttons:
+      - index: 0
+        icon: ~/.config/ulanzi/icons/terminal.png
+        label: Term
+        action: { type: shell, cmd: gnome-terminal }
+      - index: 1
+        icon: ~/.config/ulanzi/icons/claude.png
+        label: Claude
+        action: { type: url, url: https://claude.ai }
+      - index: 2
+        icon: ~/.config/ulanzi/icons/screenshot.png
+        label: Shot
+        action: { type: shell, cmd: gnome-screenshot -i }
+
+  media:
+    buttons:
+      - index: 0
+        label: Play
+        action: { type: shortcut, keys: XF86AudioPlay }
+      - index: 1
+        label: Prev
+        action: { type: shortcut, keys: XF86AudioPrev }
+      - index: 2
+        label: Next
+        action: { type: shortcut, keys: XF86AudioNext }
+      - index: 3
+        label: Mute
+        action: { type: shortcut, keys: XF86AudioMute }
+      - index: 4
+        label: Vol-
+        action: { type: shortcut, keys: XF86AudioLowerVolume }
+      - index: 5
+        label: Vol+
+        action: { type: shortcut, keys: XF86AudioRaiseVolume }
+
+  dev:
+    buttons:
+      - index: 0
+        label: VSCode
+        action: { type: shell, cmd: code }
+      - index: 1
+        label: GH
+        action: { type: url, url: https://github.com }
+      - index: 2
+        label: Docker PS
+        action: { type: shell, cmd: "gnome-terminal -- bash -lc 'docker ps; exec bash'" }

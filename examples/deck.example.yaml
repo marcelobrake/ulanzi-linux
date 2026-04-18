@@ -1,0 +1,34 @@
+# Example ulanzi-linux deck configuration.
+#
+# Copy to ~/.config/ulanzi/deck.yaml, adjust paths, then:
+#   ulanzi-linux push-config ~/.config/ulanzi/deck.yaml
+#   ulanzi-linux daemon ~/.config/ulanzi/deck.yaml
+
+buttons:
+  - index: 0
+    icon: ~/.config/ulanzi/icons/terminal.png
+    label: Term
+    action:
+      type: shell
+      cmd: gnome-terminal
+
+  - index: 1
+    icon: ~/.config/ulanzi/icons/mute.png
+    label: Mute
+    action:
+      type: shortcut
+      keys: XF86AudioMute
+
+  - index: 2
+    icon: ~/.config/ulanzi/icons/claude.png
+    label: Claude
+    action:
+      type: url
+      url: https://claude.ai
+
+  - index: 3
+    icon: ~/.config/ulanzi/icons/screenshot.png
+    label: Shot
+    action:
+      type: shell
+      cmd: gnome-screenshot -i
