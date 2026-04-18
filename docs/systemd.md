@@ -52,7 +52,7 @@ journalctl --user -u ulanzi-linux.service -f
 
 A healthy startup looks like:
 
-```
+```text
 ulanzi-linux: daemon_started pages=['main','media','dev'] default_page=main
 ulanzi-linux: layout_synced page=main buttons=16
 ulanzi-linux: small_window_started interval_s=2.0
@@ -60,6 +60,11 @@ ulanzi-linux: small_window_started interval_s=2.0
 
 …and the D200 shows your configured layout instead of Ulanzi Studio's
 built-in screensaver.
+
+If the deck power-cycles while the unit is already running, the daemon now
+waits for the HID node to come back, reconnects automatically, and reapplies
+the last known layout / brightness / small-window state without needing a
+manual `systemctl --user restart`.
 
 ## 4. Common operations
 
@@ -90,9 +95,11 @@ the deck; udev only fires on device events.
 
 **Unit flaps (`start-limit-hit`)** — 5 restarts in 60 s triggers the
 fail-safe. Inspect the last log lines before the failure:
+
 ```bash
 journalctl --user -u ulanzi-linux.service -n 100 --no-pager
 ```
+
 Usual suspects: malformed YAML (parse error logs the path and the pyyaml
 message), missing icon file referenced by a button, or the device being
 unplugged while the daemon was starting.
@@ -105,6 +112,7 @@ look for `watch=on`. If it says `off`, somebody edited the unit to pass
 **Logs are verbose** — structured JSON is the default in this unit to
 make log shipping (Loki, Elastic, CloudWatch) painless. For a friendlier
 console view, run the daemon manually:
+
 ```bash
 systemctl --user stop ulanzi-linux.service
 ulanzi-linux daemon ~/.config/ulanzi/deck.yaml
