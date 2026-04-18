@@ -1,9 +1,29 @@
 # Changelog
 
+<!-- markdownlint-disable MD024 -->
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.1] — 2026-04-18
+
+### Added
+
+- Added `AGENTS.md` as the repository-level operating guide for AI coding
+  agents, documenting architecture, runtime model, source-of-truth files,
+  common workflows and validation commands.
+- Added compatibility guidance for AI-assisted tools that expect
+  `AGENTS.md` or `CLAUDE.md` style repository instructions.
+
+### Changed
+
+- Established a mandatory release workflow for AI-driven changes:
+  every accepted change must increment the project version and add a new
+  top entry to `CHANGELOG.md`.
+- Defined explicit bump rules for breaking changes, new features and
+  compatible fixes so the AI can choose the correct version increment.
 
 ## [0.1.0] — 2026-04-18
 
@@ -56,4 +76,5 @@ Reverse-engineering stood on the shoulders of
 [`UlanziDeckPlugin-SDK`](https://github.com/UlanziTechnology/UlanziDeckPlugin-SDK)
 was used to cross-check manifest and icon sizing.
 
+[0.1.1]: https://github.com/marcelobrake/ulanzi-linux/releases/tag/v0.1.1
 [0.1.0]: https://github.com/marcelobrake/ulanzi-linux/releases/tag/v0.1.0
