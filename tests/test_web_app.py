@@ -24,24 +24,24 @@ from ulanzi_linux.interface.web.app import (
 VALID_YAML = """\
 default_page: main
 small_window:
-  enabled: true
-  interval_s: 2.0
+    enabled: true
+    interval_s: 2.0
     show_metrics: true
 pages:
-  main:
-    buttons:
-      - index: 0
-        label: Term
-        action: { type: shell, cmd: gnome-terminal }
-  media:
-    buttons:
-      - index: 0
-        label: Play
-        action: { type: shortcut, keys: XF86AudioPlay }
+    main:
+        buttons:
+            - index: 0
+                label: Term
+                action: { type: shell, cmd: gnome-terminal }
+    media:
+        buttons:
+            - index: 0
+                label: Play
+                action: { type: shortcut, keys: XF86AudioPlay }
 fixed_buttons:
-  - index: 10
-    label: Main
-    action: { type: switch_page, page: main }
+    - index: 10
+        label: Main
+        action: { type: switch_page, page: main }
 """
 
 BROKEN_YAML_UNKNOWN_ACTION = """\
