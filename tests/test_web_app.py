@@ -238,3 +238,5 @@ def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     assert r.status_code == 200
     assert "window.editorApp = function editorApp()" in r.text
     assert "async resetDeck()" in r.text
+    assert "Clique em Salvar no deck para aplicar." in r.text
+    assert "await this.saveDeck();" not in r.text

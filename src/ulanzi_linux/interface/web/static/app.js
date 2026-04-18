@@ -341,8 +341,7 @@ window.editorApp = function editorApp() {
             this.selectedPage = this.editor.default_page;
             this.selectSlot(0);
             this.dirty = true;
-            this.setStatus("Deck resetado. Salvando...", "warn");
-            await this.saveDeck();
+            this.setStatus("Deck resetado. Clique em Salvar no deck para aplicar.", "warn");
         },
 
         async validateDeck() {
