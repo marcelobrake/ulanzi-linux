@@ -48,21 +48,21 @@ pages:
 ## 3. `small_window`
 
 The D200 has a narrow LCD strip to the left of the button grid, meant
-for status info. When `enabled: true`, the daemon pushes CPU% / memory%
-/ date+time at `interval_s` cadence. When disabled, a plain heartbeat
+for status info. When `enabled: true`, the daemon pushes a large clock
+on top with CPU% / memory% underneath at `interval_s` cadence. When disabled, a plain heartbeat
 loop runs in its place (to keep the firmware watchdog happy).
 
 | Field | Type | Default | Constraints |
 | --- | --- | --- | --- |
 | `enabled` | bool | `false` | — |
 | `interval_s` | float | `2.0` | `0.05 ≤ x ≤ 4.5`. Below → busy-loop risk. Above → device falls back to standalone screensaver after the ~5 s firmware watchdog. |
-| `time_format` | string | `"%d/%m %H:%M"` | Any `strftime` pattern. Keep it short — the small-window area is ~16 columns wide. |
+| `time_format` | string | `"%H:%M"` | Any `strftime` pattern. Keep it short — the firmware uses a larger clock layout when the string is compact. |
 
 ```yaml
 small_window:
   enabled: true
   interval_s: 2.0
-  time_format: "%H:%M"          # 24 h only, no date
+  time_format: "%H:%M"          # large centered clock on top
 ```
 
 ### Why no GPU metric?
