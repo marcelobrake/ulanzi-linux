@@ -67,7 +67,12 @@ class RecordingFakeDeck(DeckDevice):
         self.small_window_modes.append(mode)
 
     async def set_small_window_data(
-        self, *, cpu: int = 0, mem: int = 0, gpu: int = 0, time_str: str | None = None
+        self,
+        *,
+        cpu: int | None = 0,
+        mem: int | None = 0,
+        gpu: int | None = 0,
+        time_str: str | None = None,
     ) -> None:
         self.small_window_data_calls.append(
             {"cpu": cpu, "mem": mem, "gpu": gpu, "time_str": time_str}
@@ -120,7 +125,7 @@ class FakeMetrics(SystemMetricsReader):
 
 
 def _cfg_with_small_window(
-    *, enabled: bool, interval_s: float = 0.05
+    *, enabled: bool, interval_s: float = 0.05, show_metrics: bool = True
 ) -> DeckConfig:
     return DeckConfig(
         pages={
@@ -131,7 +136,10 @@ def _cfg_with_small_window(
         },
         default_page="main",
         small_window=SmallWindowConfig(
-            enabled=enabled, interval_s=interval_s, time_format="%H:%M"
+            enabled=enabled,
+            interval_s=interval_s,
+            time_format="%H:%M",
+            show_metrics=show_metrics,
         ),
     )
 
@@ -237,7 +245,7 @@ async def test_small_window_loop_pushes_cpu_mem_time() -> None:
     last = fake.small_window_data_calls[-1]
     assert last["cpu"] == 42
     assert last["mem"] == 42
-    assert last["gpu"] == 0
+    assert last["gpu"] is None
     assert last["time_str"] == "14:32"
     assert metrics.last_format_fmt == "%H:%M"
     # Heartbeat must NOT have run — small_window subsumes it.
@@ -266,9 +274,36 @@ async def test_disabled_small_window_uses_heartbeat() -> None:
         )
 
     assert fake.keep_alive_calls >= 1
-    # No STATS mode flip and no data pushes when small_window is off.
-    assert fake.small_window_modes == []
+    assert SmallWindowMode.BACKGROUND in fake.small_window_modes
     assert fake.small_window_data_calls == []
+
+
+@pytest.mark.asyncio
+async def test_small_window_can_run_in_time_only_mode() -> None:
+    fake = RecordingFakeDeck()
+    metrics = FakeMetrics(cpu_values=[0, 42, 42], mem=61, time_str="14:32")
+    cfg = _cfg_with_small_window(enabled=True, interval_s=0.05, show_metrics=False)
+
+    async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
+        daemon = DeckDaemon(svc, cfg, metrics_reader=metrics)
+        stop = asyncio.Event()
+
+        async def _stop_after() -> None:
+            await asyncio.sleep(0.15)
+            stop.set()
+
+        await asyncio.gather(
+            daemon.run(stop_event=stop),
+            _stop_after(),
+        )
+
+    assert fake.small_window_data_calls
+    last = fake.small_window_data_calls[-1]
+    assert last["cpu"] is None
+    assert last["mem"] is None
+    assert last["gpu"] is None
+    assert last["time_str"] == "14:32"
+    assert metrics.mem_reads == 0
 
 
 @pytest.mark.asyncio

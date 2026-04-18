@@ -79,3 +79,16 @@ def test_boundary_bytes_avoid_invalid_markers(fake_icon: Path) -> None:
         assert blob[offset : offset + 1] not in (b"\x00", b"\x7c"), (
             f"invalid boundary byte at offset {offset}"
         )
+
+
+def test_full_upload_fills_missing_buttons_with_black_tiles(fake_icon: Path) -> None:
+    blob = build_buttons_zip(
+        [ButtonConfig(index=0, icon_path=fake_icon, label="A")],
+        fill_missing=True,
+    )
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+        names = zf.namelist()
+    assert len(manifest) == 13
+    assert "icons/12.png" in names
+    assert manifest["1_0"]["ViewParam"] == [{"Icon": "icons/1.png"}]

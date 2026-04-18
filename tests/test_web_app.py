@@ -26,6 +26,7 @@ default_page: main
 small_window:
   enabled: true
   interval_s: 2.0
+    show_metrics: true
 pages:
   main:
     buttons:
@@ -137,6 +138,19 @@ def test_get_config_returns_text_and_metadata(
     assert body["size"] == path.stat().st_size
 
 
+def test_get_editor_returns_structured_config(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, path = client
+    r = c.get("/api/editor")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["path"] == str(path)
+    assert body["default_page"] == "main"
+    assert body["pages"][0]["name"] == "main"
+    assert body["small_window"]["show_metrics"] is True
+
+
 def test_get_config_returns_404_when_missing(tmp_path: Path) -> None:
     path = tmp_path / "does-not-exist.yaml"
     app = create_app(path)
@@ -215,6 +229,7 @@ def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     assert "/static/app.js" in r.text
     assert "alpinejs" in r.text
     assert r.text.index("/static/app.js") < r.text.index("alpinejs")
+    assert "Reset" in r.text
     # Static mount exposes the CSS/JS files.
     r = c.get("/static/app.css")
     assert r.status_code == 200
@@ -222,4 +237,4 @@ def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     r = c.get("/static/app.js")
     assert r.status_code == 200
     assert "window.editorApp = function editorApp()" in r.text
-    assert "CodeMirror unavailable, falling back to textarea" in r.text
+    assert "async resetDeck()" in r.text
