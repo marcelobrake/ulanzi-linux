@@ -179,16 +179,34 @@ class UlanziD200Device(DeckDevice):
     async def keep_alive(self) -> None:
         # Any outbound command would satisfy the watchdog; strmdck uses
         # SET_SMALL_WINDOW_DATA because it is idempotent and cheap.
-        await self.set_small_window_data()
+        if self._last_small_window_data is not None:
+            cpu, mem, gpu, time_str = self._last_small_window_data
+            await self.set_small_window_data(
+                cpu=cpu,
+                mem=mem,
+                gpu=gpu,
+                time_str=time_str,
+            )
+        elif self._cached_small_window_mode is not None:
+            await self.set_small_window_data()
+        else:
+            await self._send(OutgoingCommand.SET_SMALL_WINDOW_DATA, b"")
         logger.debug("keep_alive_sent")
 
     async def set_small_window_mode(self, mode: SmallWindowMode) -> None:
-        # Piggyback on SET_SMALL_WINDOW_DATA with just the mode byte.
-        # NOTE: separating mode vs. data is a design simplification on our
-        # side — the device does not distinguish them on the wire.
-        payload = bytes([int(mode)])
         self._cached_small_window_mode = mode
-        await self._send(OutgoingCommand.SET_SMALL_WINDOW_DATA, payload)
+        if self._last_small_window_data is not None:
+            cpu, mem, gpu, time_str = self._last_small_window_data
+            await self._send(
+                OutgoingCommand.SET_SMALL_WINDOW_DATA,
+                self._build_small_window_payload(
+                    mode=mode,
+                    cpu=cpu,
+                    mem=mem,
+                    gpu=gpu,
+                    time_str=time_str,
+                ),
+            )
         logger.info("small_window_mode_set", mode=mode.name)
 
     async def set_small_window_data(
@@ -199,12 +217,14 @@ class UlanziD200Device(DeckDevice):
         gpu: int = 0,
         time_str: str | None = None,
     ) -> None:
-        # Payload layout is still being reverse engineered; for now we
-        # send a compact ASCII blob the device seems to ignore gracefully
-        # when fields are absent. Refine once we capture more traffic.
+        mode = self._cached_small_window_mode or SmallWindowMode.CLOCK
         self._last_small_window_data = (cpu, mem, gpu, time_str)
         payload = self._build_small_window_payload(
-            cpu=cpu, mem=mem, gpu=gpu, time_str=time_str
+            mode=mode,
+            cpu=cpu,
+            mem=mem,
+            gpu=gpu,
+            time_str=time_str,
         )
         await self._send(OutgoingCommand.SET_SMALL_WINDOW_DATA, payload)
         logger.info("small_window_data_set", cpu=cpu, mem=mem, gpu=gpu)
@@ -513,19 +533,13 @@ class UlanziD200Device(DeckDevice):
                 build_buttons_zip(buttons),
             )
 
-        if self._cached_small_window_mode is not None:
-            await self._send_raw(
-                transport,
-                OutgoingCommand.SET_SMALL_WINDOW_DATA,
-                bytes([int(self._cached_small_window_mode)]),
-            )
-
         if self._last_small_window_data is not None:
             cpu, mem, gpu, time_str = self._last_small_window_data
             await self._send_raw(
                 transport,
                 OutgoingCommand.SET_SMALL_WINDOW_DATA,
                 self._build_small_window_payload(
+                    mode=self._cached_small_window_mode or SmallWindowMode.CLOCK,
                     cpu=cpu,
                     mem=mem,
                     gpu=gpu,
@@ -555,11 +569,15 @@ class UlanziD200Device(DeckDevice):
 
     @staticmethod
     def _build_small_window_payload(
-        *, cpu: int, mem: int, gpu: int, time_str: str | None
+        *,
+        mode: SmallWindowMode,
+        cpu: int,
+        mem: int,
+        gpu: int,
+        time_str: str | None,
     ) -> bytes:
-        if time_str is None:
-            return f"{cpu},{mem},{gpu}".encode("ascii")
-        return f"{cpu},{mem},{gpu},{time_str}".encode("ascii")
+        time_field = time_str or ""
+        return f"{int(mode)}|{cpu}|{mem}|{time_field}|{gpu}".encode("utf-8")
 
     async def _event_iterator(
         self,

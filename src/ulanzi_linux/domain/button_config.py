@@ -93,9 +93,9 @@ class Page:
 DEFAULT_PAGE_NAME = "default"
 
 
-# Default date/time format: day/month hour:minute (pt-BR friendly, compact
-# enough to fit the D200 small-window area).
-DEFAULT_TIME_FORMAT = "%d/%m %H:%M"
+# Default time format kept intentionally short so the firmware renders the
+# large centered clock in the small-window header.
+DEFAULT_TIME_FORMAT = "%H:%M"
 
 # Max guardrail for the small-window refresh interval — the device
 # watchdog fires ~5s; anything slower risks falling back to standalone
@@ -109,8 +109,9 @@ SMALL_WINDOW_MAX_INTERVAL_S = 4.5
 class SmallWindowConfig:
     """Small-window (left status panel) refresh configuration.
 
-    When ``enabled``, the daemon takes over the small window with CPU,
-    memory and date/time — and *replaces* the plain heartbeat loop,
+    When ``enabled``, the daemon takes over the small window with a large
+    clock on top and CPU / memory percentages underneath — and *replaces*
+    the plain heartbeat loop,
     because the heartbeat already uses ``SET_SMALL_WINDOW_DATA`` under
     the hood and would otherwise overwrite real stats with zeros.
     """

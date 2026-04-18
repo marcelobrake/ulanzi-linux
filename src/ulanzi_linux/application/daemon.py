@@ -256,7 +256,7 @@ class DeckDaemon:
             logger.info("heartbeat_stopped")
 
     async def _small_window_loop(self, stop_event: asyncio.Event) -> None:
-        """Push CPU / memory / date+time into the D200 small window.
+        """Push clock / CPU / memory into the D200 small window.
 
         Doubles as the firmware watchdog ping — same command, same
         cadence, so we don't need the separate heartbeat loop when this
@@ -265,11 +265,12 @@ class DeckDaemon:
         """
         sw_cfg = self._config.small_window
         interval = sw_cfg.interval_s
-        # Put the window in STATS mode once up-front; the device remembers
-        # it until we swap modes or unplug.
+        # Put the window in CLOCK mode so the firmware uses the large-time
+        # layout with stats below; the device remembers it until we swap
+        # modes or unplug.
         try:
             await self._service._device.set_small_window_mode(  # noqa: SLF001
-                SmallWindowMode.STATS
+                SmallWindowMode.CLOCK
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("small_window_mode_set_failed", error=str(exc))
