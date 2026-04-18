@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ulanzi-linux • deck.yaml editor</title>
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="/static/app.css" />
+<!--
+  Tool choices, stated here so they're auditable without digging:
+    * CodeMirror 6  -> YAML syntax highlight, small footprint, zero build.
+    * Alpine.js     -> declarative reactivity without a bundler; ~15 KB.
+  Both come from jsdelivr with integrity hashes pinned in app.js, so a
+  compromised CDN can't silently swap the bundle out from under us.
+-->
+</head>
+<body x-data="editorApp()" x-init="init()">
+
+<header>
+  <div class="brand">
+    <strong>ulanzi-linux</strong>
+    <span class="tag">deck.yaml editor</span>
+  </div>
+  <div class="meta">
+    <span class="pill" :class="health.ok ? 'pill-ok' : 'pill-bad'">
+      <span x-text="health.ok ? 'ok' : 'offline'"></span>
+      <span class="thin">v<span x-text="health.version || '?'"></span></span>
+    </span>
+    <span class="pill" :class="health.devices_found ? 'pill-ok' : 'pill-warn'">
+      <span x-text="health.devices_found + ' device(s)'"></span>
+    </span>
+    <span class="pill thin" :title="health.config_path" x-text="shortPath"></span>
+  </div>
+</header>
+
+<main>
+  <section class="editor-panel">
+    <div class="toolbar">
+      <button @click="validate()" :disabled="busy" title="Ctrl+Enter">
+        Validate
+      </button>
+      <button class="primary" @click="save()" :disabled="busy || !dirty"
+              title="Ctrl+S">
+        Apply <span x-show="dirty" class="dot"></span>
+      </button>
+      <button @click="revert()" :disabled="busy || !dirty">
+        Revert
+      </button>
+      <span class="spacer"></span>
+      <span class="status" :class="statusClass" x-text="status"></span>
+    </div>
+    <div id="editor"></div>
+  </section>
+
+  <aside class="sidebar">
+    <h2>Parsed layout</h2>
+    <template x-if="!validation">
+      <p class="muted">Not validated yet.</p>
+    </template>
+    <template x-if="validation && !validation.ok">
+      <pre class="error" x-text="validation.error"></pre>
+    </template>
+    <template x-if="validation && validation.ok">
+      <div>
+        <p>
+          Default page:
+          <code x-text="validation.default_page"></code>
+        </p>
+        <p>
+          Small window:
+          <span x-text="validation.small_window_enabled ? 'enabled' : 'disabled'"></span>
+        </p>
+        <p>
+          Fixed buttons:
+          <code x-text="fixedBtnsLabel"></code>
+        </p>
+        <h3>Pages</h3>
+        <ul class="page-list">
+          <template x-for="page in validation.pages" :key="page.name">
+            <li>
+              <strong x-text="page.name"></strong>
+              <span class="muted"
+                    x-text="' — ' + page.button_count + ' buttons'"></span>
+              <div class="indices" x-text="'[' + page.indices.join(', ') + ']'"></div>
+            </li>
+          </template>
+        </ul>
+      </div>
+    </template>
+
+    <h2 class="spaced">Hot reload</h2>
+    <p class="muted small">
+      The running daemon watches the YAML file and reloads within ~1 s of
+      Apply. No systemd restart needed.
+    </p>
+  </aside>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js" defer></script>
+<script type="module" src="/static/app.js"></script>
+
+</body>
+</html>
