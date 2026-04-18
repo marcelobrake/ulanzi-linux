@@ -22,6 +22,7 @@ from ulanzi_linux.domain.commands import SmallWindowMode
 from ulanzi_linux.domain.device import DeckDevice, DeckSpec
 from ulanzi_linux.domain.events import ButtonEvent, DeviceInfoEvent
 from ulanzi_linux.infrastructure.system_metrics import SystemMetricsReader
+from ulanzi_linux.infrastructure.ulanzi_d200 import UlanziD200Device
 
 
 # ---------------------------------------------------------------------- #
@@ -91,7 +92,7 @@ class FakeMetrics(SystemMetricsReader):
         *,
         cpu_values: list[int] | None = None,
         mem: int = 42,
-        time_str: str = "18/04 14:32",
+        time_str: str = "14:32",
     ) -> None:
         self.cpu_values = cpu_values or [10, 25, 50]
         self.cpu_idx = 0
@@ -130,7 +131,7 @@ def _cfg_with_small_window(
         },
         default_page="main",
         small_window=SmallWindowConfig(
-            enabled=enabled, interval_s=interval_s, time_format="%d/%m %H:%M"
+            enabled=enabled, interval_s=interval_s, time_format="%H:%M"
         ),
     )
 
@@ -145,7 +146,18 @@ def test_small_window_defaults_disabled() -> None:
         pages={"default": Page(name="default")}, default_page="default"
     )
     assert cfg.small_window.enabled is False
-    assert cfg.small_window.time_format == "%d/%m %H:%M"
+    assert cfg.small_window.time_format == "%H:%M"
+
+
+def test_small_window_payload_uses_clock_wire_format() -> None:
+    payload = UlanziD200Device._build_small_window_payload(
+        mode=SmallWindowMode.CLOCK,
+        cpu=17,
+        mem=63,
+        gpu=0,
+        time_str="14:32",
+    )
+    assert payload == b"1|17|63|14:32|0"
 
 
 def test_small_window_rejects_interval_below_floor() -> None:
@@ -217,16 +229,17 @@ async def test_small_window_loop_pushes_cpu_mem_time() -> None:
             _stop_after_a_few_ticks(),
         )
 
-    # Mode was set to STATS at least once on start.
-    assert SmallWindowMode.STATS in fake.small_window_modes
+    # Mode was set to CLOCK at least once on start so the firmware uses the
+    # large clock layout with stats underneath.
+    assert SmallWindowMode.CLOCK in fake.small_window_modes
     # We pushed at least one real data packet with the mocked values.
     assert fake.small_window_data_calls, "expected at least one data push"
     last = fake.small_window_data_calls[-1]
     assert last["cpu"] == 42
     assert last["mem"] == 42
     assert last["gpu"] == 0
-    assert last["time_str"] == "18/04 14:32"
-    assert metrics.last_format_fmt == "%d/%m %H:%M"
+    assert last["time_str"] == "14:32"
+    assert metrics.last_format_fmt == "%H:%M"
     # Heartbeat must NOT have run — small_window subsumes it.
     assert fake.keep_alive_calls == 0
 

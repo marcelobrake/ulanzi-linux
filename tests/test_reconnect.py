@@ -61,6 +61,15 @@ def _framed_command_codes(writes: list[bytes]) -> list[int]:
     return codes
 
 
+def _framed_payloads(writes: list[bytes]) -> list[bytes]:
+    payloads: list[bytes] = []
+    for packet in writes:
+        if packet[:3] != b"\x00\x7c\x7c":
+            continue
+        payloads.append(packet[9:].rstrip(b"\x00"))
+    return payloads
+
+
 @pytest.mark.asyncio
 async def test_write_failure_reconnects_and_replays_cached_state() -> None:
     first = FakeTransport()
@@ -91,6 +100,7 @@ async def test_write_failure_reconnects_and_replays_cached_state() -> None:
     assert int(OutgoingCommand.SET_BRIGHTNESS) in codes
     assert int(OutgoingCommand.SET_BUTTONS) in codes
     assert int(OutgoingCommand.SET_SMALL_WINDOW_DATA) in codes
+    assert b"1|11|22|18:42|0" in _framed_payloads(second.writes)
 
 
 @pytest.mark.asyncio
