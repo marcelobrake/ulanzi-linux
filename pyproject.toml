@@ -1,0 +1,99 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ulanzi-linux"
+version = "0.1.0"
+description = "Unofficial Linux client for the Ulanzi Stream Controller D200 — reverse engineered"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Marcelo Brake", email = "marcelo@marcelobrake.eti.br" }]
+keywords = ["ulanzi", "streamdeck", "stream-deck", "d200", "linux", "hid"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+]
+
+dependencies = [
+    "hidapi>=0.14.0",
+    "construct>=2.10.70",
+    "Pillow>=11.0.0",
+    "structlog>=24.4.0",
+    "click>=8.1.0",
+    "rich>=13.9.0",
+    "PyYAML>=6.0.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+    "pre-commit>=4.0.0",
+]
+telemetry = [
+    "opentelemetry-api>=1.28.0",
+    "opentelemetry-sdk>=1.28.0",
+    "opentelemetry-exporter-otlp>=1.28.0",
+]
+web = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+]
+
+[project.scripts]
+ulanzi-linux = "ulanzi_linux.interface.cli:cli"
+
+[project.urls]
+Homepage = "https://github.com/marcelobrake/ulanzi-linux"
+Issues = "https://github.com/marcelobrake/ulanzi-linux/issues"
+Repository = "https://github.com/marcelobrake/ulanzi-linux.git"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+addopts = "-v --strict-markers --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
