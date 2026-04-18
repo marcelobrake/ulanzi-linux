@@ -39,7 +39,7 @@ ICON_SIZE = (196, 196)
 # D200 grid geometry — used to derive ``col`` / ``row`` from a flat index.
 # Kept local to the builder because the manifest schema is deck-specific.
 _D200_COLS = 5
-_D200_ACTIVE_BUTTON_COUNT = 13
+_D200_ACTIVE_BUTTON_COUNT = 14
 
 # Frame boundaries we must inspect for the firmware parser bug.
 _FRAME_SIZE = 1024

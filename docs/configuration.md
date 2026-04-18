@@ -95,7 +95,7 @@ pages:
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `index` | int | yes | Physical button position (0-based). The D200 is a 3×5 grid, so valid indices are 0–14. |
+| `index` | int | yes | Physical button position (0-based). The D200 exposes indices 0–13. |
 | `label` | string | no | Text rendered on the button. Defaults to `""`. |
 | `icon` | string (path) | no | PNG/JPG path. `~` is expanded. Icons are resized to the D200's expected format automatically. |
 | `action` | object | no | What to run on press. If absent, the button is visual-only. See §5. |

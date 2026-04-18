@@ -16,7 +16,7 @@ class ButtonEvent:
 
     Attributes:
         index: Zero-based button index as reported by the device (0 to
-            BUTTON_COUNT-1). The D200 uses a 3x5 grid with 13 active buttons.
+            BUTTON_COUNT-1). The D200 exposes 14 addressable buttons.
         pressed: True if the event is a press, False if a release.
         state: The device-reported internal state byte. Meaning is
             firmware-dependent; stored for observability.

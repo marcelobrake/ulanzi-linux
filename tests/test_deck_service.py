@@ -27,7 +27,7 @@ class FakeDeck(DeckDevice):
             name="FakeDeck",
             usb_vendor_id=0x1234,
             usb_product_id=0x5678,
-            button_count=13,
+            button_count=14,
             button_rows=3,
             button_cols=5,
             icon_width=85,
