@@ -1,0 +1,89 @@
+# ulanzi-linux — systemd user unit for the Ulanzi D200 daemon.
+#
+# Why a USER unit (and not a system-wide one):
+#   * The daemon opens the HID device as the desktop user and talks to user
+#     binaries (``gnome-terminal``, ``xdotool``, browsers, ...). Running it as
+#     root would either break those actions (wrong $DISPLAY / $DBUS) or
+#     require a fragile ``sudo -u`` dance. A user unit inherits the right
+#     session bus automatically.
+#   * Lifecycle matches the login session: the deck stops working when you
+#     log out, which is what you want.
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp systemd/ulanzi-linux.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now ulanzi-linux.service
+#
+# Status / logs:
+#   systemctl --user status ulanzi-linux.service
+#   journalctl --user -u ulanzi-linux.service -f
+#
+# Prerequisites:
+#   * ``ulanzi-linux`` installed with ``pip install --user .`` so the entry
+#     point lands at ``~/.local/bin/ulanzi-linux`` (matches %h below).
+#   * ``~/.config/ulanzi/deck.yaml`` exists (see ``examples/deck.multipage.yaml``).
+#   * udev rule from ``udev/99-ulanzi-d200.rules`` installed so the user has
+#     read/write access to the hidraw node without sudo.
+
+[Unit]
+Description=Ulanzi Stream Pad D200 daemon (Linux, reverse-engineered)
+Documentation=https://github.com/marcelobrake/ulanzi-linux
+# We don't need a graphical session to *run*, but shell/URL actions spawned
+# via the action runner rely on $DISPLAY / $WAYLAND_DISPLAY — so we wait for
+# the desktop to be up before starting. The unit still runs headlessly if
+# the target never arrives; it just means visual actions will no-op.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+
+# Entry point shipped by pip (``project.scripts`` in pyproject.toml).
+# ``%h`` expands to the user's home directory so the unit is portable
+# across accounts without editing.
+#
+# Flags:
+#   --json-logs  — structured logs to journald (queryable with
+#                  ``journalctl -o json``, easier to ship to an ELK / Loki).
+#   (no --no-watch) — hot-reload stays on so ``deck.yaml`` edits take effect
+#                     without an ``systemctl --user restart``.
+ExecStart=%h/.local/bin/ulanzi-linux --json-logs daemon %h/.config/ulanzi/deck.yaml
+
+# Unbuffered stdout guarantees log lines hit the journal immediately
+# instead of sitting in a 4 KiB Python buffer — critical when debugging
+# a misbehaving deck over SSH.
+Environment=PYTHONUNBUFFERED=1
+
+# Restart policy:
+#   * on-failure  — crash or non-zero exit triggers a restart.
+#   * RestartSec  — back-off so a permanent failure (missing device, bad
+#                   YAML) doesn't hammer the system at 100 % CPU.
+#   * StartLimitBurst/IntervalSec — give up after 5 restarts in 60 s so a
+#                                    truly broken install surfaces as
+#                                    "failed" in status instead of silently
+#                                    flapping forever.
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# SIGTERM drives the ``stop_event`` path in the daemon; give it a generous
+# window to cancel the event / heartbeat / small-window tasks and flush
+# the last HID packet before escalating to SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Make journald logs easy to grep across units.
+SyslogIdentifier=ulanzi-linux
+
+# --- Lightweight hardening -------------------------------------------------
+# These are safe for a user unit that only needs HID + local $DISPLAY.
+# Stricter sandboxing (ProtectHome, ProtectSystem=strict) would break the
+# ability to read the YAML from ``~/.config`` and spawn user commands, so
+# we keep it minimal on purpose.
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

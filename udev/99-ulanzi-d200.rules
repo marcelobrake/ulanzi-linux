@@ -1,0 +1,25 @@
+# udev rule for the Ulanzi Stream Controller D200
+#
+# Purpose:
+#   Grant the "plugdev" group read/write access to the Ulanzi D200 HID interface 0
+#   (the custom protocol interface) so ulanzi-linux does not require sudo.
+#
+# Context:
+#   The D200 (VID 0x2207, PID 0x0019, manufactured by Zkswe) exposes two HID
+#   interfaces:
+#     - Interface 0: custom protocol (our target)
+#     - Interface 1: generic USB keyboard (emits ghost keypresses if unhandled)
+#
+# Installation:
+#   sudo cp 99-ulanzi-d200.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#   Replug the device.
+#
+# Verify:
+#   ls -l /dev/hidraw* and check group ownership.
+
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2207", ATTRS{idProduct}=="0019", \
+    MODE="0660", GROUP="plugdev", TAG+="uaccess"
+
+KERNEL=="hidraw*", ATTRS{idVendor}=="2207", ATTRS{idProduct}=="0019", \
+    MODE="0660", GROUP="plugdev", TAG+="uaccess"
