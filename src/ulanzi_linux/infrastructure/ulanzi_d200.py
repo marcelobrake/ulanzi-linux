@@ -57,7 +57,7 @@ DEFAULT_LABEL_STYLE: Final[dict[str, object]] = {
     "Align": "bottom",
     "Color": 0xFFFFFF,
     "FontName": "Roboto",
-    "ShowTitle": True,
+    "ShowTitle": False,
     "Size": 10,
     "Weight": 80,
 }
@@ -254,7 +254,14 @@ class UlanziD200Device(DeckDevice):
             time_str=time_str,
         )
         await self._send(OutgoingCommand.SET_SMALL_WINDOW_DATA, payload)
-        logger.info("small_window_data_set", cpu=cpu, mem=mem, gpu=gpu)
+        logger.info(
+            "small_window_data_set",
+            mode=mode.name,
+            cpu=cpu,
+            mem=mem,
+            gpu=gpu,
+            time_str=time_str,
+        )
 
     async def set_buttons(
         self, configs: Iterable[ButtonConfig], *, partial: bool = False
@@ -610,7 +617,7 @@ class UlanziD200Device(DeckDevice):
             self._label_style_payload(),
         )
         self._label_style_applied = True
-        logger.info("label_style_set", show_title=True, font_name="Roboto")
+        logger.info("label_style_set", show_title=False, font_name="Roboto")
 
     @staticmethod
     def _label_style_payload() -> bytes:

@@ -94,7 +94,7 @@ def test_full_upload_fills_missing_buttons_with_black_tiles(fake_icon: Path) -> 
     assert manifest["1_0"]["ViewParam"] == [{}]
 
 
-def test_label_only_button_renders_text_tile_without_manifest_text() -> None:
+def test_label_only_button_renders_text_tile_and_manifest_text() -> None:
     blob = build_buttons_zip(
         [ButtonConfig(index=0, label="OpenAI")],
         fill_missing=True,
@@ -105,7 +105,7 @@ def test_label_only_button_renders_text_tile_without_manifest_text() -> None:
         img = Image.open(io.BytesIO(zf.read("icons/0.png")))
     assert "icons/0.png" in names
     assert manifest["0_0"]["ViewParam"][0]["Icon"] == "icons/0.png"
-    assert "Text" not in manifest["0_0"]["ViewParam"][0]
+    assert manifest["0_0"]["ViewParam"][0]["Text"] == "OpenAI"
     assert img.size == ICON_SIZE
 
 

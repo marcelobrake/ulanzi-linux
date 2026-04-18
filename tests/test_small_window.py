@@ -172,7 +172,7 @@ def test_small_window_payload_uses_clock_wire_format() -> None:
         gpu=0,
         time_str="14:32:00",
     )
-    assert payload == b"1|17|63|14:32:00|0"
+    assert payload == b"0|17|63|14:32:00|0"
 
 
 def test_small_window_rejects_interval_below_floor() -> None:
@@ -244,7 +244,7 @@ async def test_small_window_loop_pushes_cpu_mem_time() -> None:
             _stop_after_a_few_ticks(),
         )
 
-    assert SmallWindowMode.CLOCK in fake.small_window_modes
+        assert SmallWindowMode.STATS in fake.small_window_modes
     # We pushed at least one real data packet with the mocked values.
     assert fake.small_window_data_calls, "expected at least one data push"
     last = fake.small_window_data_calls[-1]

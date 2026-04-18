@@ -42,6 +42,6 @@ class IncomingCommand(IntEnum):
 class SmallWindowMode(IntEnum):
     """Display modes for the status window on the D200."""
 
-    STATS = 0
-    CLOCK = 1
+    CLOCK = 0
+    STATS = 1
     BACKGROUND = 2

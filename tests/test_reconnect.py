@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
@@ -101,7 +102,7 @@ async def test_write_failure_reconnects_and_replays_cached_state() -> None:
     assert int(OutgoingCommand.SET_LABEL_STYLE) in codes
     assert int(OutgoingCommand.SET_BUTTONS) in codes
     assert int(OutgoingCommand.SET_SMALL_WINDOW_DATA) in codes
-    assert b"1|11|22|18:42|0" in _framed_payloads(second.writes)
+    assert b"0|11|22|18:42|0" in _framed_payloads(second.writes)
 
 
 @pytest.mark.asyncio
@@ -117,6 +118,9 @@ async def test_first_button_upload_applies_default_label_style() -> None:
         int(OutgoingCommand.SET_LABEL_STYLE),
         int(OutgoingCommand.SET_BUTTONS),
     ]
+    payloads = _framed_payloads(transport.writes)
+    label_style = json.loads(payloads[0].decode("utf-8"))
+    assert label_style["ShowTitle"] is False
 
 
 @pytest.mark.asyncio

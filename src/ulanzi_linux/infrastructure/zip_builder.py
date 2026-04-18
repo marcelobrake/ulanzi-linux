@@ -303,7 +303,7 @@ def _build_manifest(configs: list[ButtonConfig]) -> dict:
         row = idx // _D200_COLS
         col = idx % _D200_COLS
         view_param: dict = {}
-        if cfg.label and cfg.icon_path is not None:
+        if cfg.label:
             view_param["Text"] = cfg.label
         if cfg.icon_path is not None or cfg.label:
             # Icon filename uses the flat index for uniqueness, referenced

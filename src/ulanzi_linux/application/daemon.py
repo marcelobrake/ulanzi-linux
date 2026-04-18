@@ -48,17 +48,6 @@ def _looks_like_hhmm(value: str) -> bool:
     return len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit()
 
 
-def _looks_like_hhmmss(value: str) -> bool:
-    return (
-        len(value) == 8
-        and value[2] == ":"
-        and value[5] == ":"
-        and value[:2].isdigit()
-        and value[3:5].isdigit()
-        and value[6:].isdigit()
-    )
-
-
 class DeckDaemon:
     """Glue: pushes layout, heartbeats the firmware, runs actions on press.
 
@@ -114,7 +103,7 @@ class DeckDaemon:
         """
         async with self._state_lock:
             if page_name == self._current_page:
-                logger.debug("switch_page_noop", page=page_name)
+                logger.info("switch_page_noop", page=page_name)
                 return
             if page_name not in self._config.pages:
                 logger.warning(
@@ -247,10 +236,10 @@ class DeckDaemon:
 
     def _wire_time_string(self, configured_format: str) -> str:
         rendered = self._metrics_reader.format_time(configured_format)
-        if _looks_like_hhmmss(rendered):
-            return rendered
         if _looks_like_hhmm(rendered):
             return f"{rendered}:{self._metrics_reader.format_time('%S')}"
+        if rendered:
+            return rendered
         return self._metrics_reader.format_time("%H:%M:%S")
 
     async def _status_loop(self, stop_event: asyncio.Event) -> None:
@@ -262,7 +251,11 @@ class DeckDaemon:
                 try:
                     sw_cfg = self._config.small_window
                     if sw_cfg.enabled:
-                        desired_mode = SmallWindowMode.CLOCK
+                        desired_mode = (
+                            SmallWindowMode.STATS
+                            if sw_cfg.show_metrics
+                            else SmallWindowMode.CLOCK
+                        )
                         if active_mode != desired_mode:
                             await self._service._device.set_small_window_mode(  # noqa: SLF001
                                 desired_mode
