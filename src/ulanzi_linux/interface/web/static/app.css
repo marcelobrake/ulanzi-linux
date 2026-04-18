@@ -118,6 +118,7 @@ button.primary:hover:not(:disabled) { background: var(--accent); }
     font-family: var(--font-mono);
 }
 .status.ok  { color: var(--ok); }
+.status.warn { color: var(--warn); }
 .status.err { color: var(--err); }
 
 .dot {
@@ -133,6 +134,19 @@ button.primary:hover:not(:disabled) { background: var(--accent); }
     flex: 1;
     overflow: auto;
     background: var(--bg);
+}
+.editor-textarea {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    outline: none;
+    resize: none;
+    padding: 14px 16px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.5;
 }
 /* CodeMirror defaults are fine; just make sure it fills the box. */
 .cm-editor { height: 100%; font-family: var(--font-mono); font-size: 13px; }

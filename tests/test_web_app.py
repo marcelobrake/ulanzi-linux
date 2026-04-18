@@ -212,7 +212,14 @@ def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     r = c.get("/")
     assert r.status_code == 200
     assert "<title>" in r.text and "ulanzi-linux" in r.text
+    assert "/static/app.js" in r.text
+    assert "alpinejs" in r.text
+    assert r.text.index("/static/app.js") < r.text.index("alpinejs")
     # Static mount exposes the CSS/JS files.
     r = c.get("/static/app.css")
     assert r.status_code == 200
     assert "--bg:" in r.text
+    r = c.get("/static/app.js")
+    assert r.status_code == 200
+    assert "window.editorApp = function editorApp()" in r.text
+    assert "CodeMirror unavailable, falling back to textarea" in r.text

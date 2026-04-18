@@ -8,13 +8,13 @@
 <link rel="stylesheet" href="/static/app.css" />
 <!--
   Tool choices, stated here so they're auditable without digging:
-    * CodeMirror 6  -> YAML syntax highlight, small footprint, zero build.
+    * CodeMirror 6  -> YAML syntax highlight when the CDN is reachable.
     * Alpine.js     -> declarative reactivity without a bundler; ~15 KB.
-  Both come from jsdelivr with integrity hashes pinned in app.js, so a
-  compromised CDN can't silently swap the bundle out from under us.
+  Alpine is loaded with subresource integrity; CodeMirror is upgraded at
+  runtime and the UI falls back to a plain textarea if the CDN is unavailable.
 -->
 </head>
-<body x-data="editorApp()" x-init="init()">
+<body x-data="editorApp()">
 
 <header>
   <div class="brand">
@@ -96,8 +96,11 @@
   </aside>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js" defer></script>
-<script type="module" src="/static/app.js"></script>
+<script src="/static/app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"
+  integrity="sha384-X9kJyAubVxnP0hcA+AMMs21U445qsnqhnUF8EBlEpP3a42Kh/JwWjlv2ZcvGfphb"
+  crossorigin="anonymous"
+  defer></script>
 
 </body>
 </html>

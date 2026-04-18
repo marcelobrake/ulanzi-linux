@@ -307,10 +307,10 @@ pip install --user '.[web]'
 
 ### 10.5 — Web editor loads blank
 
-CodeMirror is fetched from `cdn.jsdelivr.net` at first load. Either
-allow it through your proxy or vendor the JS locally and patch
-`index.html` to import from the local copy. The API side works either
-way — `curl http://127.0.0.1:8765/api/health`.
+The UI now falls back to a plain textarea if CodeMirror cannot be fetched
+from `cdn.jsdelivr.net`. If the page is still blank, the problem is no
+longer syntax highlighting — inspect the browser console and verify the
+backend is alive with `curl http://127.0.0.1:8765/api/health`.
 
 ### 10.6 — Actions don't execute from a systemd-managed daemon
 

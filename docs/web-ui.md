@@ -38,16 +38,18 @@ The UI is three small files under
 `src/ulanzi_linux/interface/web/static/`:
 
 * `index.html` — layout and Alpine bindings.
-* `app.js` — CodeMirror bootstrap and API glue.
+* `app.js` — Alpine bootstrap, API glue, and CodeMirror upgrade.
 * `app.css` — dark theme.
 
 External deps are loaded from `jsdelivr` in the browser at runtime:
 
 * **CodeMirror 6** (`@codemirror/lang-yaml`, `theme-one-dark`) — syntax
-  highlighting and editor.
+  highlighting and editor when the CDN is reachable.
 * **Alpine.js 3** — reactive state without a bundler.
 
 No npm / webpack / vite step. `pip install` is the only install command.
+If the CodeMirror CDN is unavailable, the UI falls back to a plain
+`textarea` so the editor still loads, shows the current YAML, and can save.
 
 ## Safety
 
@@ -95,10 +97,10 @@ running, handy for quickly curling against the API.
 **`ModuleNotFoundError: fastapi`** — install the `[web]` extra:
 `pip install --user '.[web]'`.
 
-**Editor loads blank** — open devtools: CodeMirror comes from a CDN
-and needs network access at first load. Behind a strict proxy, you can
-either allow `cdn.jsdelivr.net` or vendor the JS files locally and
-switch the `<script>` imports.
+**Editor falls back to a plain textarea** — that's the degraded mode used
+when the CodeMirror CDN is blocked. Editing and saving still work; only
+syntax highlighting is lost. If you want CodeMirror back, allow
+`cdn.jsdelivr.net` through your proxy.
 
 **Changes don't apply to the deck** — the editor only writes the file.
 Check that the daemon is running and watching:
