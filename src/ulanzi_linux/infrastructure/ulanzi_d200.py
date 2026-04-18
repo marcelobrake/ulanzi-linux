@@ -91,7 +91,9 @@ class UlanziD200Device(DeckDevice):
         # Cached state — avoid redundant writes to a slow USB bus.
         self._cached_brightness: int | None = None
         self._cached_small_window_mode: SmallWindowMode | None = None
-        self._last_small_window_data: tuple[int, int, int, str | None] | None = None
+        self._last_small_window_data: tuple[
+            int | None, int | None, int | None, str | None
+        ] | None = None
         self._button_state: dict[int, ButtonConfig] = {}
         self._button_state_is_full = False
 
@@ -188,7 +190,16 @@ class UlanziD200Device(DeckDevice):
                 time_str=time_str,
             )
         elif self._cached_small_window_mode is not None:
-            await self.set_small_window_data()
+            await self._send(
+                OutgoingCommand.SET_SMALL_WINDOW_DATA,
+                self._build_small_window_payload(
+                    mode=self._cached_small_window_mode,
+                    cpu=None,
+                    mem=None,
+                    gpu=None,
+                    time_str=None,
+                ),
+            )
         else:
             await self._send(OutgoingCommand.SET_SMALL_WINDOW_DATA, b"")
         logger.debug("keep_alive_sent")
@@ -197,24 +208,26 @@ class UlanziD200Device(DeckDevice):
         self._cached_small_window_mode = mode
         if self._last_small_window_data is not None:
             cpu, mem, gpu, time_str = self._last_small_window_data
-            await self._send(
-                OutgoingCommand.SET_SMALL_WINDOW_DATA,
-                self._build_small_window_payload(
-                    mode=mode,
-                    cpu=cpu,
-                    mem=mem,
-                    gpu=gpu,
-                    time_str=time_str,
-                ),
-            )
+        else:
+            cpu, mem, gpu, time_str = None, None, None, None
+        await self._send(
+            OutgoingCommand.SET_SMALL_WINDOW_DATA,
+            self._build_small_window_payload(
+                mode=mode,
+                cpu=cpu,
+                mem=mem,
+                gpu=gpu,
+                time_str=time_str,
+            ),
+        )
         logger.info("small_window_mode_set", mode=mode.name)
 
     async def set_small_window_data(
         self,
         *,
-        cpu: int = 0,
-        mem: int = 0,
-        gpu: int = 0,
+        cpu: int | None = 0,
+        mem: int | None = 0,
+        gpu: int | None = 0,
         time_str: str | None = None,
     ) -> None:
         mode = self._cached_small_window_mode or SmallWindowMode.CLOCK
@@ -234,7 +247,7 @@ class UlanziD200Device(DeckDevice):
     ) -> None:
         configs_tuple = tuple(configs)
         self._remember_buttons(configs_tuple, partial=partial)
-        blob = build_buttons_zip(configs_tuple)
+        blob = build_buttons_zip(configs_tuple, fill_missing=not partial)
         command = (
             OutgoingCommand.PARTIALLY_UPDATE_BUTTONS
             if partial
@@ -530,7 +543,7 @@ class UlanziD200Device(DeckDevice):
             await self._send_chunked_raw(
                 transport,
                 command,
-                build_buttons_zip(buttons),
+                build_buttons_zip(buttons, fill_missing=self._button_state_is_full),
             )
 
         if self._last_small_window_data is not None:
@@ -571,13 +584,18 @@ class UlanziD200Device(DeckDevice):
     def _build_small_window_payload(
         *,
         mode: SmallWindowMode,
-        cpu: int,
-        mem: int,
-        gpu: int,
+        cpu: int | None,
+        mem: int | None,
+        gpu: int | None,
         time_str: str | None,
     ) -> bytes:
         time_field = time_str or ""
-        return f"{int(mode)}|{cpu}|{mem}|{time_field}|{gpu}".encode("utf-8")
+        cpu_field = "" if cpu is None else str(cpu)
+        mem_field = "" if mem is None else str(mem)
+        gpu_field = "" if gpu is None else str(gpu)
+        return (
+            f"{int(mode)}|{cpu_field}|{mem_field}|{time_field}|{gpu_field}"
+        ).encode("utf-8")
 
     async def _event_iterator(
         self,

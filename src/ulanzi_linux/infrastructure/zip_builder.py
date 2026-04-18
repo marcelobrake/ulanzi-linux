@@ -19,7 +19,6 @@ Firmware bug worked around here:
 
 from __future__ import annotations
 
-import colorsys
 import io
 import json
 import secrets
@@ -40,6 +39,7 @@ ICON_SIZE = (196, 196)
 # D200 grid geometry — used to derive ``col`` / ``row`` from a flat index.
 # Kept local to the builder because the manifest schema is deck-specific.
 _D200_COLS = 5
+_D200_ACTIVE_BUTTON_COUNT = 13
 
 # Frame boundaries we must inspect for the firmware parser bug.
 _FRAME_SIZE = 1024
@@ -54,45 +54,29 @@ def _random_ascii(length: int) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
-def _placeholder_icon(index: int, label: str) -> bytes:
-    """Render a fallback icon with the label centered on a coloured tile."""
-    hue = (index * 0.137) % 1.0  # golden-angle spread for distinct colours
-    r, g, b = (int(c * 255) for c in colorsys.hsv_to_rgb(hue, 0.55, 0.85))
-    img = Image.new("RGBA", ICON_SIZE, (r, g, b, 255))
-    draw = ImageDraw.Draw(img)
-    text = (label or str(index))[:8]
-    try:
-        font = ImageFont.truetype(
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 42
-        )
-    except OSError:
-        font = ImageFont.load_default()
-    bbox = draw.textbbox((0, 0), text, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text(
-        ((ICON_SIZE[0] - tw) // 2, (ICON_SIZE[1] - th) // 2 - 4),
-        text,
-        fill=(255, 255, 255, 255),
-        font=font,
-    )
+def _blank_icon() -> bytes:
+    """Render a black tile used for unconfigured or cleared buttons."""
+    img = Image.new("RGBA", ICON_SIZE, (0, 0, 0, 255))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
 
 
 def _normalize_icon(cfg: ButtonConfig) -> bytes:
-    """Load and resize a PNG — or render a placeholder if file is missing."""
+    """Load and resize a PNG — or render a black tile if absent."""
     from pathlib import Path
 
     path = Path(cfg.icon_path).expanduser() if cfg.icon_path else None
-    if path is None or not path.exists():
+    if path is None:
+        return _blank_icon()
+    if not path.exists():
         logger.warning(
-            "icon_missing_using_placeholder",
+            "icon_missing_using_blank",
             index=cfg.index,
             path=str(path) if path else None,
             label=cfg.label,
         )
-        return _placeholder_icon(cfg.index, cfg.label)
+        return _blank_icon()
 
     with Image.open(path) as img:
         img = img.convert("RGBA")
@@ -120,6 +104,14 @@ def _build_manifest(configs: list[ButtonConfig]) -> dict:
             "ViewParam": [view_param],
         }
     return manifest
+
+
+def _filled_button_layout(configs: list[ButtonConfig]) -> list[ButtonConfig]:
+    by_index = {int(cfg.index): cfg for cfg in configs}
+    return [
+        by_index.get(index, ButtonConfig(index=index))
+        for index in range(_D200_ACTIVE_BUTTON_COUNT)
+    ]
 
 
 def _assemble_zip(
@@ -156,13 +148,17 @@ def _boundary_bytes_are_safe(blob: bytes) -> bool:
     return True
 
 
-def build_buttons_zip(configs: Iterable[ButtonConfig]) -> bytes:
+def build_buttons_zip(
+    configs: Iterable[ButtonConfig], *, fill_missing: bool = False
+) -> bytes:
     """Serialize a list of button configs into the on-wire ZIP blob.
 
     Automatically regenerates ``dummy.txt`` with random padding when the
     resulting ZIP would trip the D200 firmware's frame-boundary parser bug.
     """
     configs_list = list(configs)
+    if fill_missing:
+        configs_list = _filled_button_layout(configs_list)
     # Cache rendered icons so the retry loop doesn't re-encode PNGs.
     icons = {int(c.index): _normalize_icon(c) for c in configs_list}
     manifest = _build_manifest(configs_list)

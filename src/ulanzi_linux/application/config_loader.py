@@ -90,6 +90,7 @@ def _parse_small_window(raw: dict[str, Any] | None) -> SmallWindowConfig:
         enabled=bool(raw.get("enabled", False)),
         interval_s=float(raw.get("interval_s", 2.0)),
         time_format=str(raw.get("time_format", DEFAULT_TIME_FORMAT)),
+        show_metrics=bool(raw.get("show_metrics", True)),
     )
 
 

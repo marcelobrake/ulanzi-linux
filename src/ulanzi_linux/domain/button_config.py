@@ -110,8 +110,8 @@ class SmallWindowConfig:
     """Small-window (left status panel) refresh configuration.
 
     When ``enabled``, the daemon takes over the small window with a large
-    clock on top and CPU / memory percentages underneath — and *replaces*
-    the plain heartbeat loop,
+    clock on top. CPU / memory percentages are optional via
+    ``show_metrics`` — and it *replaces* the plain heartbeat loop,
     because the heartbeat already uses ``SET_SMALL_WINDOW_DATA`` under
     the hood and would otherwise overwrite real stats with zeros.
     """
@@ -119,6 +119,7 @@ class SmallWindowConfig:
     enabled: bool = False
     interval_s: float = 2.0
     time_format: str = DEFAULT_TIME_FORMAT
+    show_metrics: bool = True
 
     def __post_init__(self) -> None:
         if not (
