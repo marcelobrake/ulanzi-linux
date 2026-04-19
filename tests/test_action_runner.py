@@ -8,7 +8,11 @@ import pytest
 
 from ulanzi_linux.application.action_runner import ActionRunner
 from ulanzi_linux.application.session_agent import SessionAgentDispatchResult
-from ulanzi_linux.domain.button_config import ShellAction, UrlAction
+from ulanzi_linux.domain.button_config import (
+    PredefinedCommandAction,
+    ShellAction,
+    UrlAction,
+)
 
 
 def _disable_login_shell_path(
@@ -526,3 +530,35 @@ async def test_runner_delegates_shell_action_to_session_agent(
     await runner.run(action)
 
     assert calls == [action]
+
+
+@pytest.mark.asyncio
+async def test_runner_resolves_predefined_command_to_shortcut(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _disable_login_shell_path(monkeypatch)
+    runner = ActionRunner()
+    seen: list[object] = []
+
+    async def fake_run_shortcut(action: object) -> None:
+        seen.append(action)
+
+    async def unexpected_delegate(
+        self: ActionRunner,
+        _action: object,
+    ) -> bool:
+        return False
+
+    monkeypatch.setattr(runner, "_run_shortcut", fake_run_shortcut)
+    monkeypatch.setattr(ActionRunner, "_delegate_to_session_agent", unexpected_delegate)
+
+    await runner.run(
+        PredefinedCommandAction(
+            type="predefined_command",
+            command_id="audio_mute",
+        )
+    )
+
+    assert len(seen) == 1
+    assert getattr(seen[0], "type", None) == "shortcut"
+    assert getattr(seen[0], "keys", None) == "XF86AudioMute"

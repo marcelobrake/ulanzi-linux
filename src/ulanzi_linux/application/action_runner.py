@@ -25,8 +25,10 @@ from pathlib import Path
 
 import structlog
 
+from ulanzi_linux.application.predefined_commands import resolve_predefined_command
 from ulanzi_linux.domain.button_config import (
     Action,
+    PredefinedCommandAction,
     ShellAction,
     ShortcutAction,
     UrlAction,
@@ -126,9 +128,11 @@ class ActionRunner:
         self._session_agent = GraphicalSessionAgentClient(self._env)
 
     async def run(self, action: Action) -> None:
-        if await self._delegate_to_session_agent(action):
+        if isinstance(action, PredefinedCommandAction):
+            await self._run_predefined_command(action)
+        elif await self._delegate_to_session_agent(action):
             return
-        if isinstance(action, ShellAction):
+        elif isinstance(action, ShellAction):
             await self._run_shell(action)
         elif isinstance(action, ShortcutAction):
             await self._run_shortcut(action)
@@ -136,6 +140,30 @@ class ActionRunner:
             await self._run_url(action)
         else:
             logger.warning("unknown_action", action=repr(action))
+
+    async def _run_predefined_command(
+        self,
+        action: PredefinedCommandAction,
+    ) -> None:
+        logger.info(
+            "action_predefined_command",
+            command_id=action.command_id,
+        )
+        try:
+            resolved_action = resolve_predefined_command(action.command_id)
+        except ValueError as exc:
+            logger.error(
+                "unknown_predefined_command",
+                command_id=action.command_id,
+                error=str(exc),
+            )
+            return
+        logger.info(
+            "action_predefined_command_resolved",
+            command_id=action.command_id,
+            resolved_type=resolved_action.type,
+        )
+        await self.run(resolved_action)
 
     async def _delegate_to_session_agent(self, action: Action) -> bool:
         if not isinstance(action, (ShellAction, ShortcutAction, UrlAction)):

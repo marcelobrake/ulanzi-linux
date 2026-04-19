@@ -40,6 +40,14 @@ class ShortcutAction:
 
 
 @dataclass(frozen=True, slots=True)
+class PredefinedCommandAction:
+    """Execute a catalogued desktop action resolved by the application layer."""
+
+    type: Literal["predefined_command"]
+    command_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class UrlAction:
     """Open a URL in the default browser."""
 
@@ -59,7 +67,13 @@ class SwitchPageAction:
     page: str
 
 
-Action = ShellAction | ShortcutAction | UrlAction | SwitchPageAction
+Action = (
+    ShellAction
+    | ShortcutAction
+    | PredefinedCommandAction
+    | UrlAction
+    | SwitchPageAction
+)
 
 
 _HEX_COLOR_RE = re.compile(r"^#?[0-9A-Fa-f]{6}$")
@@ -274,6 +288,7 @@ __all__ = [
     "DEFAULT_TIME_FORMAT",
     "DeckConfig",
     "Page",
+    "PredefinedCommandAction",
     "ShellAction",
     "ShortcutAction",
     "SMALL_WINDOW_MAX_INTERVAL_S",

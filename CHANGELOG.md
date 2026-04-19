@@ -7,6 +7,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-04-19
+
+### Added
+
+- Added a new `predefined_command` action type plus a catalog of 50 common
+  GNOME desktop actions for volume, brightness, keyboard layout switching,
+  screenshots, workspaces, window tiling, lock/logout, and direct settings
+  shortcuts.
+- Added a shortcut-combination modal to the localhost editor so common keys
+  such as arrows, PgUp/PgDn, function keys, and media keys can be selected
+  visually instead of typed manually.
+- Added an icon-library picker in the localhost editor with curated Font
+  Awesome 5 and Material Design Icons entries that are converted into local
+  PNG assets before being saved into the deck config.
+
+### Changed
+
+- New blank layouts created from the localhost editor now start with the small
+  window enabled, so the wide status area stays active from the first save.
+- Enlarged the visual deck simulator again, increasing the button tiles by at
+  least 20 px and giving the icon preview area more room in the inspector.
+
 ## [0.5.0] — 2026-04-19
 
 ### Added

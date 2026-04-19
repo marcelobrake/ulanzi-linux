@@ -50,10 +50,15 @@ from ulanzi_linux.application.artifacts import (
     versioned_output_path,
 )
 from ulanzi_linux.application.config_loader import load_deck_config
+from ulanzi_linux.application.predefined_commands import (
+    get_predefined_command,
+    list_predefined_commands,
+)
 from ulanzi_linux.domain.button_config import (
     DEFAULT_TIME_FORMAT,
     ButtonConfig,
     DeckConfig,
+    PredefinedCommandAction,
     ShellAction,
     ShortcutAction,
     SwitchPageAction,
@@ -79,6 +84,7 @@ from ulanzi_linux.interface.web.models import (
     EditorTextStyleModel,
     HealthResponse,
     PageSummary,
+    PredefinedCommandModel,
     SmallWindowPreviewResponse,
     ValidationSummary,
 )
@@ -141,6 +147,11 @@ def _action_to_editor(action: object | None) -> EditorActionModel:
         return EditorActionModel(type="shell", cmd=action.cmd)
     if isinstance(action, ShortcutAction):
         return EditorActionModel(type="shortcut", keys=action.keys)
+    if isinstance(action, PredefinedCommandAction):
+        return EditorActionModel(
+            type="predefined_command",
+            command_id=action.command_id,
+        )
     if isinstance(action, UrlAction):
         return EditorActionModel(type="url", url=action.url)
     if isinstance(action, SwitchPageAction):
@@ -211,7 +222,7 @@ def _default_editor_response(config_path: Path) -> EditorConfigResponse:
         default_page=EDITOR_DEFAULT_PAGE,
         pages=[EditorPageModel(name=EDITOR_DEFAULT_PAGE)],
         fixed_buttons=[],
-        small_window=EditorSmallWindowModel(),
+        small_window=EditorSmallWindowModel(enabled=True, show_metrics=False),
         versioned_config_path=None,
         saved_firmware_bundle_path=None,
     )
@@ -247,6 +258,12 @@ def _editor_action_to_doc(action: EditorActionModel) -> dict[str, str] | None:
         if not action.keys.strip():
             raise ValueError("shortcut action requires keys")
         return {"type": "shortcut", "keys": action.keys}
+    if action.type == "predefined_command":
+        command_id = action.command_id.strip()
+        if not command_id:
+            raise ValueError("predefined_command action requires command_id")
+        get_predefined_command(command_id)
+        return {"type": "predefined_command", "command_id": command_id}
     if action.type == "url":
         if not action.url.strip():
             raise ValueError("url action requires url")
@@ -567,6 +584,34 @@ def create_app(config_path: Path) -> FastAPI:
             path=config_path,
             config_exists=True,
         )
+
+    @app.get(
+        "/api/catalog/predefined-commands",
+        response_model=list[PredefinedCommandModel],
+    )
+    def get_predefined_commands() -> list[PredefinedCommandModel]:
+        commands: list[PredefinedCommandModel] = []
+        for command in list_predefined_commands():
+            resolved = command.action
+            preview = (
+                resolved.keys
+                if isinstance(resolved, ShortcutAction)
+                else resolved.cmd
+                if isinstance(resolved, ShellAction)
+                else resolved.url
+            )
+            commands.append(
+                PredefinedCommandModel(
+                    command_id=command.command_id,
+                    label=command.label,
+                    description=command.description,
+                    category=command.category,
+                    action_type=resolved.type,
+                    preview=preview,
+                    keywords=list(command.keywords),
+                )
+            )
+        return commands
 
     @app.get(
         "/api/small-window/preview",

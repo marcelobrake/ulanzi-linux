@@ -75,11 +75,31 @@ class ValidationSummary(BaseModel):
 class EditorActionModel(BaseModel):
     """Structured action payload used by the visual editor."""
 
-    type: Literal["none", "shell", "shortcut", "url", "switch_page"] = "none"
+    type: Literal[
+        "none",
+        "shell",
+        "shortcut",
+        "predefined_command",
+        "url",
+        "switch_page",
+    ] = "none"
     cmd: str = ""
     keys: str = ""
+    command_id: str = ""
     url: str = ""
     page: str = ""
+
+
+class PredefinedCommandModel(BaseModel):
+    """Catalog entry returned to the visual editor."""
+
+    command_id: str
+    label: str
+    description: str
+    category: str
+    action_type: Literal["shell", "shortcut", "url"]
+    preview: str
+    keywords: list[str] = Field(default_factory=list)
 
 
 class EditorTextStyleModel(BaseModel):
@@ -200,6 +220,7 @@ __all__ = [
     "EditorTextStyleModel",
     "HealthResponse",
     "PageSummary",
+    "PredefinedCommandModel",
     "SmallWindowPreviewResponse",
     "ValidationSummary",
 ]

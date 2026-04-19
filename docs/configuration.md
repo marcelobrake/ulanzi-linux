@@ -163,7 +163,7 @@ device can otherwise prefer the label fallback and hide the PNG.
 
 ## 5. Actions
 
-`action` is a discriminated union on the `type` field. Four action
+`action` is a discriminated union on the `type` field. Five action
 types are recognised today.
 
 ### 5.1 — `shell`
@@ -214,7 +214,26 @@ action: { type: shortcut, keys: "XF86AudioPlay" }
 Relies on the daemon running inside a session where `$DISPLAY` /
 `$WAYLAND_DISPLAY` are set — hence the user-unit choice for systemd.
 
-### 5.3 — `url`
+### 5.3 — `predefined_command`
+
+Resolve one of the built-in GNOME desktop actions exposed by the web
+editor. This is a compatibility layer on top of the existing shell /
+shortcut runners: the YAML stores only the stable catalog id and the
+application resolves it to the matching concrete action at runtime.
+
+Typical entries include volume, brightness, keyboard layout switching,
+window tiling, workspaces, screenshots, lock/logout, and shortcuts into
+common `gnome-control-center` sections.
+
+```yaml
+action: { type: predefined_command, command_id: audio_mute }
+action: { type: predefined_command, command_id: display_brightness_up }
+action: { type: predefined_command, command_id: input_next_keyboard_layout }
+```
+
+Unknown `command_id` values are rejected during validation.
+
+### 5.4 — `url`
 
 Open a URL with the desktop opener. The daemon prefers `gio open` first,
 then falls back to `xdg-open`, `sensible-browser`, and finally the stdlib
@@ -233,7 +252,7 @@ off.
 action: { type: url, url: "https://claude.ai" }
 ```
 
-### 5.4 — `switch_page`
+### 5.5 — `switch_page`
 
 The only action intercepted by the daemon itself; never hits the action
 runner. Swaps the active page and re-syncs the layout.

@@ -178,6 +178,34 @@ def test_get_config_returns_404_when_missing(tmp_path: Path) -> None:
     assert r.status_code == 404
 
 
+def test_get_editor_default_response_keeps_small_window_active(tmp_path: Path) -> None:
+    path = tmp_path / "missing.yaml"
+    app = create_app(path)
+    c = TestClient(app)
+
+    r = c.get("/api/editor")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["config_exists"] is False
+    assert body["small_window"]["enabled"] is True
+    assert body["small_window"]["show_metrics"] is False
+
+
+def test_predefined_commands_catalog_returns_50_entries(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+
+    r = c.get("/api/catalog/predefined-commands")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 50
+    assert body[0]["command_id"] == "audio_mute"
+    assert body[0]["action_type"] == "shortcut"
+
+
 def test_validate_endpoint_accepts_valid_yaml(
     client: tuple[TestClient, Path],
 ) -> None:
@@ -278,6 +306,28 @@ def test_put_editor_persists_text_style_for_text_only_button(
     assert "text_style:" in saved
     assert "background_color: '#112233'" in saved
     assert 'font_family: Liberation Serif' in saved
+
+
+def test_put_editor_persists_predefined_command_action(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, path = client
+    payload = c.get("/api/editor").json()
+    payload["pages"][0]["buttons"][0]["action"] = {
+        "type": "predefined_command",
+        "cmd": "",
+        "keys": "",
+        "command_id": "display_brightness_up",
+        "url": "",
+        "page": "",
+    }
+
+    r = c.put("/api/editor", json=payload)
+
+    assert r.status_code == 200
+    saved = path.read_text()
+    assert "type: predefined_command" in saved
+    assert "command_id: display_brightness_up" in saved
 
 
 def test_put_editor_can_also_save_firmware_bundle(
@@ -393,13 +443,19 @@ def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     assert "alpinejs" in r.text
     assert r.text.index("/static/app.js") < r.text.index("alpinejs")
     assert "Reset" in r.text
+    assert "Biblioteca de ícones" in r.text
+    assert "Comando pré-definido" in r.text
+    assert "Selecionar combinação" in r.text
     # Static mount exposes the CSS/JS files.
     r = c.get("/static/app.css")
     assert r.status_code == 200
     assert "--bg:" in r.text
+    assert "--deck-slot-size: 138px;" in r.text
     r = c.get("/static/app.js")
     assert r.status_code == 200
     assert "window.editorApp = function editorApp()" in r.text
     assert "async resetDeck()" in r.text
     assert "Clique em Salvar no deck para aplicar." in r.text
+    assert "/api/catalog/predefined-commands" in r.text
+    assert "chooseLibraryIcon(choice)" in r.text
     assert "await this.saveDeck();" not in r.text
