@@ -448,11 +448,14 @@ def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     assert "Biblioteca de ícones" in r.text
     assert "Comando pré-definido" in r.text
     assert "Selecionar combinação" in r.text
+    assert "deck-hover-card" in r.text
+    assert ':title="slotTooltip(slot)"' in r.text
     # Static mount exposes the CSS/JS files.
     r = c.get("/static/app.css")
     assert r.status_code == 200
     assert "--bg:" in r.text
     assert "--deck-slot-size: 138px;" in r.text
+    assert ".deck-hover-card" in r.text
     r = c.get("/static/app.js")
     assert r.status_code == 200
     assert "window.editorApp = function editorApp()" in r.text
@@ -460,4 +463,5 @@ def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     assert "Clique em Salvar no deck para aplicar." in r.text
     assert "/api/catalog/predefined-commands" in r.text
     assert "chooseLibraryIcon(choice)" in r.text
+    assert "slotTooltip(slot)" in r.text
     assert "await this.saveDeck();" not in r.text
