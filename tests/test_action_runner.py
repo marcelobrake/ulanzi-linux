@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 import pytest
 
@@ -57,7 +56,11 @@ async def test_url_action_falls_back_to_webbrowser(
         return True
 
     loop = asyncio.get_running_loop()
-    monkeypatch.setattr(loop, "run_in_executor", lambda _executor, fn, url: asyncio.sleep(0, result=fn(url)))
+    monkeypatch.setattr(
+        loop,
+        "run_in_executor",
+        lambda _executor, fn, url: asyncio.sleep(0, result=fn(url)),
+    )
     monkeypatch.setattr(
         "ulanzi_linux.application.action_runner.webbrowser.open",
         fake_open,

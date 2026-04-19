@@ -162,7 +162,15 @@ types are recognised today.
 ### 5.1 — `shell`
 
 Run an arbitrary shell command. The full string is passed to the shell
-via `subprocess`, so pipes / env expansion / quoting all work.
+via `subprocess`, so pipes / env expansion / quoting all work. The
+daemon now also augments the spawned environment with the login-shell
+`$PATH` when available plus the common user-local export directories for
+Snap and Flatpak:
+
+- `~/.local/bin`
+- `~/.local/share/flatpak/exports/bin`
+- `/snap/bin`
+- `/var/lib/flatpak/exports/bin`
 
 ```yaml
 action: { type: shell, cmd: "gnome-terminal -- bash -lc 'docker ps; exec bash'" }
@@ -187,7 +195,10 @@ Relies on the daemon running inside a session where `$DISPLAY` /
 
 ### 5.3 — `url`
 
-Open a URL with `xdg-open`. Respects your default browser.
+Open a URL with the desktop opener (`xdg-open`, `gio open`, or the
+stdlib browser fallback). Respects your default browser. If you omit the
+scheme, `https://` is added automatically so entries like
+`claude.ai` still open correctly.
 
 ```yaml
 action: { type: url, url: "https://claude.ai" }

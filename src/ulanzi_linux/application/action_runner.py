@@ -13,12 +13,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-from pathlib import Path
 import pwd
 import shutil
 import subprocess
-from typing import Iterable
 import webbrowser
+from collections.abc import Iterable
+from pathlib import Path
 
 import structlog
 
@@ -85,6 +85,7 @@ class ActionRunner:
 
     def __init__(self) -> None:
         self._env = self._build_subprocess_env()
+        self._background_tasks: set[asyncio.Task[int]] = set()
 
     async def run(self, action: Action) -> None:
         if isinstance(action, ShellAction):
@@ -105,7 +106,12 @@ class ActionRunner:
             stderr=asyncio.subprocess.DEVNULL,
         )
         # Fire-and-forget: don't block the event loop on long-running cmds.
-        asyncio.create_task(proc.wait(), name=f"action_shell_{id(proc)}")
+        wait_task = asyncio.create_task(
+            proc.wait(),
+            name=f"action_shell_{id(proc)}",
+        )
+        self._background_tasks.add(wait_task)
+        wait_task.add_done_callback(self._background_tasks.discard)
 
     async def _run_shortcut(self, action: ShortcutAction) -> None:
         logger.info("action_shortcut", keys=action.keys)

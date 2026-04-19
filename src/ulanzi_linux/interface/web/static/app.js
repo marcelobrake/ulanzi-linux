@@ -31,6 +31,14 @@ const ACTION_LABELS = Object.freeze({
     url: "Link",
     switch_page: "Troca de página",
 });
+const NO_SLASH_URL_SCHEMES = Object.freeze([
+    "about",
+    "data",
+    "file",
+    "mailto",
+    "sms",
+    "tel",
+]);
 
 function emptyAction() {
     return {
@@ -359,6 +367,32 @@ window.editorApp = function editorApp() {
             this.syncSelectedButton();
         },
 
+        normalizeUrlValue(value) {
+            const trimmed = String(value || "").trim();
+            if (!trimmed) {
+                return "";
+            }
+            if (trimmed.startsWith("//")) {
+                return `https:${trimmed}`;
+            }
+            if (trimmed.includes("://")) {
+                return trimmed;
+            }
+            const [scheme, rest] = trimmed.split(":", 2);
+            if (rest !== undefined && NO_SLASH_URL_SCHEMES.includes((scheme || "").toLowerCase())) {
+                return trimmed;
+            }
+            return `https://${trimmed}`;
+        },
+
+        normalizeUrlInput() {
+            if (!this.buttonForm || this.buttonForm.action.type !== "url") {
+                return;
+            }
+            this.buttonForm.action.url = this.normalizeUrlValue(this.buttonForm.action.url);
+            this.syncSelectedButton();
+        },
+
         async uploadIcon(event) {
             const file = event.target.files?.[0];
             if (!file) {
@@ -389,11 +423,15 @@ window.editorApp = function editorApp() {
         },
 
         serializeButton(button) {
+            const action = { ...emptyAction(), ...(button.action || {}) };
+            if (action.type === "url") {
+                action.url = this.normalizeUrlValue(action.url);
+            }
             return {
                 index: button.index,
                 label: button.label || "",
                 icon_path: button.icon_path || null,
-                action: { ...emptyAction(), ...(button.action || {}) },
+                action,
                 text_style: this.normalizeTextStyle(button.text_style),
             };
         },
@@ -699,6 +737,33 @@ window.editorApp = function editorApp() {
             return this.editor?.pages.map((page) => page.name) || [];
         },
 
+        get configuredButtonCount() {
+            if (!this.editor) {
+                return 0;
+            }
+            return this.editor.pages.reduce(
+                (total, page) => total + (page.buttons?.length || 0),
+                this.editor.fixed_buttons?.length || 0,
+            );
+        },
+
+        get layoutHeadline() {
+            const pages = this.editor?.pages?.length || 0;
+            return pages === 1 ? "1 página pronta" : `${pages} páginas prontas`;
+        },
+
+        get layoutMeta() {
+            if (!this.editor) {
+                return "Sem layout carregado";
+            }
+            const fixed = this.editor.fixed_buttons?.length || 0;
+            return [
+                `${this.configuredButtonCount} slots configurados`,
+                `${fixed} fixos`,
+                this.smallWindowSummary,
+            ].join(" · ");
+        },
+
         get smallWindowSummary() {
             if (!this.editor?.small_window?.enabled) {
                 return "Desligado";
@@ -710,6 +775,82 @@ window.editorApp = function editorApp() {
 
         get smallWindowTimeLabel() {
             return this.smallWindowPreview.time_text || "--:--";
+        },
+
+        get selectedActionSummary() {
+            if (!this.buttonForm) {
+                return "Selecione um slot para editar.";
+            }
+            switch (this.buttonForm.action.type) {
+            case "shell":
+                return this.buttonForm.action.cmd?.trim()
+                    ? this.buttonForm.action.cmd
+                    : "Comando vazio";
+            case "shortcut":
+                return this.buttonForm.action.keys?.trim()
+                    ? `Atalho ${this.buttonForm.action.keys}`
+                    : "Atalho vazio";
+            case "url":
+                return this.normalizedActionUrl || "Link vazio";
+            case "switch_page":
+                return this.buttonForm.action.page?.trim()
+                    ? `Vai para ${this.buttonForm.action.page}`
+                    : "Página de destino não definida";
+            default:
+                return this.isInfoWindowSlot(this.selectedIndex)
+                    ? "Toque sem ação atribuída"
+                    : "Slot sem ação atribuída";
+            }
+        },
+
+        get selectedSlotHint() {
+            if (!this.buttonForm) {
+                return "";
+            }
+            if (this.buttonForm.fixed) {
+                return "Aparece em todas as páginas.";
+            }
+            if (this.isInfoWindowSlot(this.selectedIndex)) {
+                return "Ação ao toque do painel lateral.";
+            }
+            return `Visível apenas em ${this.selectedPage || "—"}.`;
+        },
+
+        get selectedActionHeadline() {
+            switch (this.buttonForm?.action?.type) {
+            case "shell":
+                return "Comando do sistema";
+            case "shortcut":
+                return "Atalho de teclado";
+            case "url":
+                return "Abertura de link";
+            case "switch_page":
+                return "Navegação interna";
+            default:
+                return "Nenhuma ação";
+            }
+        },
+
+        get selectedActionHelp() {
+            switch (this.buttonForm?.action?.type) {
+            case "shell":
+                return "O comando roda com o ambiente do usuário e PATH ampliado para diretórios locais, Snap e Flatpak.";
+            case "shortcut":
+                return "Use a sintaxe do xdotool ou do wtype, dependendo da sua sessão gráfica.";
+            case "url":
+                return "Você pode colar só o domínio. A interface e o daemon completam https:// quando necessário.";
+            case "switch_page":
+                return "Use botões fixos para deixar a navegação entre páginas sempre disponível no deck.";
+            default:
+                return "Selecione uma ação para ver dicas de configuração.";
+            }
+        },
+
+        get normalizedActionUrl() {
+            if (this.buttonForm?.action?.type !== "url") {
+                return "";
+            }
+            return this.normalizeUrlValue(this.buttonForm.action.url);
         },
 
         get currentTextTileStyle() {

@@ -10,9 +10,12 @@
 <body x-data="editorApp()">
 
 <header class="topbar">
-  <div>
+  <div class="topbar-copy">
     <p class="eyebrow">ulanzi-linux</p>
     <h1>Editor visual do Stream Deck</h1>
+    <p class="lede">
+      Ajuste páginas, teste ações e publique o <code>deck.yaml</code> sem sair do navegador.
+    </p>
   </div>
 
   <div class="topbar-meta">
@@ -31,54 +34,13 @@
     <button @click="refreshFromDisk()" :disabled="busy">Recarregar</button>
     <button @click="validateDeck()" :disabled="busy">Validar</button>
     <button class="primary" @click="saveDeck()" :disabled="busy || !dirty">
-      Salvar no deck
+      Salvar layout
     </button>
   </div>
 </header>
 
 <main class="workspace">
   <section class="deck-panel">
-    <div class="panel-card page-toolbar" x-show="editor">
-      <div class="page-tabs">
-        <template x-for="page in editor?.pages || []" :key="page.name">
-          <button class="page-tab"
-                  :class="page.name === selectedPage ? 'active' : ''"
-                  @click="selectPage(page.name)">
-            <span x-text="page.name"></span>
-            <span class="count"
-                  x-text="page.buttons.length + ' btn'"></span>
-          </button>
-        </template>
-      </div>
-
-      <div class="page-controls">
-        <label class="compact-field">
-          <span>Página padrão</span>
-          <select x-model="editor.default_page" @change="dirty = true">
-            <template x-for="pageName in pageOptions" :key="pageName">
-              <option :value="pageName" x-text="pageName"></option>
-            </template>
-          </select>
-        </label>
-      </div>
-    </div>
-
-    <div class="panel-card page-manager" x-show="editor">
-      <label class="grow-field">
-        <span>Nova página</span>
-        <input type="text"
-               x-model="newPageName"
-               @keydown.enter.prevent="addPage()"
-               placeholder="Ex.: streaming" />
-      </label>
-      <button @click="addPage()" :disabled="busy">Adicionar página</button>
-      <button class="danger"
-              @click="removeCurrentPage()"
-              :disabled="busy || !editor || editor.pages.length <= 1">
-        Remover página atual
-      </button>
-    </div>
-
     <div class="panel-card deck-shell" x-show="editor">
       <div class="deck-grid">
         <template x-for="slot in deckSlots" :key="slot.index">
@@ -141,18 +103,97 @@
       </div>
     </div>
 
+    <div class="overview-grid" x-show="editor">
+      <article class="panel-card summary-card summary-card-primary">
+        <p class="eyebrow">Layout ativo</p>
+        <h2 x-text="layoutHeadline"></h2>
+        <p class="summary-copy">
+          Página padrão <strong x-text="editor?.default_page || '—'"></strong>
+        </p>
+        <p class="summary-meta" x-text="layoutMeta"></p>
+      </article>
+
+      <article class="panel-card summary-card">
+        <p class="eyebrow">Seleção atual</p>
+        <h2 x-text="selectedSlotTitle"></h2>
+        <p class="summary-copy" x-text="selectedActionSummary"></p>
+        <p class="summary-meta" x-text="selectedSlotHint"></p>
+      </article>
+
+      <article class="panel-card summary-card">
+        <p class="eyebrow">Execução host</p>
+        <h2 x-text="health.devices_found ? 'Deck encontrado' : 'Aguardando deck'"></h2>
+        <p class="summary-copy">
+          Comandos usam o ambiente do usuário, incluindo caminhos comuns de Snap e Flatpak.
+        </p>
+        <p class="summary-meta">
+          Links sem esquema são normalizados como <code>https://</code> antes de abrir.
+        </p>
+      </article>
+    </div>
+
+    <div class="panel-card page-toolbar" x-show="editor">
+      <div class="page-tabs">
+        <template x-for="page in editor?.pages || []" :key="page.name">
+          <button class="page-tab"
+                  :class="page.name === selectedPage ? 'active' : ''"
+                  @click="selectPage(page.name)">
+            <span x-text="page.name"></span>
+            <span class="count"
+                  x-text="page.buttons.length + ' btn'"></span>
+          </button>
+        </template>
+      </div>
+
+      <div class="page-controls">
+        <label class="compact-field">
+          <span>Página padrão</span>
+          <select x-model="editor.default_page" @change="dirty = true">
+            <template x-for="pageName in pageOptions" :key="pageName">
+              <option :value="pageName" x-text="pageName"></option>
+            </template>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="panel-card page-manager" x-show="editor">
+      <label class="grow-field">
+        <span>Nova página</span>
+        <input type="text"
+               x-model="newPageName"
+               @keydown.enter.prevent="addPage()"
+               placeholder="Ex.: streaming" />
+      </label>
+      <button @click="addPage()" :disabled="busy">Adicionar página</button>
+      <button class="danger"
+              @click="removeCurrentPage()"
+              :disabled="busy || !editor || editor.pages.length <= 1">
+        Remover página atual
+      </button>
+    </div>
+
     <div class="panel-card helper-card">
       <label class="toggle-row helper-toggle" x-show="editor">
         <input type="checkbox" x-model="saveFirmwareBundle" />
         <span>Salvar também o pacote ZIP gerado para envio ao deck</span>
       </label>
-      <p>
-        Salvar reescreve o <code>deck.yaml</code> em formato canônico. Se o daemon estiver rodando,
-        o Stream Deck recebe a atualização automaticamente em cerca de 1 segundo.
-      </p>
-      <p class="muted">
-        Cada save também cria uma cópia versionada do YAML com data e hora no nome.
-      </p>
+      <div class="helper-grid">
+        <div class="helper-note">
+          <strong>Salvar</strong>
+          <p>
+            Reescreve o <code>deck.yaml</code> em formato canônico e o daemon aplica a mudança
+            automaticamente quando o watch estiver ativo.
+          </p>
+        </div>
+        <div class="helper-note">
+          <strong>Snapshots</strong>
+          <p>
+            Cada save cria uma cópia versionada com data e hora; opcionalmente a UI também grava
+            o ZIP pronto para envio ao deck.
+          </p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -258,6 +299,7 @@
           <span>URL</span>
           <input type="url"
                  x-model="buttonForm.action.url"
+                 @blur="normalizeUrlInput()"
                  @input="syncSelectedButton()"
                  placeholder="https://example.com" />
         </label>
@@ -274,6 +316,23 @@
           </select>
         </label>
       </template>
+
+      <div class="action-hint"
+           x-show="buttonForm && buttonForm.action.type !== 'none'">
+        <div class="action-hint-copy">
+          <p class="eyebrow">Guia rápido</p>
+          <strong x-text="selectedActionHeadline"></strong>
+          <p x-text="selectedActionHelp"></p>
+        </div>
+
+        <a class="action-preview-link"
+           x-show="buttonForm?.action?.type === 'url' && normalizedActionUrl"
+           :href="normalizedActionUrl"
+           target="_blank"
+           rel="noreferrer">
+          Testar link
+        </a>
+      </div>
 
       <div class="field" x-show="showTextStyleControls">
         <span>Texto sem imagem</span>

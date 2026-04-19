@@ -7,6 +7,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] — 2026-04-19
+
+### Changed
+
+- Enlarged the visual deck simulator tiles in the localhost editor so the
+  button grid is easier to inspect and click during layout work.
+- Moved the simulator block to the top of the left column, immediately below
+  the title area and above the summary cards, so the deck itself is visible
+  first when opening the editor.
+
+## [0.3.1] — 2026-04-19
+
+### Changed
+
+- Refreshed the localhost editor with a denser control-room layout: top summary
+  cards, clearer helper panels, action-specific guidance, and a direct "test
+  link" affordance for URL actions in the inspector.
+
+### Fixed
+
+- Shell and direct-exec actions now inherit a richer user-oriented environment:
+  the daemon augments `$PATH` with the login-shell path when available plus the
+  common Snap and Flatpak export directories, so apps installed outside the base
+  distro path resolve more reliably.
+- URL actions now normalize schemeless entries such as `claude.ai` to
+  `https://claude.ai` before opening, and the editor applies the same
+  normalization on blur/save so saved actions match runtime behavior.
+
 ## [0.3.0] — 2026-04-18
 
 ### Added
