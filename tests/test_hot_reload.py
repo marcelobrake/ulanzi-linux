@@ -64,7 +64,12 @@ class FakeDeck(DeckDevice):
         pass
 
     async def set_small_window_data(
-        self, *, cpu: int = 0, mem: int = 0, gpu: int = 0, time_str: str | None = None
+        self,
+        *,
+        cpu: int | None = 0,
+        mem: int | None = 0,
+        gpu: int | None = 0,
+        time_str: str | None = None,
     ) -> None:
         pass
 

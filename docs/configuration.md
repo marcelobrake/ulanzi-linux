@@ -14,6 +14,7 @@ small_window:                   # optional block
   enabled: false                # default false
   interval_s: 2.0
   time_format: "%d/%m %H:%M"
+  show_metrics: true            # true = stats layout, false = plain clock
 pages:                          # multi-page schema (preferred)
   <page-name>:
     buttons:
@@ -48,22 +49,31 @@ pages:
 ## 3. `small_window`
 
 The D200 has a narrow LCD strip to the left of the button grid, meant
-for status info. When `enabled: true`, the daemon pushes CPU% / memory%
-/ date+time at `interval_s` cadence. When disabled, a plain heartbeat
-loop runs in its place (to keep the firmware watchdog happy).
+for status info. When `enabled: true`, the daemon owns that panel and
+refreshes it every `interval_s` seconds. On the real firmware validated
+for this project, `show_metrics` acts as a layout switch, not as a
+combined overlay: `false` keeps the plain clock layout, while `true`
+switches the panel to CPU / memory stats. When disabled, a plain
+heartbeat loop runs in its place to keep the firmware watchdog happy.
 
 | Field | Type | Default | Constraints |
 | --- | --- | --- | --- |
 | `enabled` | bool | `false` | — |
 | `interval_s` | float | `2.0` | `0.05 ≤ x ≤ 4.5`. Below → busy-loop risk. Above → device falls back to standalone screensaver after the ~5 s firmware watchdog. |
-| `time_format` | string | `"%d/%m %H:%M"` | Any `strftime` pattern. Keep it short — the small-window area is ~16 columns wide. |
+| `time_format` | string | `"%H:%M"` | Any `strftime` pattern. Keep it short — the firmware uses a larger clock layout when the string is compact. |
+| `show_metrics` | bool | `true` | `true` shows the stats layout, `false` keeps the plain clock layout. |
 
 ```yaml
 small_window:
   enabled: true
   interval_s: 2.0
-  time_format: "%H:%M"          # 24 h only, no date
+  time_format: "%H:%M"
+  show_metrics: false            # false = clock, true = stats layout
 ```
+
+When `show_metrics: false`, the daemon still sends a clock-safe payload
+to keep the device in clock mode. When `show_metrics: true`, it sends the
+live CPU / memory values the stats layout expects.
 
 ### Why no GPU metric?
 
@@ -95,15 +105,54 @@ pages:
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `index` | int | yes | Physical button position (0-based). The D200 is a 3×5 grid, so valid indices are 0–14. |
+| `index` | int | yes | Physical touch position (0-based). The D200 renders buttons only on indices 0–12. Index 13 is the wide info window: it can trigger an action on touch, but its visual content still comes from `small_window`. |
 | `label` | string | no | Text rendered on the button. Defaults to `""`. |
-| `icon` | string (path) | no | PNG/JPG path. `~` is expanded. Icons are resized to the D200's expected format automatically. |
+| `icon` | string (path) | no | Local asset path. `~` is expanded. Any image Pillow can open is fitted into a 196×196 tile and re-encoded as PNG automatically. |
+| `text_style` | object | no | Used primarily for text-only buttons. For icon-backed buttons, only `background_color` still matters: it becomes the opaque matte under transparent parts of the icon. |
 | `action` | object | no | What to run on press. If absent, the button is visual-only. See §5. |
 
 `index` uniqueness is enforced **across** page + fixed buttons. A page
 cannot reuse an index used by `fixed_buttons` — the config loader
 raises `ValueError` with the colliding indices before the device is
 touched.
+
+### `text_style`
+
+Optional block for text-only buttons:
+
+```yaml
+pages:
+  main:
+    buttons:
+      - index: 0
+        label: OpenAI
+        text_style:
+          background_color: "#102030"
+          text_color: "#F0F0F0"
+          bold: true
+          italic: false
+          underline: false
+          font_family: DejaVu Sans
+          font_size: 34
+```
+
+Supported fields:
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `background_color` | hex color | `#111827` |
+| `text_color` | hex color | `#F8FAFC` |
+| `bold` | bool | `false` |
+| `italic` | bool | `false` |
+| `underline` | bool | `false` |
+| `font_family` | string | `DejaVu Sans` |
+| `font_size` | int | `30` |
+
+For text-only buttons, these settings control the rendered tile exactly as
+shown. For icon-backed buttons, only `background_color` is reused as the
+opaque tile background before upload. The manifest intentionally omits a
+text overlay for real icons, because on the validated D200 firmware the
+device can otherwise prefer the label fallback and hide the PNG.
 
 ## 5. Actions
 
@@ -179,7 +228,8 @@ fixed_buttons:
 ```
 
 Indices in `fixed_buttons` **cannot** collide with any page button
-index — validation fails at load time.
+index — validation fails at load time. Index 13 is valid here too, but
+only as an action target; icon/label are ignored for that slot.
 
 ## 7. Legacy single-page schema
 
@@ -213,14 +263,21 @@ does not (there's only one page — it would be redundant).
 Icons can be any format Pillow opens (PNG, JPG, WebP). They are:
 
 1. Loaded from disk.
-2. Resized to the D200's expected dimensions (72×72 at present).
-3. Re-encoded as PNG inside the ZIP that the HID protocol expects.
+2. Fitted into a 196×196 tile while preserving aspect ratio.
+3. Flattened onto an opaque background using `text_style.background_color`.
+4. Re-encoded as PNG inside the ZIP that the HID protocol expects.
+5. Stored in the archive using the source file basename.
 
 Tips:
 
 - Keep icons in `~/.config/ulanzi/icons/` — the examples assume this.
-- Transparent PNGs work; transparency becomes the device's default
-  dark background.
+- Transparent PNGs work, but transparency is flattened onto the button's
+  configured `text_style.background_color` before upload.
+- If you need a custom matte behind an icon, set `text_style.background_color`
+  on that same button even when `icon` is present.
+- If a button must show both artwork and text, bake the text into the icon
+  asset itself. The validated upload path omits manifest text for real icons
+  to stop the firmware from preferring the text fallback over the PNG.
 - Missing paths fail **validation**, not runtime — the web editor's
   `POST /api/config/validate` catches them before save.
 

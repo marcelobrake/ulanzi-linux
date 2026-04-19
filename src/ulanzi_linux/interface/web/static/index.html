@@ -1,103 +1,432 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ulanzi-linux • deck.yaml editor</title>
+<title>ulanzi-linux • editor visual do deck</title>
 <link rel="icon" href="data:," />
 <link rel="stylesheet" href="/static/app.css" />
-<!--
-  Tool choices, stated here so they're auditable without digging:
-    * CodeMirror 6  -> YAML syntax highlight, small footprint, zero build.
-    * Alpine.js     -> declarative reactivity without a bundler; ~15 KB.
-  Both come from jsdelivr with integrity hashes pinned in app.js, so a
-  compromised CDN can't silently swap the bundle out from under us.
--->
 </head>
-<body x-data="editorApp()" x-init="init()">
+<body x-data="editorApp()">
 
-<header>
-  <div class="brand">
-    <strong>ulanzi-linux</strong>
-    <span class="tag">deck.yaml editor</span>
+<header class="topbar">
+  <div>
+    <p class="eyebrow">ulanzi-linux</p>
+    <h1>Editor visual do Stream Deck</h1>
   </div>
-  <div class="meta">
+
+  <div class="topbar-meta">
     <span class="pill" :class="health.ok ? 'pill-ok' : 'pill-bad'">
-      <span x-text="health.ok ? 'ok' : 'offline'"></span>
-      <span class="thin">v<span x-text="health.version || '?'"></span></span>
+      <span x-text="health.ok ? 'online' : 'offline'"></span>
+      <span class="thin">v<span x-text="health.version || '?'">?</span></span>
     </span>
     <span class="pill" :class="health.devices_found ? 'pill-ok' : 'pill-warn'">
       <span x-text="health.devices_found + ' device(s)'"></span>
     </span>
     <span class="pill thin" :title="health.config_path" x-text="shortPath"></span>
   </div>
+
+  <div class="topbar-actions">
+    <button class="danger" @click="resetDeck()" :disabled="busy">Reset</button>
+    <button @click="refreshFromDisk()" :disabled="busy">Recarregar</button>
+    <button @click="validateDeck()" :disabled="busy">Validar</button>
+    <button class="primary" @click="saveDeck()" :disabled="busy || !dirty">
+      Salvar no deck
+    </button>
+  </div>
 </header>
 
-<main>
-  <section class="editor-panel">
-    <div class="toolbar">
-      <button @click="validate()" :disabled="busy" title="Ctrl+Enter">
-        Validate
-      </button>
-      <button class="primary" @click="save()" :disabled="busy || !dirty"
-              title="Ctrl+S">
-        Apply <span x-show="dirty" class="dot"></span>
-      </button>
-      <button @click="revert()" :disabled="busy || !dirty">
-        Revert
-      </button>
-      <span class="spacer"></span>
-      <span class="status" :class="statusClass" x-text="status"></span>
+<main class="workspace">
+  <section class="deck-panel">
+    <div class="panel-card page-toolbar" x-show="editor">
+      <div class="page-tabs">
+        <template x-for="page in editor?.pages || []" :key="page.name">
+          <button class="page-tab"
+                  :class="page.name === selectedPage ? 'active' : ''"
+                  @click="selectPage(page.name)">
+            <span x-text="page.name"></span>
+            <span class="count"
+                  x-text="page.buttons.length + ' btn'"></span>
+          </button>
+        </template>
+      </div>
+
+      <div class="page-controls">
+        <label class="compact-field">
+          <span>Página padrão</span>
+          <select x-model="editor.default_page" @change="dirty = true">
+            <template x-for="pageName in pageOptions" :key="pageName">
+              <option :value="pageName" x-text="pageName"></option>
+            </template>
+          </select>
+        </label>
+      </div>
     </div>
-    <div id="editor"></div>
+
+    <div class="panel-card page-manager" x-show="editor">
+      <label class="grow-field">
+        <span>Nova página</span>
+        <input type="text"
+               x-model="newPageName"
+               @keydown.enter.prevent="addPage()"
+               placeholder="Ex.: streaming" />
+      </label>
+      <button @click="addPage()" :disabled="busy">Adicionar página</button>
+      <button class="danger"
+              @click="removeCurrentPage()"
+              :disabled="busy || !editor || editor.pages.length <= 1">
+        Remover página atual
+      </button>
+    </div>
+
+    <div class="panel-card deck-shell" x-show="editor">
+      <div class="deck-grid">
+        <template x-for="slot in deckSlots" :key="slot.index">
+          <button class="deck-button"
+                  :class="buttonClasses(slot)"
+                  :style="slotStyle(slot)"
+                  @click="selectSlot(slot.index)">
+            <span class="deck-chip" x-show="slot.fixed">fixo</span>
+
+            <div class="deck-icon-frame" :class="slot.kind === 'info' ? 'small-window-frame' : ''">
+              <template x-if="slot.kind === 'info'">
+                <div class="small-window-preview" :class="editor?.small_window?.enabled ? 'on' : 'off'">
+                  <template x-if="editor?.small_window?.enabled && editor?.small_window?.show_metrics === false">
+                    <div class="small-window-clock">
+                      <span class="small-window-badge">ao vivo</span>
+                      <strong x-text="smallWindowTimeLabel"></strong>
+                      <small x-text="editor?.small_window?.time_format || '%H:%M'"></small>
+                    </div>
+                  </template>
+                  <template x-if="editor?.small_window?.enabled && editor?.small_window?.show_metrics !== false">
+                    <div class="small-window-stats">
+                      <div class="small-window-metric">
+                        <span>CPU</span>
+                        <strong x-text="smallWindowPreview.cpu_percent + '%' "></strong>
+                      </div>
+                      <div class="small-window-metric">
+                        <span>MEM</span>
+                        <strong x-text="smallWindowPreview.mem_percent + '%' "></strong>
+                      </div>
+                    </div>
+                  </template>
+                  <template x-if="!editor?.small_window?.enabled">
+                    <div class="small-window-off">
+                      <span>Small window</span>
+                      <strong>Desligado</strong>
+                    </div>
+                  </template>
+                </div>
+              </template>
+              <template x-if="slot.kind !== 'info' && slot.preview_url">
+                <img class="deck-icon" :src="slot.preview_url" alt="Ícone do botão" />
+              </template>
+              <template x-if="slot.kind !== 'info' && !slot.preview_url && slot.textOnly">
+                <div class="deck-text-tile" :style="tileStyleFor(slot.text_style)">
+                  <span :style="textStyleFor(slot.text_style)"
+                        x-text="slot.label"></span>
+                </div>
+              </template>
+              <template x-if="slot.kind !== 'info' && !slot.preview_url && !slot.textOnly">
+                <span class="deck-placeholder" x-text="slot.span === 2 ? '2x1' : '1x1'"></span>
+              </template>
+            </div>
+
+            <div class="deck-copy">
+              <strong x-text="slot.label || slot.placeholder"></strong>
+              <span x-text="slot.actionLabel"></span>
+            </div>
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <div class="panel-card helper-card">
+      <label class="toggle-row helper-toggle" x-show="editor">
+        <input type="checkbox" x-model="saveFirmwareBundle" />
+        <span>Salvar também o pacote ZIP gerado para envio ao deck</span>
+      </label>
+      <p>
+        Salvar reescreve o <code>deck.yaml</code> em formato canônico. Se o daemon estiver rodando,
+        o Stream Deck recebe a atualização automaticamente em cerca de 1 segundo.
+      </p>
+      <p class="muted">
+        Cada save também cria uma cópia versionada do YAML com data e hora no nome.
+      </p>
+    </div>
   </section>
 
-  <aside class="sidebar">
-    <h2>Parsed layout</h2>
-    <template x-if="!validation">
-      <p class="muted">Not validated yet.</p>
-    </template>
-    <template x-if="validation && !validation.ok">
-      <pre class="error" x-text="validation.error"></pre>
-    </template>
-    <template x-if="validation && validation.ok">
-      <div>
-        <p>
-          Default page:
-          <code x-text="validation.default_page"></code>
-        </p>
-        <p>
-          Small window:
-          <span x-text="validation.small_window_enabled ? 'enabled' : 'disabled'"></span>
-        </p>
-        <p>
-          Fixed buttons:
-          <code x-text="fixedBtnsLabel"></code>
-        </p>
-        <h3>Pages</h3>
-        <ul class="page-list">
-          <template x-for="page in validation.pages" :key="page.name">
-            <li>
-              <strong x-text="page.name"></strong>
-              <span class="muted"
-                    x-text="' — ' + page.button_count + ' buttons'"></span>
-              <div class="indices" x-text="'[' + page.indices.join(', ') + ']'"></div>
-            </li>
-          </template>
-        </ul>
+  <aside class="inspector-panel">
+    <div class="panel-card" x-show="editor && buttonForm">
+      <div class="card-head">
+        <div>
+          <p class="eyebrow">Botão selecionado</p>
+          <h2 x-text="selectedSlotTitle"></h2>
+        </div>
+        <span class="pill" :class="buttonForm?.fixed ? 'pill-ok' : 'pill-warn'"
+              x-text="buttonForm?.fixed ? 'fixo' : selectedPage"></span>
       </div>
-    </template>
 
-    <h2 class="spaced">Hot reload</h2>
-    <p class="muted small">
-      The running daemon watches the YAML file and reloads within ~1 s of
-      Apply. No systemd restart needed.
-    </p>
+      <label class="toggle-row">
+        <input type="checkbox" x-model="buttonForm.fixed" @change="syncSelectedButton()" />
+        <span>Aparece em todas as páginas</span>
+      </label>
+
+      <p class="muted" x-show="selectedIndex === 13">
+        O info window aceita ação ao toque, mas não usa rótulo nem ícone próprios.
+        O conteúdo visual continua vindo do painel Small window abaixo.
+      </p>
+
+      <label class="field" x-show="selectedIndex !== 13">
+        <span>Rótulo</span>
+        <input type="text"
+               x-model="buttonForm.label"
+               @input="syncSelectedButton()"
+               placeholder="Ex.: Terminal" />
+      </label>
+
+      <div class="field" x-show="selectedIndex !== 13">
+        <span>Imagem</span>
+        <div class="image-editor">
+          <div class="image-preview" :class="currentPreviewUrl ? '' : 'empty'">
+            <template x-if="currentPreviewUrl">
+              <img :src="currentPreviewUrl" alt="Prévia do ícone" />
+            </template>
+            <template x-if="!currentPreviewUrl && currentTextOnlyPreview">
+              <div class="text-tile-preview" :style="currentTextTileStyle">
+                <span :style="currentTextLabelStyle"
+                      x-text="buttonForm.label"></span>
+              </div>
+            </template>
+            <template x-if="!currentPreviewUrl">
+              <span x-show="!currentTextOnlyPreview">Sem imagem</span>
+            </template>
+          </div>
+
+          <div class="image-actions">
+            <div class="inline-actions">
+              <button @click="$refs.iconPicker.click()" :disabled="busy">Escolher imagem</button>
+              <button @click="clearIcon()" :disabled="busy || !buttonForm.icon_path">Remover</button>
+            </div>
+
+            <input x-ref="iconPicker"
+                   type="file"
+                   accept="image/*"
+                   @change="uploadIcon($event)"
+                   hidden />
+
+            <input type="text"
+                   x-model="buttonForm.icon_path"
+                   @input="handleIconPathInput()"
+                   placeholder="~/.config/ulanzi/icons/meu-icone.png" />
+          </div>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>Ação</span>
+        <select x-model="buttonForm.action.type" @change="syncSelectedButton()">
+          <option value="none">Sem ação</option>
+          <option value="shell">Comando</option>
+          <option value="shortcut">Atalho</option>
+          <option value="url">Link</option>
+          <option value="switch_page">Troca de página</option>
+        </select>
+      </label>
+
+      <template x-if="buttonForm.action.type === 'shell'">
+        <label class="field">
+          <span>Comando</span>
+          <textarea x-model="buttonForm.action.cmd"
+                    @input="syncSelectedButton()"
+                    placeholder="gnome-terminal"></textarea>
+        </label>
+      </template>
+
+      <template x-if="buttonForm.action.type === 'shortcut'">
+        <label class="field">
+          <span>Atalho</span>
+          <input type="text"
+                 x-model="buttonForm.action.keys"
+                 @input="syncSelectedButton()"
+                 placeholder="ctrl+alt+t" />
+        </label>
+      </template>
+
+      <template x-if="buttonForm.action.type === 'url'">
+        <label class="field">
+          <span>URL</span>
+          <input type="url"
+                 x-model="buttonForm.action.url"
+                 @input="syncSelectedButton()"
+                 placeholder="https://example.com" />
+        </label>
+      </template>
+
+      <template x-if="buttonForm.action.type === 'switch_page'">
+        <label class="field">
+          <span>Página de destino</span>
+          <select x-model="buttonForm.action.page" @change="syncSelectedButton()">
+            <option value="">Escolha uma página</option>
+            <template x-for="pageName in pageOptions" :key="pageName">
+              <option :value="pageName" x-text="pageName"></option>
+            </template>
+          </select>
+        </label>
+      </template>
+
+      <div class="field" x-show="showTextStyleControls">
+        <span>Texto sem imagem</span>
+        <p class="muted compact-copy">
+          Quando o botão não tem imagem, o texto é renderizado centralizado no próprio tile.
+        </p>
+
+        <div class="text-style-grid">
+          <label class="field color-field">
+            <span>Fundo</span>
+            <div class="color-row">
+              <input type="color"
+                     x-model="buttonForm.text_style.background_color"
+                     @input="syncSelectedButton()" />
+              <strong x-text="buttonForm.text_style.background_color"></strong>
+            </div>
+          </label>
+
+          <label class="field color-field">
+            <span>Fonte</span>
+            <div class="color-row">
+              <input type="color"
+                     x-model="buttonForm.text_style.text_color"
+                     @input="syncSelectedButton()" />
+              <strong x-text="buttonForm.text_style.text_color"></strong>
+            </div>
+          </label>
+
+          <label class="field text-style-field">
+            <span>Família</span>
+            <select x-model="buttonForm.text_style.font_family"
+                    @change="syncSelectedButton()">
+              <template x-for="font in fontOptions" :key="font">
+                <option :value="font" x-text="font"></option>
+              </template>
+            </select>
+          </label>
+
+          <label class="field text-style-field">
+            <span>Tamanho</span>
+            <div class="range-row">
+              <input type="range"
+                     min="12"
+                     max="96"
+                     step="1"
+                     x-model="buttonForm.text_style.font_size"
+                     @input="syncSelectedButton()" />
+              <input class="range-value"
+                     type="number"
+                     min="12"
+                     max="96"
+                     x-model="buttonForm.text_style.font_size"
+                     @input="syncSelectedButton()" />
+            </div>
+          </label>
+        </div>
+
+        <div class="style-toggle-row">
+          <button type="button"
+                  class="style-chip"
+                  :class="buttonForm.text_style.bold ? 'active' : ''"
+                  @click="buttonForm.text_style.bold = !buttonForm.text_style.bold; syncSelectedButton()">
+            Negrito
+          </button>
+          <button type="button"
+                  class="style-chip"
+                  :class="buttonForm.text_style.italic ? 'active' : ''"
+                  @click="buttonForm.text_style.italic = !buttonForm.text_style.italic; syncSelectedButton()">
+            Itálico
+          </button>
+          <button type="button"
+                  class="style-chip"
+                  :class="buttonForm.text_style.underline ? 'active' : ''"
+                  @click="buttonForm.text_style.underline = !buttonForm.text_style.underline; syncSelectedButton()">
+            Sublinhado
+          </button>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <button @click="resetSelectedButton()" :disabled="busy">
+          Descartar alterações do botão
+        </button>
+        <button class="danger" @click="clearButton()" :disabled="busy">
+          Limpar botão
+        </button>
+      </div>
+    </div>
+
+    <div class="panel-card" x-show="editor">
+      <div class="card-head">
+        <div>
+          <p class="eyebrow">Small window</p>
+          <h2>Painel lateral</h2>
+        </div>
+      </div>
+
+      <label class="toggle-row">
+        <input type="checkbox"
+               x-model="editor.small_window.enabled"
+               @change="dirty = true" />
+        <span>Ativar small window</span>
+      </label>
+
+      <label class="toggle-row">
+        <input type="checkbox"
+               x-model="editor.small_window.show_metrics"
+               @change="dirty = true"
+               :disabled="!editor.small_window.enabled" />
+        <span>Usar modo de estatísticas (CPU e memória) no lugar do relógio</span>
+      </label>
+
+      <label class="field">
+        <span>Intervalo (s)</span>
+        <input type="number"
+               step="0.05"
+               min="0.05"
+               max="4.5"
+               x-model="editor.small_window.interval_s"
+               @input="dirty = true" />
+      </label>
+
+      <label class="field">
+        <span>Formato de hora</span>
+        <input type="text"
+               x-model="editor.small_window.time_format"
+               @input="dirty = true"
+               placeholder="%H:%M" />
+      </label>
+    </div>
+
+    <div class="panel-card status-card">
+      <div class="card-head">
+        <div>
+          <p class="eyebrow">Status</p>
+          <h2>Operações</h2>
+        </div>
+      </div>
+
+      <p class="status-line" :class="statusClass" x-text="status || 'Pronto para editar'"></p>
+
+      <template x-if="validationError">
+        <pre class="error-block" x-text="validationError"></pre>
+      </template>
+    </div>
   </aside>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js" defer></script>
-<script type="module" src="/static/app.js"></script>
+<script src="/static/app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"
+        integrity="sha384-X9kJyAubVxnP0hcA+AMMs21U445qsnqhnUF8EBlEpP3a42Kh/JwWjlv2ZcvGfphb"
+        crossorigin="anonymous"
+        defer></script>
 
 </body>
 </html>

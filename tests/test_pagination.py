@@ -18,6 +18,8 @@ from ulanzi_linux.domain.button_config import (
     Page,
     ShellAction,
     SwitchPageAction,
+    TextStyle,
+    UrlAction,
 )
 from ulanzi_linux.domain.commands import SmallWindowMode
 from ulanzi_linux.domain.device import DeckDevice, DeckSpec
@@ -106,6 +108,57 @@ fixed_buttons:
     assert cfg.fixed_buttons[0].action.page == "main"
 
 
+def test_loader_accepts_info_window_action_slot(tmp_path: Path) -> None:
+    yaml_text = """
+default_page: main
+pages:
+  main:
+    buttons:
+      - index: 13
+        action:
+          type: url
+          url: https://example.com/info
+"""
+    path = tmp_path / "deck.yaml"
+    path.write_text(yaml_text)
+    cfg = load_deck_config(path)
+
+    assert cfg.pages["main"].buttons[0].index == 13
+    assert isinstance(cfg.pages["main"].buttons[0].action, UrlAction)
+
+
+def test_loader_parses_text_style_for_text_only_button(tmp_path: Path) -> None:
+    yaml_text = """
+default_page: main
+pages:
+  main:
+    buttons:
+      - index: 0
+        label: OpenAI
+        text_style:
+          background_color: "#102030"
+          text_color: "#F0F0F0"
+          bold: true
+          italic: true
+          underline: true
+          font_family: Liberation Serif
+          font_size: 34
+"""
+    path = tmp_path / "deck.yaml"
+    path.write_text(yaml_text)
+    cfg = load_deck_config(path)
+
+    assert cfg.pages["main"].buttons[0].text_style == TextStyle(
+        background_color="#102030",
+        text_color="#F0F0F0",
+        bold=True,
+        italic=True,
+        underline=True,
+        font_family="Liberation Serif",
+        font_size=34,
+    )
+
+
 def test_loader_accepts_legacy_single_page(tmp_path: Path) -> None:
     yaml_text = """
 buttons:
@@ -165,7 +218,12 @@ class FakeDeck(DeckDevice):
         pass
 
     async def set_small_window_data(
-        self, *, cpu: int = 0, mem: int = 0, gpu: int = 0, time_str: str | None = None
+        self,
+        *,
+        cpu: int | None = 0,
+        mem: int | None = 0,
+        gpu: int | None = 0,
+        time_str: str | None = None,
     ) -> None:
         pass
 
@@ -239,6 +297,33 @@ async def test_sync_layout_pushes_default_page_with_fixed_buttons() -> None:
     uploaded_indices = [b.index for b in fake.button_uploads[0]]
     # main page button (0) + fixed buttons (10, 11)
     assert uploaded_indices == [0, 10, 11]
+
+
+@pytest.mark.asyncio
+async def test_sync_layout_skips_info_window_action_only_slot() -> None:
+    fake = FakeDeck()
+    cfg = DeckConfig(
+        pages={
+            "main": Page(
+                name="main",
+                buttons=(
+                    ButtonConfig(index=0, label="A"),
+                    ButtonConfig(
+                        index=13,
+                        action=UrlAction(type="url", url="https://example.com/info"),
+                    ),
+                ),
+            )
+        },
+        default_page="main",
+    )
+
+    async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
+        daemon = DeckDaemon(svc, cfg)
+        await daemon.sync_layout()
+
+    uploaded_indices = [b.index for b in fake.button_uploads[0]]
+    assert uploaded_indices == [0]
 
 
 @pytest.mark.asyncio

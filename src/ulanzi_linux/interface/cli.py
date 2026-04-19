@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from contextlib import suppress
+from pathlib import Path
 from typing import NoReturn
 
 import click
@@ -22,6 +24,11 @@ from rich.table import Table
 
 from ulanzi_linux import __version__
 from ulanzi_linux.application.action_runner import ActionRunner
+from ulanzi_linux.application.artifacts import (
+    build_default_page_bundle,
+    timestamp_token,
+    versioned_output_path,
+)
 from ulanzi_linux.application.config_loader import load_deck_config
 from ulanzi_linux.application.config_watcher import ConfigWatcher
 from ulanzi_linux.application.daemon import DeckDaemon
@@ -143,11 +150,8 @@ async def _listen_async(max_events: int | None) -> None:
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
+        with suppress(NotImplementedError):
             loop.add_signal_handler(sig, _request_stop)
-        except NotImplementedError:
-            # Windows doesn't support add_signal_handler.
-            pass
 
     async with DeckService.open_default() as service:
         console.print(
@@ -208,28 +212,53 @@ async def _brightness_async(value: int) -> None:
 @cli.command("push-config")
 @click.argument("config_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--partial", is_flag=True, help="Additive update (keep other buttons).")
-def push_config_command(config_path: str, partial: bool) -> None:
+@click.option(
+    "--save-firmware",
+    is_flag=True,
+    help="Also save the generated ZIP payload next to the YAML config.",
+)
+def push_config_command(
+    config_path: str,
+    partial: bool,
+    save_firmware: bool,
+) -> None:
     """Upload icons and layout from a YAML config to the deck."""
     try:
-        asyncio.run(_push_config_async(config_path, partial))
+        asyncio.run(_push_config_async(config_path, partial, save_firmware))
     except DeviceNotFoundError as exc:
         _bail(str(exc))
     except DeviceOpenError as exc:
         _bail(str(exc))
 
 
-async def _push_config_async(config_path: str, partial: bool) -> None:
+async def _push_config_async(
+    config_path: str,
+    partial: bool,
+    save_firmware: bool,
+) -> None:
     cfg = load_deck_config(config_path)
+    saved_bundle: Path | None = None
+    if save_firmware:
+        saved_bundle = versioned_output_path(
+            Path(config_path).expanduser().resolve(),
+            token=timestamp_token(),
+            label="firmware",
+            extension=".zip",
+        )
+        saved_bundle.write_bytes(build_default_page_bundle(cfg, partial=partial))
     # push-config is a one-shot layout upload: we push the default page plus
     # any fixed buttons. For paging behaviour at runtime, use ``daemon``.
     layout = cfg.buttons_for(cfg.default_page)
     async with DeckService.open_default() as service:
-        await service._device.set_buttons(layout, partial=partial)  # noqa: SLF001
-    console.print(
+        await service._device.set_buttons(layout, partial=partial)
+    message = (
         f"[green]pushed page '{cfg.default_page}'[/] "
         f"— {len(layout)} buttons ({len(cfg.fixed_buttons)} fixed) "
         f"({'partial' if partial else 'full'}) from {config_path}"
     )
+    if saved_bundle is not None:
+        message += f"\n[cyan]bundle salvo em[/] {saved_bundle}"
+    console.print(message)
 
 
 # ---------------------------------------------------------------------- #
@@ -262,10 +291,8 @@ async def _daemon_async(
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
+        with suppress(NotImplementedError):
             loop.add_signal_handler(sig, stop.set)
-        except NotImplementedError:
-            pass
 
     async with DeckService.open_default() as service:
         daemon = DeckDaemon(service, cfg, ActionRunner())

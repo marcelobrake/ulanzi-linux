@@ -44,6 +44,10 @@ logger = structlog.get_logger(__name__)
 DEFAULT_HEARTBEAT_INTERVAL_S: float = 2.0
 
 
+def _looks_like_hhmm(value: str) -> bool:
+    return len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit()
+
+
 class DeckDaemon:
     """Glue: pushes layout, heartbeats the firmware, runs actions on press.
 
@@ -99,7 +103,7 @@ class DeckDaemon:
         """
         async with self._state_lock:
             if page_name == self._current_page:
-                logger.debug("switch_page_noop", page=page_name)
+                logger.info("switch_page_noop", page=page_name)
                 return
             if page_name not in self._config.pages:
                 logger.warning(
@@ -182,24 +186,10 @@ class DeckDaemon:
             asyncio.create_task(
                 self._event_loop(stop), name="ulanzi_daemon_events"
             ),
+            asyncio.create_task(
+                self._status_loop(stop), name="ulanzi_daemon_status"
+            ),
         ]
-        # Pick exactly one watchdog-satisfying loop. Both send
-        # SET_SMALL_WINDOW_DATA; running both would race to overwrite
-        # whatever the other wrote.
-        if sw_cfg.enabled:
-            tasks.append(
-                asyncio.create_task(
-                    self._small_window_loop(stop),
-                    name="ulanzi_daemon_small_window",
-                )
-            )
-        else:
-            tasks.append(
-                asyncio.create_task(
-                    self._heartbeat_loop(stop),
-                    name="ulanzi_daemon_heartbeat",
-                )
-            )
         if watcher is not None:
             tasks.append(
                 asyncio.create_task(
@@ -231,77 +221,88 @@ class DeckDaemon:
 
     async def _push_page(self, page_name: str) -> None:
         buttons = self._config.buttons_for(page_name)
-        await self._service._device.set_buttons(buttons)  # noqa: SLF001
+        visible_buttons = tuple(
+            button
+            for button in buttons
+            if button.index < self._service.spec.button_count
+        )
+        await self._service._device.set_buttons(visible_buttons)  # noqa: SLF001
         logger.info(
             "layout_synced",
             page=page_name,
-            buttons=len(buttons),
+            buttons=len(visible_buttons),
+            action_only_buttons=len(buttons) - len(visible_buttons),
         )
 
-    async def _heartbeat_loop(self, stop_event: asyncio.Event) -> None:
-        logger.info("heartbeat_started", interval_s=self._heartbeat_interval_s)
+    def _wire_time_string(self, configured_format: str) -> str:
+        rendered = self._metrics_reader.format_time(configured_format)
+        if _looks_like_hhmm(rendered):
+            return f"{rendered}:{self._metrics_reader.format_time('%S')}"
+        if rendered:
+            return rendered
+        return self._metrics_reader.format_time("%H:%M:%S")
+
+    async def _status_loop(self, stop_event: asyncio.Event) -> None:
+        logger.info("status_loop_started")
+        active_mode: SmallWindowMode | None = None
+        metrics_primed = False
         try:
             while not stop_event.is_set():
                 try:
-                    await self._service._device.keep_alive()  # noqa: SLF001
+                    sw_cfg = self._config.small_window
+                    if sw_cfg.enabled:
+                        desired_mode = (
+                            SmallWindowMode.STATS
+                            if sw_cfg.show_metrics
+                            else SmallWindowMode.CLOCK
+                        )
+                        if active_mode != desired_mode:
+                            await self._service._device.set_small_window_mode(  # noqa: SLF001
+                                desired_mode
+                            )
+                            active_mode = desired_mode
+                            metrics_primed = False
+                        if sw_cfg.show_metrics and not metrics_primed:
+                            self._metrics_reader.read_cpu_percent()
+                            metrics_primed = True
+                        if sw_cfg.show_metrics:
+                            cpu: int | None = self._metrics_reader.read_cpu_percent()
+                            mem: int | None = self._metrics_reader.read_memory_percent()
+                            gpu: int | None = 0
+                            time_str = self._wire_time_string(sw_cfg.time_format)
+                            await self._service._device.set_small_window_data(  # noqa: SLF001
+                                cpu=cpu,
+                                mem=mem,
+                                gpu=gpu,
+                                time_str=time_str,
+                            )
+                        else:
+                            time_str = self._wire_time_string(sw_cfg.time_format)
+                            await self._service._device.set_small_window_data(  # noqa: SLF001
+                                cpu=0,
+                                mem=0,
+                                gpu=0,
+                                time_str=time_str,
+                            )
+                        timeout = sw_cfg.interval_s
+                    else:
+                        if active_mode != SmallWindowMode.BACKGROUND:
+                            await self._service._device.set_small_window_mode(  # noqa: SLF001
+                                SmallWindowMode.BACKGROUND
+                            )
+                            active_mode = SmallWindowMode.BACKGROUND
+                            metrics_primed = False
+                        await self._service._device.keep_alive()  # noqa: SLF001
+                        timeout = self._heartbeat_interval_s
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning("heartbeat_failed", error=str(exc))
+                    logger.warning("status_loop_tick_failed", error=str(exc))
+                    timeout = self._heartbeat_interval_s
                 try:
-                    await asyncio.wait_for(
-                        stop_event.wait(), timeout=self._heartbeat_interval_s
-                    )
+                    await asyncio.wait_for(stop_event.wait(), timeout=timeout)
                 except asyncio.TimeoutError:
                     pass  # normal tick
         finally:
-            logger.info("heartbeat_stopped")
-
-    async def _small_window_loop(self, stop_event: asyncio.Event) -> None:
-        """Push CPU / memory / date+time into the D200 small window.
-
-        Doubles as the firmware watchdog ping — same command, same
-        cadence, so we don't need the separate heartbeat loop when this
-        is running. CPU requires a priming read because ``/proc/stat``
-        deltas are meaningless on the first sample.
-        """
-        sw_cfg = self._config.small_window
-        interval = sw_cfg.interval_s
-        # Put the window in STATS mode once up-front; the device remembers
-        # it until we swap modes or unplug.
-        try:
-            await self._service._device.set_small_window_mode(  # noqa: SLF001
-                SmallWindowMode.STATS
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("small_window_mode_set_failed", error=str(exc))
-
-        # Prime the CPU delta baseline so the first real tick is accurate.
-        try:
-            self._metrics_reader.read_cpu_percent()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("metrics_prime_failed", error=str(exc))
-
-        logger.info("small_window_started", interval_s=interval)
-        try:
-            while not stop_event.is_set():
-                try:
-                    cpu = self._metrics_reader.read_cpu_percent()
-                    mem = self._metrics_reader.read_memory_percent()
-                    time_str = self._metrics_reader.format_time(
-                        sw_cfg.time_format
-                    )
-                    await self._service._device.set_small_window_data(  # noqa: SLF001
-                        cpu=cpu, mem=mem, gpu=0, time_str=time_str
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    # Never let a metrics hiccup bring down the watchdog
-                    # ping — the device would fall back to Ulanzi Studio.
-                    logger.warning("small_window_tick_failed", error=str(exc))
-                try:
-                    await asyncio.wait_for(stop_event.wait(), timeout=interval)
-                except asyncio.TimeoutError:
-                    pass  # normal tick
-        finally:
-            logger.info("small_window_stopped")
+            logger.info("status_loop_stopped")
 
     async def _event_loop(self, stop_event: asyncio.Event) -> None:
         async for event in self._service.listen():

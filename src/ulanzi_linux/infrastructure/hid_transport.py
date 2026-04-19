@@ -48,21 +48,49 @@ class HidApiTransport:
             DeviceNotFoundError: No matching device is connected.
             DeviceOpenError: The device was found but could not be opened.
         """
-        handle = hid.device()
-        try:
-            handle.open(vendor_id, product_id)
-        except OSError as exc:
-            raise DeviceOpenError(
-                f"Failed to open device {vendor_id:#06x}:{product_id:#06x}: {exc}"
-            ) from exc
-
-        handle.set_nonblocking(True)
-        logger.info(
-            "hid_device_opened",
-            vendor_id=f"{vendor_id:#06x}",
-            product_id=f"{product_id:#06x}",
+        matches = list(
+            enumerate_hid_devices(vendor_id=vendor_id, product_id=product_id)
         )
-        return cls(handle)
+        if not matches:
+            raise DeviceNotFoundError(
+                f"No HID device found for {vendor_id:#06x}:{product_id:#06x}"
+            )
+
+        errors: list[str] = []
+        for entry in matches:
+            handle = hid.device()
+            path = entry.get("path")
+            try:
+                if path:
+                    handle.open_path(path)
+                else:
+                    handle.open(vendor_id, product_id)
+                handle.set_nonblocking(True)
+                logger.info(
+                    "hid_device_opened",
+                    vendor_id=f"{vendor_id:#06x}",
+                    product_id=f"{product_id:#06x}",
+                    interface_number=entry.get("interface_number"),
+                    path=path.decode("utf-8", errors="replace")
+                    if isinstance(path, bytes)
+                    else str(path),
+                )
+                return cls(handle)
+            except OSError as exc:
+                errors.append(
+                    "interface="
+                    f"{entry.get('interface_number', '?')}"
+                    f" path={path!r} error={exc}"
+                )
+                try:
+                    handle.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        raise DeviceOpenError(
+            f"Failed to open any device for {vendor_id:#06x}:{product_id:#06x}: "
+            + "; ".join(errors)
+        )
 
     async def read(self, length: int) -> bytes | None:
         """Perform a non-blocking HID read. Returns ``None`` if no data."""

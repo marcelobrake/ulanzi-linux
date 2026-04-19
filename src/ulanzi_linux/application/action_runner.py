@@ -61,17 +61,53 @@ class ActionRunner:
 
     async def _run_url(self, action: UrlAction) -> None:
         logger.info("action_url", url=action.url)
-        # webbrowser is blocking but very fast; run in executor to be safe.
+        for argv in self._url_open_candidates(action.url):
+            exit_code = await self._try_exec(argv)
+            if exit_code == 0:
+                logger.info("action_url_opened", url=action.url, opener=argv[0])
+                return
+            logger.warning(
+                "action_url_opener_failed",
+                url=action.url,
+                opener=argv[0],
+                exit_code=exit_code,
+            )
+
+        # Fall back to the stdlib registry as a last resort.
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, webbrowser.open, action.url)
+        opened = await loop.run_in_executor(None, webbrowser.open, action.url)
+        if opened:
+            logger.info("action_url_opened", url=action.url, opener="webbrowser")
+            return
+        logger.error("action_url_failed", url=action.url, reason="no_supported_opener")
+
+    def _url_open_candidates(self, url: str) -> list[list[str]]:
+        candidates: list[list[str]] = []
+        for argv in (
+            ["xdg-open", url],
+            ["gio", "open", url],
+            ["sensible-browser", url],
+        ):
+            if shutil.which(argv[0]):
+                candidates.append(argv)
+        return candidates
 
     async def _exec(self, argv: list[str]) -> None:
+        exit_code = await self._try_exec(argv)
+        if exit_code != 0:
+            logger.warning(
+                "action_exec_failed",
+                argv=argv,
+                exit_code=exit_code,
+            )
+
+    async def _try_exec(self, argv: list[str]) -> int:
         proc = await asyncio.create_subprocess_exec(
             *argv,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        await proc.wait()
+        return await proc.wait()
 
 
 __all__ = ["ActionRunner"]

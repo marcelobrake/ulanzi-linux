@@ -2,10 +2,17 @@
 
 Schema (ground truth extracted from redphx/strmdck):
     manifest.json      JSON keyed by ``"{col}_{row}"`` (not flat array!)
-                       Each entry: ``{"State": 0, "ViewParam": [{"Text", "Icon"}]}``
-    icons/<name>.png   196x196 RGBA PNG per button
-    dummy.txt          random padding file — exists solely to shift ZIP byte
-                       offsets, see firmware-bug note below.
+                       Each entry: ``{"State": 0, "ViewParam": [{...}]}``.
+                       Label-only buttons carry ``Text`` plus a generated PNG;
+                       icon-backed buttons carry only ``Icon`` so the firmware
+                       prefers the uploaded asset over manifest text fallback.
+    dummy.txt          stored padding file written before icons so retries can
+                       shift subsequent ZIP entry offsets safely.
+    icons/<name>.png   196x196 PNG assets. Real icons keep their source
+                       basename, while generated text tiles use the numeric
+                       button index.
+    sentinel.txt       empty final file so the firmware can discard the last
+                       central-directory entry without losing a real icon.
 
 Firmware bug worked around here:
     The D200 firmware parses the ZIP while it's being streamed over HID in
@@ -13,94 +20,299 @@ Firmware bug worked around here:
     the last byte of every 1024-byte boundary past the first header) equals
     0x00 or 0x7C (the packet magic), the firmware corrupts the upload and
     silently drops buttons or locks the deck. We regenerate ``dummy.txt``
-    with progressively longer random content until the resulting ZIP passes
+    with progressively longer stored padding until the resulting ZIP passes
     the offset check.
 """
 
 from __future__ import annotations
 
-import colorsys
 import io
 import json
-import secrets
-import string
 import zipfile
 from collections.abc import Iterable
+from pathlib import Path
 
 import structlog
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-from ulanzi_linux.domain.button_config import ButtonConfig
+from ulanzi_linux.domain.button_config import ButtonConfig, TextStyle
 
 logger = structlog.get_logger(__name__)
 
 # Native icon resolution the D200 firmware expects.
 ICON_SIZE = (196, 196)
 
-# D200 grid geometry — used to derive ``col`` / ``row`` from a flat index.
+# D200 grid geometry — 13 physical buttons on the 5x3 grid. The wide
+# bottom-right info window is controlled separately via small-window packets.
 # Kept local to the builder because the manifest schema is deck-specific.
 _D200_COLS = 5
+_D200_ACTIVE_BUTTON_COUNT = 13
 
 # Frame boundaries we must inspect for the firmware parser bug.
 _FRAME_SIZE = 1024
 _FIRST_CHECK_OFFSET = 1016  # last byte of first 1024-byte window, accounting for header
 _INVALID_BOUNDARY_BYTES = (b"\x00", b"\x7c")
-_MAX_DUMMY_RETRIES = 64
+_MAX_DUMMY_RETRIES = 1024
+_REAL_ICON_PADDING = 5
+_TEXT_TILE_PADDING = 16
+_TEXT_TILE_MAX_WIDTH = ICON_SIZE[0] - (_TEXT_TILE_PADDING * 2)
+_TEXT_TILE_MAX_HEIGHT = ICON_SIZE[1] - (_TEXT_TILE_PADDING * 2)
+
+_FONT_FILE_CANDIDATES: dict[str, dict[tuple[bool, bool], tuple[str, ...]]] = {
+    "DejaVu Sans": {
+        (False, False): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "DejaVuSans.ttf",
+        ),
+        (True, False): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "DejaVuSans-Bold.ttf",
+        ),
+        (False, True): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+            "DejaVuSans-Oblique.ttf",
+        ),
+        (True, True): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+            "DejaVuSans-BoldOblique.ttf",
+        ),
+    },
+    "DejaVu Serif": {
+        (False, False): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "DejaVuSerif.ttf",
+        ),
+        (True, False): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "DejaVuSerif-Bold.ttf",
+        ),
+        (False, True): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+            "DejaVuSerif-Italic.ttf",
+        ),
+        (True, True): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-BoldItalic.ttf",
+            "DejaVuSerif-BoldItalic.ttf",
+        ),
+    },
+    "DejaVu Sans Mono": {
+        (False, False): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            "DejaVuSansMono.ttf",
+        ),
+        (True, False): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            "DejaVuSansMono-Bold.ttf",
+        ),
+        (False, True): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf",
+            "DejaVuSansMono-Oblique.ttf",
+        ),
+        (True, True): (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-BoldOblique.ttf",
+            "DejaVuSansMono-BoldOblique.ttf",
+        ),
+    },
+    "Liberation Sans": {
+        (False, False): (
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "LiberationSans-Regular.ttf",
+        ),
+        (True, False): (
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "LiberationSans-Bold.ttf",
+        ),
+        (False, True): (
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf",
+            "LiberationSans-Italic.ttf",
+        ),
+        (True, True): (
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf",
+            "LiberationSans-BoldItalic.ttf",
+        ),
+    },
+    "Liberation Serif": {
+        (False, False): (
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf",
+            "LiberationSerif-Regular.ttf",
+        ),
+        (True, False): (
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf",
+            "LiberationSerif-Bold.ttf",
+        ),
+        (False, True): (
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-Italic.ttf",
+            "LiberationSerif-Italic.ttf",
+        ),
+        (True, True): (
+            "/usr/share/fonts/truetype/liberation2/LiberationSerif-BoldItalic.ttf",
+            "LiberationSerif-BoldItalic.ttf",
+        ),
+    },
+}
+def _blank_icon() -> bytes:
+    """Render a black tile used for unconfigured or cleared buttons."""
+    img = Image.new("RGBA", ICON_SIZE, (0, 0, 0, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
-def _random_ascii(length: int) -> str:
-    """Generate a printable ASCII string of ``length`` characters."""
-    alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(length))
+def _real_icon_path(cfg: ButtonConfig) -> Path | None:
+    path = Path(cfg.icon_path).expanduser() if cfg.icon_path else None
+    if path is None or not path.exists():
+        return None
+    return path
 
 
-def _placeholder_icon(index: int, label: str) -> bytes:
-    """Render a fallback icon with the label centered on a coloured tile."""
-    hue = (index * 0.137) % 1.0  # golden-angle spread for distinct colours
-    r, g, b = (int(c * 255) for c in colorsys.hsv_to_rgb(hue, 0.55, 0.85))
-    img = Image.new("RGBA", ICON_SIZE, (r, g, b, 255))
-    draw = ImageDraw.Draw(img)
-    text = (label or str(index))[:8]
-    try:
-        font = ImageFont.truetype(
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 42
-        )
-    except OSError:
-        font = ImageFont.load_default()
-    bbox = draw.textbbox((0, 0), text, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text(
-        ((ICON_SIZE[0] - tw) // 2, (ICON_SIZE[1] - th) // 2 - 4),
-        text,
-        fill=(255, 255, 255, 255),
-        font=font,
+def _hex_to_rgba(value: str) -> tuple[int, int, int, int]:
+    cleaned = value.lstrip("#")
+    return (
+        int(cleaned[0:2], 16),
+        int(cleaned[2:4], 16),
+        int(cleaned[4:6], 16),
+        255,
     )
+
+
+def _font_candidates(style: TextStyle) -> tuple[str, ...]:
+    family = _FONT_FILE_CANDIDATES.get(
+        style.font_family,
+        _FONT_FILE_CANDIDATES["DejaVu Sans"],
+    )
+    return family[(style.bold, style.italic)]
+
+
+def _load_font(style: TextStyle, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for candidate in _font_candidates(style):
+        if candidate.startswith("/") and not Path(candidate).exists():
+            continue
+        try:
+            return ImageFont.truetype(candidate, size=size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _wrap_text(
+    text: str,
+    *,
+    draw: ImageDraw.ImageDraw,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    max_width: int,
+) -> list[str]:
+    words = text.split()
+    if not words:
+        return [text]
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        width = draw.textbbox((0, 0), candidate, font=font)[2]
+        if width <= max_width:
+            current = candidate
+            continue
+        lines.append(current)
+        current = word
+    lines.append(current)
+    return lines
+
+
+def _fit_text_layout(
+    text: str,
+    style: TextStyle,
+) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, list[str], int]:
+    scratch = Image.new("RGBA", ICON_SIZE, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(scratch)
+    for size in range(style.font_size, 11, -2):
+        font = _load_font(style, size)
+        lines = _wrap_text(text, draw=draw, font=font, max_width=_TEXT_TILE_MAX_WIDTH)
+        boxes = [draw.textbbox((0, 0), line, font=font) for line in lines]
+        widths = [box[2] - box[0] for box in boxes]
+        line_heights = [box[3] - box[1] for box in boxes]
+        max_width = max(widths, default=0)
+        spacing = max(6, size // 6)
+        total_height = sum(line_heights) + spacing * max(0, len(lines) - 1)
+        if max_width <= _TEXT_TILE_MAX_WIDTH and total_height <= _TEXT_TILE_MAX_HEIGHT:
+            return font, lines, spacing
+    font = _load_font(style, 12)
+    lines = _wrap_text(text, draw=draw, font=font, max_width=_TEXT_TILE_MAX_WIDTH)
+    return font, lines, 4
+
+
+def _render_text_icon(cfg: ButtonConfig) -> bytes:
+    style = cfg.text_style
+    img = Image.new("RGBA", ICON_SIZE, _hex_to_rgba(style.background_color))
+    draw = ImageDraw.Draw(img)
+    font, lines, spacing = _fit_text_layout(cfg.label, style)
+    boxes = [draw.textbbox((0, 0), line, font=font) for line in lines]
+    heights = [box[3] - box[1] for box in boxes]
+    total_height = sum(heights) + spacing * max(0, len(lines) - 1)
+    current_y = (ICON_SIZE[1] - total_height) / 2
+    fill = _hex_to_rgba(style.text_color)
+
+    for line, box, height in zip(lines, boxes, heights, strict=False):
+        width = box[2] - box[0]
+        x = (ICON_SIZE[0] - width) / 2
+        y = current_y - box[1]
+        draw.text((x, y), line, font=font, fill=fill)
+        if style.underline:
+            underline_y = current_y + height + 2
+            draw.line(
+                (
+                    x,
+                    underline_y,
+                    x + width,
+                    underline_y,
+                ),
+                fill=fill,
+                width=max(1, style.font_size // 18),
+            )
+        current_y += height + spacing
+
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
 
 
 def _normalize_icon(cfg: ButtonConfig) -> bytes:
-    """Load and resize a PNG — or render a placeholder if file is missing."""
-    from pathlib import Path
-
-    path = Path(cfg.icon_path).expanduser() if cfg.icon_path else None
-    if path is None or not path.exists():
-        logger.warning(
-            "icon_missing_using_placeholder",
-            index=cfg.index,
-            path=str(path) if path else None,
-            label=cfg.label,
-        )
-        return _placeholder_icon(cfg.index, cfg.label)
+    """Load and resize a PNG — or render a black tile if absent."""
+    path = _real_icon_path(cfg)
+    if path is None:
+        if cfg.label and cfg.icon_path is None:
+            return _render_text_icon(cfg)
+        return _blank_icon()
 
     with Image.open(path) as img:
         img = img.convert("RGBA")
-        if img.size != ICON_SIZE:
-            img = img.resize(ICON_SIZE, Image.Resampling.LANCZOS)
+        fitted = ImageOps.contain(
+            img,
+            (
+                ICON_SIZE[0] - (_REAL_ICON_PADDING * 2),
+                ICON_SIZE[1] - (_REAL_ICON_PADDING * 2),
+            ),
+            Image.Resampling.LANCZOS,
+        )
+        tile = Image.new("RGBA", ICON_SIZE, _hex_to_rgba(cfg.text_style.background_color))
+        origin = (
+            (ICON_SIZE[0] - fitted.width) // 2,
+            (ICON_SIZE[1] - fitted.height) // 2,
+        )
+        tile.alpha_composite(fitted, origin)
         buf = io.BytesIO()
-        img.save(buf, format="PNG")
+        tile.save(buf, format="PNG")
         return buf.getvalue()
+
+
+def _has_real_icon(cfg: ButtonConfig) -> bool:
+    return _real_icon_path(cfg) is not None
+
+
+def _archive_icon_name(cfg: ButtonConfig) -> str:
+    path = _real_icon_path(cfg)
+    if path is not None:
+        return f"icons/{path.name}"
+    return f"icons/{int(cfg.index)}.png"
 
 
 def _build_manifest(configs: list[ButtonConfig]) -> dict:
@@ -111,10 +323,11 @@ def _build_manifest(configs: list[ButtonConfig]) -> dict:
         row = idx // _D200_COLS
         col = idx % _D200_COLS
         view_param: dict = {}
-        if cfg.label:
+        has_real_icon = _has_real_icon(cfg)
+        if cfg.label and not has_real_icon:
             view_param["Text"] = cfg.label
-        # Icon filename uses the flat index for uniqueness, referenced from manifest.
-        view_param["Icon"] = f"icons/{idx}.png"
+        if cfg.icon_path is not None or cfg.label:
+            view_param["Icon"] = _archive_icon_name(cfg)
         manifest[f"{col}_{row}"] = {
             "State": 0,
             "ViewParam": [view_param],
@@ -122,23 +335,51 @@ def _build_manifest(configs: list[ButtonConfig]) -> dict:
     return manifest
 
 
+def _validate_indices(configs: list[ButtonConfig]) -> None:
+    for cfg in configs:
+        idx = int(cfg.index)
+        if not 0 <= idx < _D200_ACTIVE_BUTTON_COUNT:
+            raise ValueError(
+                "button index "
+                f"{idx} is outside the supported D200 grid (0..{_D200_ACTIVE_BUTTON_COUNT - 1})"
+            )
+
+
+def _filled_button_layout(configs: list[ButtonConfig]) -> list[ButtonConfig]:
+    by_index = {int(cfg.index): cfg for cfg in configs}
+    return [
+        by_index.get(index, ButtonConfig(index=index))
+        for index in range(_D200_ACTIVE_BUTTON_COUNT)
+    ]
+
+
 def _assemble_zip(
     configs: list[ButtonConfig],
-    icons: dict[int, bytes],
+    icons: dict[str, bytes],
     manifest: dict,
-    dummy_content: str,
+    padding_len: int,
 ) -> bytes:
-    """Serialize the ZIP in canonical order (manifest, icons, dummy last)."""
+    """Serialize the ZIP in canonical order.
+
+    ``dummy.txt`` is intentionally written before the icon entries so changing
+    its size shifts all subsequent icon bytes and the final central directory.
+    ``sentinel.txt`` remains the last file because the firmware has
+    historically been sensitive to the final archive entry.
+    """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as zf:
         zf.writestr(
             "manifest.json",
-            json.dumps(manifest, sort_keys=True, separators=(",", ":"), indent=2),
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")),
         )
-        for cfg in configs:
-            zf.writestr(f"icons/{int(cfg.index)}.png", icons[int(cfg.index)])
-        # dummy.txt must exist so regeneration can shift boundary offsets.
-        zf.writestr("dummy.txt", dummy_content)
+        dummy_info = zipfile.ZipInfo("dummy.txt")
+        dummy_info.compress_type = zipfile.ZIP_STORED
+        zf.writestr(dummy_info, b"A" * padding_len)
+        for name, data in icons.items():
+            zf.writestr(name, data)
+        sentinel_info = zipfile.ZipInfo("sentinel.txt")
+        sentinel_info.compress_type = zipfile.ZIP_STORED
+        zf.writestr(sentinel_info, b"")
     return buf.getvalue()
 
 
@@ -156,19 +397,29 @@ def _boundary_bytes_are_safe(blob: bytes) -> bool:
     return True
 
 
-def build_buttons_zip(configs: Iterable[ButtonConfig]) -> bytes:
+def build_buttons_zip(
+    configs: Iterable[ButtonConfig], *, fill_missing: bool = False
+) -> bytes:
     """Serialize a list of button configs into the on-wire ZIP blob.
 
     Automatically regenerates ``dummy.txt`` with random padding when the
     resulting ZIP would trip the D200 firmware's frame-boundary parser bug.
     """
     configs_list = list(configs)
+    _validate_indices(configs_list)
+    if fill_missing:
+        configs_list = _filled_button_layout(configs_list)
     # Cache rendered icons so the retry loop doesn't re-encode PNGs.
-    icons = {int(c.index): _normalize_icon(c) for c in configs_list}
+    icons: dict[str, bytes] = {}
+    for cfg in configs_list:
+        if cfg.icon_path is None and not cfg.label:
+            continue
+        archive_name = _archive_icon_name(cfg)
+        icons.setdefault(archive_name, _normalize_icon(cfg))
     manifest = _build_manifest(configs_list)
 
-    dummy = ""
-    blob = _assemble_zip(configs_list, icons, manifest, dummy)
+    padding_len = 0
+    blob = _assemble_zip(configs_list, icons, manifest, padding_len)
     retries = 0
     while not _boundary_bytes_are_safe(blob):
         retries += 1
@@ -182,15 +433,15 @@ def build_buttons_zip(configs: Iterable[ButtonConfig]) -> bytes:
                 "Unable to produce a ZIP whose 1024-byte boundaries avoid "
                 f"firmware invalid bytes after {retries} retries."
             )
-        # Grow the dummy file proportionally to the retry count — longer
-        # strings shift more bytes and are more likely to land on a safe
-        # boundary layout.
-        dummy += _random_ascii(8 * retries)
-        blob = _assemble_zip(configs_list, icons, manifest, dummy)
+        # Increase dummy.txt by one stored byte per retry so every subsequent
+        # entry shifts deterministically through the 1024-byte boundaries,
+        # while sentinel.txt stays last as a throwaway archive entry.
+        padding_len = retries
+        blob = _assemble_zip(configs_list, icons, manifest, padding_len)
         logger.debug(
             "zip_boundary_retry",
             retries=retries,
-            dummy_len=len(dummy),
+            dummy_len=padding_len,
             size=len(blob),
         )
 

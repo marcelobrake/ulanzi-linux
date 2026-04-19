@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ulanzi-linux"
-version = "0.1.0"
+version = "0.3.0"
 description = "Unofficial Linux client for the Ulanzi Stream Controller D200 — reverse engineered"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -64,6 +64,9 @@ where = ["src"]
 
 [tool.setuptools.package-dir]
 "" = "src"
+
+[tool.setuptools.package-data]
+"ulanzi_linux.interface.web" = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

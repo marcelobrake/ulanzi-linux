@@ -7,9 +7,12 @@ leave a corrupt config on disk.
 
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 pytest.importorskip("fastapi")  # skip cleanly when [web] extra is absent
 from fastapi.testclient import TestClient
@@ -20,28 +23,28 @@ from ulanzi_linux.interface.web.app import (
     create_app,
 )
 
-
-VALID_YAML = """\
-default_page: main
-small_window:
-  enabled: true
-  interval_s: 2.0
-pages:
-  main:
-    buttons:
-      - index: 0
-        label: Term
-        action: { type: shell, cmd: gnome-terminal }
-  media:
-    buttons:
-      - index: 0
-        label: Play
-        action: { type: shortcut, keys: XF86AudioPlay }
-fixed_buttons:
-  - index: 10
-    label: Main
-    action: { type: switch_page, page: main }
-"""
+VALID_YAML = (
+    "default_page: main\n"
+    "small_window:\n"
+    "  enabled: true\n"
+    "  interval_s: 2.0\n"
+    "  show_metrics: true\n"
+    "pages:\n"
+    "  main:\n"
+    "    buttons:\n"
+    "      - index: 0\n"
+    "        label: Term\n"
+    "        action: { type: shell, cmd: gnome-terminal }\n"
+    "  media:\n"
+    "    buttons:\n"
+    "      - index: 0\n"
+    "        label: Play\n"
+    "        action: { type: shortcut, keys: XF86AudioPlay }\n"
+    "fixed_buttons:\n"
+    "  - index: 10\n"
+    "    label: Main\n"
+    "    action: { type: switch_page, page: main }\n"
+)
 
 BROKEN_YAML_UNKNOWN_ACTION = """\
 default_page: main
@@ -137,6 +140,35 @@ def test_get_config_returns_text_and_metadata(
     assert body["size"] == path.stat().st_size
 
 
+def test_get_editor_returns_structured_config(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, path = client
+    r = c.get("/api/editor")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["path"] == str(path)
+    assert body["default_page"] == "main"
+    assert body["pages"][0]["name"] == "main"
+    assert body["small_window"]["show_metrics"] is True
+    assert body["pages"][0]["buttons"][0]["text_style"]["background_color"] == "#111827"
+    assert body["versioned_config_path"] is None
+    assert body["saved_firmware_bundle_path"] is None
+
+
+def test_small_window_preview_returns_live_payload(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    r = c.get("/api/small-window/preview", params={"time_format": "%H:%M"})
+    assert r.status_code == 200
+    body = r.json()
+    assert isinstance(body["time_text"], str)
+    assert isinstance(body["cpu_percent"], int)
+    assert isinstance(body["mem_percent"], int)
+    assert body["gpu_percent"] == 0
+
+
 def test_get_config_returns_404_when_missing(tmp_path: Path) -> None:
     path = tmp_path / "does-not-exist.yaml"
     app = create_app(path)
@@ -169,6 +201,106 @@ def test_validate_endpoint_returns_error_for_bad_yaml(
     assert "self_destruct" in body["error"]
 
 
+def test_editor_validate_accepts_info_window_action_slot(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    payload = c.get("/api/editor").json()
+    payload["fixed_buttons"].append(
+        {
+            "index": 13,
+            "label": "Wide",
+            "icon_path": None,
+            "action": {
+                "type": "url",
+                "cmd": "",
+                "keys": "",
+                "url": "https://example.com",
+                "page": "",
+            },
+        }
+    )
+    r = c.post("/api/editor/validate", json=payload)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+
+
+def test_put_editor_persists_info_window_action_without_visuals(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, path = client
+    payload = c.get("/api/editor").json()
+    payload["fixed_buttons"].append(
+        {
+            "index": 13,
+            "label": "Ignored",
+            "icon_path": "~/.config/ulanzi/icons/ignored.png",
+            "action": {
+                "type": "url",
+                "cmd": "",
+                "keys": "",
+                "url": "https://example.com/info",
+                "page": "",
+            },
+        }
+    )
+
+    r = c.put("/api/editor", json=payload)
+    assert r.status_code == 200
+    saved = path.read_text()
+    assert "index: 13" in saved
+    assert "https://example.com/info" in saved
+    assert "ignored.png" not in saved
+    assert "label: Ignored" not in saved
+
+
+def test_put_editor_persists_text_style_for_text_only_button(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, path = client
+    payload = c.get("/api/editor").json()
+    payload["pages"][0]["buttons"][0]["icon_path"] = None
+    payload["pages"][0]["buttons"][0]["text_style"] = {
+        "background_color": "#112233",
+        "text_color": "#F0E1D2",
+        "bold": True,
+        "italic": True,
+        "underline": True,
+        "font_family": "Liberation Serif",
+        "font_size": 38,
+    }
+
+    r = c.put("/api/editor", json=payload)
+    assert r.status_code == 200
+    saved = path.read_text()
+    assert "text_style:" in saved
+    assert "background_color: '#112233'" in saved
+    assert 'font_family: Liberation Serif' in saved
+
+
+def test_put_editor_can_also_save_firmware_bundle(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    payload = c.get("/api/editor").json()
+    payload["save_firmware_bundle"] = True
+
+    r = c.put("/api/editor", json=payload)
+    assert r.status_code == 200
+    body = r.json()
+
+    versioned = Path(body["versioned_config_path"])
+    bundle = Path(body["saved_firmware_bundle_path"])
+    assert versioned.exists()
+    assert bundle.exists()
+    with zipfile.ZipFile(bundle) as archive:
+        names = archive.namelist()
+        assert "manifest.json" in names
+        assert "dummy.txt" in names
+        assert "sentinel.txt" in names
+
+
 def test_put_config_persists_valid_yaml(
     client: tuple[TestClient, Path],
 ) -> None:
@@ -179,6 +311,10 @@ def test_put_config_persists_valid_yaml(
     body = r.json()
     assert body["ok"] is True
     assert path.read_text() == new
+    versioned = Path(body["versioned_config_path"])
+    assert versioned.exists()
+    assert versioned.read_text() == new
+    assert body["saved_firmware_bundle_path"] is None
 
 
 def test_put_config_rejects_bad_yaml_and_preserves_disk(
@@ -207,12 +343,49 @@ def test_put_config_creates_parent_directory(tmp_path: Path) -> None:
     assert nested.read_text() == VALID_YAML
 
 
+def test_upload_asset_normalizes_image_to_png_canvas(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    image = Image.new("RGB", (320, 80), (255, 0, 0))
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    buffer.seek(0)
+
+    r = c.post(
+        "/api/assets",
+        files={"file": ("wide-banner.jpg", buffer.getvalue(), "image/jpeg")},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    saved = Path(body["path"]).expanduser()
+    assert saved.suffix == ".png"
+
+    with Image.open(saved) as normalized:
+        assert normalized.size == (196, 196)
+        assert normalized.getpixel((0, 0))[3] == 0
+        center = normalized.getpixel((98, 98))
+        assert center[0] >= 250
+        assert center[1] <= 5
+        assert center[2] <= 5
+
+
 def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     c, _ = client
     r = c.get("/")
     assert r.status_code == 200
     assert "<title>" in r.text and "ulanzi-linux" in r.text
+    assert "/static/app.js" in r.text
+    assert "alpinejs" in r.text
+    assert r.text.index("/static/app.js") < r.text.index("alpinejs")
+    assert "Reset" in r.text
     # Static mount exposes the CSS/JS files.
     r = c.get("/static/app.css")
     assert r.status_code == 200
     assert "--bg:" in r.text
+    r = c.get("/static/app.js")
+    assert r.status_code == 200
+    assert "window.editorApp = function editorApp()" in r.text
+    assert "async resetDeck()" in r.text
+    assert "Clique em Salvar no deck para aplicar." in r.text
+    assert "await this.saveDeck();" not in r.text
