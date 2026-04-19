@@ -39,6 +39,10 @@ class ConfigPutRequest(BaseModel):
     """YAML payload the user wants to persist."""
 
     content: str = Field(..., description="Raw YAML text to write to disk.")
+    save_firmware_bundle: bool = Field(
+        False,
+        description="Also save the generated deck upload ZIP next to deck.yaml.",
+    )
 
 
 class ConfigValidateRequest(BaseModel):
@@ -64,6 +68,8 @@ class ValidationSummary(BaseModel):
     pages: list[PageSummary] = Field(default_factory=list)
     fixed_button_indices: list[int] = Field(default_factory=list)
     small_window_enabled: bool = False
+    versioned_config_path: str | None = None
+    saved_firmware_bundle_path: str | None = None
 
 
 class EditorActionModel(BaseModel):
@@ -126,6 +132,8 @@ class EditorConfigResponse(BaseModel):
     small_window: EditorSmallWindowModel = Field(
         default_factory=EditorSmallWindowModel
     )
+    versioned_config_path: str | None = None
+    saved_firmware_bundle_path: str | None = None
 
 
 class EditorConfigPutRequest(BaseModel):
@@ -137,6 +145,7 @@ class EditorConfigPutRequest(BaseModel):
     small_window: EditorSmallWindowModel = Field(
         default_factory=EditorSmallWindowModel
     )
+    save_firmware_bundle: bool = False
 
 
 class AssetUploadResponse(BaseModel):
@@ -144,6 +153,15 @@ class AssetUploadResponse(BaseModel):
 
     path: str
     preview_url: str
+
+
+class SmallWindowPreviewResponse(BaseModel):
+    """Live preview payload for the small-window simulator."""
+
+    time_text: str
+    cpu_percent: int
+    mem_percent: int
+    gpu_percent: int = 0
 
 
 class DeviceSummary(BaseModel):
@@ -181,5 +199,6 @@ __all__ = [
     "EditorTextStyleModel",
     "HealthResponse",
     "PageSummary",
+    "SmallWindowPreviewResponse",
     "ValidationSummary",
 ]

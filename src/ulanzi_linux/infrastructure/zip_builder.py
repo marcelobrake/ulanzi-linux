@@ -53,6 +53,7 @@ _FRAME_SIZE = 1024
 _FIRST_CHECK_OFFSET = 1016  # last byte of first 1024-byte window, accounting for header
 _INVALID_BOUNDARY_BYTES = (b"\x00", b"\x7c")
 _MAX_DUMMY_RETRIES = 1024
+_REAL_ICON_PADDING = 5
 _TEXT_TILE_PADDING = 16
 _TEXT_TILE_MAX_WIDTH = ICON_SIZE[0] - (_TEXT_TILE_PADDING * 2)
 _TEXT_TILE_MAX_HEIGHT = ICON_SIZE[1] - (_TEXT_TILE_PADDING * 2)
@@ -284,7 +285,14 @@ def _normalize_icon(cfg: ButtonConfig) -> bytes:
 
     with Image.open(path) as img:
         img = img.convert("RGBA")
-        fitted = ImageOps.contain(img, ICON_SIZE, Image.Resampling.LANCZOS)
+        fitted = ImageOps.contain(
+            img,
+            (
+                ICON_SIZE[0] - (_REAL_ICON_PADDING * 2),
+                ICON_SIZE[1] - (_REAL_ICON_PADDING * 2),
+            ),
+            Image.Resampling.LANCZOS,
+        )
         tile = Image.new("RGBA", ICON_SIZE, _hex_to_rgba(cfg.text_style.background_color))
         origin = (
             (ICON_SIZE[0] - fitted.width) // 2,

@@ -7,6 +7,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-04-18
+
+### Added
+
+- Added a live small-window preview to the localhost editor so the wide
+  bottom-right simulator tile now reflects the real device mode: clock or
+  CPU/MEM stats, refreshed from the host in real time.
+- Added automatic timestamped snapshots on every config save and an optional
+  ZIP bundle export for the payload that would be sent to the deck. The same
+  export path is also available from `ulanzi-linux push-config --save-firmware`.
+
+### Changed
+
+- Tightened the visual simulator to use fixed 96×96 button tiles and removed
+  the extra simulator header panel to free vertical space in the editor.
+- Image uploads are now normalized into 196×196 PNG assets with preserved
+  aspect ratio and at least 5 px of breathing room on every side before they
+  are previewed or packaged for the D200.
+
 ## [0.2.19] — 2026-04-18
 
 ### Changed

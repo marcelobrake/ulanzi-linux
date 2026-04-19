@@ -84,6 +84,13 @@ window.editorApp = function editorApp() {
     return {
         health: { ok: false, version: "", config_path: "", devices_found: 0 },
         editor: null,
+        saveFirmwareBundle: false,
+        smallWindowPreview: {
+            time_text: "--:--",
+            cpu_percent: 0,
+            mem_percent: 0,
+            gpu_percent: 0,
+        },
         status: "",
         statusClass: "",
         validationError: "",
@@ -98,7 +105,11 @@ window.editorApp = function editorApp() {
         async init() {
             await this.refreshHealth();
             await this.loadEditor();
+            await this.refreshSmallWindowPreview();
             setInterval(() => this.refreshHealth(), 5000);
+            setInterval(() => {
+                void this.refreshSmallWindowPreview();
+            }, 1000);
         },
 
         async refreshHealth() {
@@ -133,6 +144,7 @@ window.editorApp = function editorApp() {
                 }
                 this.selectSlot(this.selectedIndex);
                 this.dirty = false;
+                await this.refreshSmallWindowPreview();
                 this.setStatus(
                     this.editor.config_exists
                         ? "Configuração carregada"
@@ -143,6 +155,33 @@ window.editorApp = function editorApp() {
                 this.setStatus(`Falha ao carregar: ${error.message}`, "err");
             } finally {
                 this.busy = false;
+            }
+        },
+
+        async refreshSmallWindowPreview() {
+            if (!this.editor) {
+                return;
+            }
+            const timeFormat = this.editor.small_window?.time_format || "%H:%M";
+            try {
+                const response = await fetch(
+                    `/api/small-window/preview?time_format=${encodeURIComponent(timeFormat)}`,
+                );
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.detail || payload.error || "Falha ao atualizar a prévia");
+                }
+                this.smallWindowPreview = {
+                    time_text: payload.time_text || "--:--",
+                    cpu_percent: Number(payload.cpu_percent) || 0,
+                    mem_percent: Number(payload.mem_percent) || 0,
+                    gpu_percent: Number(payload.gpu_percent) || 0,
+                };
+            } catch (_error) {
+                this.smallWindowPreview = {
+                    ...this.smallWindowPreview,
+                    time_text: this.smallWindowPreview.time_text || "--:--",
+                };
             }
         },
 
@@ -401,6 +440,7 @@ window.editorApp = function editorApp() {
                     time_format: this.editor.small_window.time_format,
                     show_metrics: this.editor.small_window.show_metrics !== false,
                 },
+                save_firmware_bundle: Boolean(this.saveFirmwareBundle),
             };
         },
 
@@ -475,8 +515,15 @@ window.editorApp = function editorApp() {
                 }
                 this.selectSlot(this.selectedIndex);
                 this.dirty = false;
+                await this.refreshSmallWindowPreview();
+                const savedItems = [
+                    this.savedArtifactLabel(payload.versioned_config_path),
+                    this.savedArtifactLabel(payload.saved_firmware_bundle_path),
+                ].filter(Boolean);
                 this.setStatus(
-                    `Salvo e enviado ao deck às ${new Date().toLocaleTimeString()}`,
+                    savedItems.length
+                        ? `Salvo às ${new Date().toLocaleTimeString()} · ${savedItems.join(" · ")}`
+                        : `Salvo às ${new Date().toLocaleTimeString()}`,
                     "ok",
                 );
             } catch (error) {
@@ -541,6 +588,15 @@ window.editorApp = function editorApp() {
         setStatus(text, cls) {
             this.status = text;
             this.statusClass = cls;
+        },
+
+        savedArtifactLabel(path) {
+            if (!path) {
+                return "";
+            }
+            const parts = String(path).split("/").filter(Boolean);
+            const tail = parts[parts.length - 1] || path;
+            return tail.endsWith(".zip") ? `ZIP ${tail}` : `snapshot ${tail}`;
         },
 
         slotStyle(slot) {
@@ -650,6 +706,10 @@ window.editorApp = function editorApp() {
             return this.editor.small_window.show_metrics === false
                 ? "Somente relógio"
                 : "Estatísticas";
+        },
+
+        get smallWindowTimeLabel() {
+            return this.smallWindowPreview.time_text || "--:--";
         },
 
         get currentTextTileStyle() {

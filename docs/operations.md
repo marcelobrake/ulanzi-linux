@@ -100,6 +100,7 @@ The systemd unit shipped in this repo assumes exactly this location.
 
 ```bash
 ulanzi-linux daemon <CONFIG_PATH> [--skip-sync] [--no-watch]
+ulanzi-linux push-config <CONFIG_PATH> [--partial] [--save-firmware]
 ```
 
 | Flag | Effect | When to use |
@@ -156,6 +157,15 @@ The editor reads / validates / writes the YAML file atomically. It
 never touches USB. If a daemon is running in parallel, its watcher
 picks the new file up within ~1 s — no restart needed. The GUI and the
 daemon are **entirely decoupled**; either works without the other.
+
+Every save now creates a timestamped sibling copy of `deck.yaml`. The GUI can
+also save the generated upload ZIP next to the config, and the CLI exposes the
+same behavior with `ulanzi-linux push-config --save-firmware`.
+
+Icon uploads made through the GUI are normalized into 196×196 PNG files with
+aspect-ratio preservation and a minimum 5 px margin. The preview slot for the
+small window is also live: clock mode shows the current time, and stats mode
+shows current CPU and memory readings from the host.
 
 For HTTP API details, CodeMirror setup, and atomic-write internals,
 see [`web-ui.md`](web-ui.md).

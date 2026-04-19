@@ -38,22 +38,6 @@
 
 <main class="workspace">
   <section class="deck-panel">
-    <div class="panel-card panel-head">
-      <div>
-        <p class="eyebrow">Simulador</p>
-        <h2>Layout com 13 botões + info window acionável</h2>
-        <p class="muted">
-          3 linhas: 5 + 5 + 3 botões físicos, com o bloco largo inferior direito exibindo o small window e aceitando ação ao toque.
-        </p>
-      </div>
-
-      <div class="small-window-card" x-show="editor">
-        <span>Small window</span>
-        <strong x-text="smallWindowSummary"></strong>
-        <small x-text="editor?.small_window?.time_format || '%H:%M'"></small>
-      </div>
-    </div>
-
     <div class="panel-card page-toolbar" x-show="editor">
       <div class="page-tabs">
         <template x-for="page in editor?.pages || []" :key="page.name">
@@ -104,17 +88,46 @@
                   @click="selectSlot(slot.index)">
             <span class="deck-chip" x-show="slot.fixed">fixo</span>
 
-            <div class="deck-icon-frame">
-              <template x-if="slot.preview_url">
+            <div class="deck-icon-frame" :class="slot.kind === 'info' ? 'small-window-frame' : ''">
+              <template x-if="slot.kind === 'info'">
+                <div class="small-window-preview" :class="editor?.small_window?.enabled ? 'on' : 'off'">
+                  <template x-if="editor?.small_window?.enabled && editor?.small_window?.show_metrics === false">
+                    <div class="small-window-clock">
+                      <span class="small-window-badge">ao vivo</span>
+                      <strong x-text="smallWindowTimeLabel"></strong>
+                      <small x-text="editor?.small_window?.time_format || '%H:%M'"></small>
+                    </div>
+                  </template>
+                  <template x-if="editor?.small_window?.enabled && editor?.small_window?.show_metrics !== false">
+                    <div class="small-window-stats">
+                      <div class="small-window-metric">
+                        <span>CPU</span>
+                        <strong x-text="smallWindowPreview.cpu_percent + '%' "></strong>
+                      </div>
+                      <div class="small-window-metric">
+                        <span>MEM</span>
+                        <strong x-text="smallWindowPreview.mem_percent + '%' "></strong>
+                      </div>
+                    </div>
+                  </template>
+                  <template x-if="!editor?.small_window?.enabled">
+                    <div class="small-window-off">
+                      <span>Small window</span>
+                      <strong>Desligado</strong>
+                    </div>
+                  </template>
+                </div>
+              </template>
+              <template x-if="slot.kind !== 'info' && slot.preview_url">
                 <img class="deck-icon" :src="slot.preview_url" alt="Ícone do botão" />
               </template>
-              <template x-if="!slot.preview_url && slot.textOnly">
+              <template x-if="slot.kind !== 'info' && !slot.preview_url && slot.textOnly">
                 <div class="deck-text-tile" :style="tileStyleFor(slot.text_style)">
                   <span :style="textStyleFor(slot.text_style)"
                         x-text="slot.label"></span>
                 </div>
               </template>
-              <template x-if="!slot.preview_url && !slot.textOnly">
+              <template x-if="slot.kind !== 'info' && !slot.preview_url && !slot.textOnly">
                 <span class="deck-placeholder" x-text="slot.span === 2 ? '2x1' : '1x1'"></span>
               </template>
             </div>
@@ -129,9 +142,16 @@
     </div>
 
     <div class="panel-card helper-card">
+      <label class="toggle-row helper-toggle" x-show="editor">
+        <input type="checkbox" x-model="saveFirmwareBundle" />
+        <span>Salvar também o pacote ZIP gerado para envio ao deck</span>
+      </label>
       <p>
         Salvar reescreve o <code>deck.yaml</code> em formato canônico. Se o daemon estiver rodando,
         o Stream Deck recebe a atualização automaticamente em cerca de 1 segundo.
+      </p>
+      <p class="muted">
+        Cada save também cria uma cópia versionada do YAML com data e hora no nome.
       </p>
     </div>
   </section>

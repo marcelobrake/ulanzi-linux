@@ -30,8 +30,8 @@ from __future__ import annotations
 import mimetypes
 import os
 import re
-import shutil
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -41,16 +41,19 @@ import yaml
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from ulanzi_linux import __version__
+from ulanzi_linux.application.artifacts import (
+    build_default_page_bundle,
+    timestamp_token,
+    versioned_output_path,
+)
 from ulanzi_linux.application.config_loader import load_deck_config
 from ulanzi_linux.domain.button_config import (
+    DEFAULT_TIME_FORMAT,
     ButtonConfig,
     DeckConfig,
-    DEFAULT_TEXT_BACKGROUND_COLOR,
-    DEFAULT_TEXT_COLOR,
-    DEFAULT_TEXT_FONT_FAMILY,
-    DEFAULT_TEXT_FONT_SIZE,
     ShellAction,
     ShortcutAction,
     SwitchPageAction,
@@ -58,7 +61,9 @@ from ulanzi_linux.domain.button_config import (
     UrlAction,
 )
 from ulanzi_linux.infrastructure.hid_transport import enumerate_hid_devices
+from ulanzi_linux.infrastructure.system_metrics import ProcSystemMetrics
 from ulanzi_linux.infrastructure.ulanzi_d200 import D200_SPEC
+from ulanzi_linux.infrastructure.zip_builder import ICON_SIZE
 from ulanzi_linux.interface.web.models import (
     AssetUploadResponse,
     ConfigGetResponse,
@@ -74,6 +79,7 @@ from ulanzi_linux.interface.web.models import (
     EditorTextStyleModel,
     HealthResponse,
     PageSummary,
+    SmallWindowPreviewResponse,
     ValidationSummary,
 )
 
@@ -85,6 +91,8 @@ INFO_WINDOW_INDEX = 13
 EDITOR_DEFAULT_PAGE = "main"
 HOME_DIR = Path.home()
 SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+UPLOADED_ICON_MARGIN_PX = 5
+UPLOAD_FILE_FIELD = File(...)
 
 
 # ---------------------------------------------------------------------- #
@@ -169,6 +177,8 @@ def _config_to_editor_response(
     *,
     path: Path,
     config_exists: bool,
+    versioned_config_path: str | None = None,
+    saved_firmware_bundle_path: str | None = None,
 ) -> EditorConfigResponse:
     return EditorConfigResponse(
         path=str(path),
@@ -188,6 +198,8 @@ def _config_to_editor_response(
             time_format=cfg.small_window.time_format,
             show_metrics=cfg.small_window.show_metrics,
         ),
+        versioned_config_path=versioned_config_path,
+        saved_firmware_bundle_path=saved_firmware_bundle_path,
     )
 
 
@@ -199,6 +211,8 @@ def _default_editor_response(config_path: Path) -> EditorConfigResponse:
         pages=[EditorPageModel(name=EDITOR_DEFAULT_PAGE)],
         fixed_buttons=[],
         small_window=EditorSmallWindowModel(),
+        versioned_config_path=None,
+        saved_firmware_bundle_path=None,
     )
 
 
@@ -320,12 +334,28 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
     )
 
 
+def _load_config_from_text(text: str) -> DeckConfig:
+    """Parse YAML text through the real loader and return the config object."""
+    tmp_name = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write(text)
+            tmp.flush()
+            tmp_name = tmp.name
+        return load_deck_config(tmp_name)
+    finally:
+        with suppress(OSError):
+            os.unlink(tmp_name)
+
+
 def _validate_editor_payload(
     req: EditorConfigPutRequest,
 ) -> tuple[ValidationSummary, str | None]:
     try:
         yaml_text = _editor_payload_to_yaml_text(req)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return ValidationSummary(ok=False, error=str(exc)), None
     return _validate_yaml_text(yaml_text), yaml_text
 
@@ -333,6 +363,11 @@ def _validate_editor_payload(
 def _sanitize_filename(filename: str) -> str:
     cleaned = SAFE_FILENAME_RE.sub("-", filename).strip(".-")
     return cleaned or "button-icon.png"
+
+
+def _normalize_uploaded_filename(filename: str) -> str:
+    stem = Path(_sanitize_filename(filename)).stem or "button-icon"
+    return f"{stem}.png"
 
 
 def _allocate_asset_path(directory: Path, filename: str) -> Path:
@@ -346,6 +381,23 @@ def _allocate_asset_path(directory: Path, filename: str) -> Path:
     return candidate
 
 
+def _normalize_uploaded_image(source: UploadFile, target: Path) -> None:
+    inner_size = (
+        max(1, ICON_SIZE[0] - (UPLOADED_ICON_MARGIN_PX * 2)),
+        max(1, ICON_SIZE[1] - (UPLOADED_ICON_MARGIN_PX * 2)),
+    )
+    with Image.open(source.file) as img:
+        img = img.convert("RGBA")
+        fitted = ImageOps.contain(img, inner_size, Image.Resampling.LANCZOS)
+        canvas = Image.new("RGBA", ICON_SIZE, (0, 0, 0, 0))
+        origin = (
+            (ICON_SIZE[0] - fitted.width) // 2,
+            (ICON_SIZE[1] - fitted.height) // 2,
+        )
+        canvas.alpha_composite(fitted, origin)
+        canvas.save(target, format="PNG")
+
+
 def _validate_yaml_text(text: str) -> ValidationSummary:
     """Parse YAML text through the real loader and return a summary.
 
@@ -354,24 +406,46 @@ def _validate_yaml_text(text: str) -> ValidationSummary:
     can never see a divergence between "validated fine" and "saved but
     broken".
     """
-    tmp = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-    )
     try:
-        tmp.write(text)
-        tmp.flush()
-        tmp.close()
-        cfg = load_deck_config(tmp.name)
-    except Exception as exc:  # noqa: BLE001
+        cfg = _load_config_from_text(text)
+    except Exception as exc:
         return ValidationSummary(ok=False, error=str(exc))
-    finally:
-        try:
-            os.unlink(tmp.name)
-        except OSError:
-            pass
 
     summary = _summarise(cfg)
     return ValidationSummary(ok=True, **summary)
+
+
+def _cleanup_paths(*paths: Path | None) -> None:
+    for path in paths:
+        if path is None:
+            continue
+        with suppress(OSError):
+            path.unlink()
+
+
+def _write_versioned_artifacts(
+    *,
+    config_path: Path,
+    yaml_text: str,
+    token: str,
+    cfg: DeckConfig | None,
+    save_firmware_bundle: bool,
+) -> tuple[Path, Path | None]:
+    versioned_config_path = versioned_output_path(config_path, token=token)
+    versioned_config_path.write_text(yaml_text, encoding="utf-8")
+
+    saved_firmware_bundle_path: Path | None = None
+    if save_firmware_bundle:
+        effective_cfg = cfg if cfg is not None else _load_config_from_text(yaml_text)
+        saved_firmware_bundle_path = versioned_output_path(
+            config_path,
+            token=token,
+            label="firmware",
+            extension=".zip",
+        )
+        saved_firmware_bundle_path.write_bytes(build_default_page_bundle(effective_cfg))
+
+    return versioned_config_path, saved_firmware_bundle_path
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -395,10 +469,8 @@ def _atomic_write(path: Path, text: str) -> None:
             os.fsync(fh.fileno())  # durability — survive kernel panic
         os.replace(tmp_name, path)
     except Exception:
-        try:
+        with suppress(OSError):
             os.unlink(tmp_name)
-        except OSError:
-            pass
         raise
 
 
@@ -421,6 +493,7 @@ def create_app(config_path: Path) -> FastAPI:
         description="Localhost YAML editor for the Ulanzi D200 deck config.",
         version=__version__,
     )
+    metrics_reader = ProcSystemMetrics()
 
     # ------------------------------------------------------------------ #
     # Meta                                                                #
@@ -436,7 +509,7 @@ def create_app(config_path: Path) -> FastAPI:
                     product_id=D200_SPEC.usb_product_id,
                 )
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # hidapi can throw on sandboxed runners; don't let it 500 a
             # health endpoint whose main job is "is the UI alive?".
             logger.warning("hid_enumerate_failed", error=str(exc))
@@ -457,7 +530,7 @@ def create_app(config_path: Path) -> FastAPI:
                     product_id=D200_SPEC.usb_product_id,
                 )
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("hid_enumerate_failed", error=str(exc))
             return []
         return [
@@ -468,7 +541,7 @@ def create_app(config_path: Path) -> FastAPI:
                 interface_number=e.get("interface_number"),
                 path=(
                     e.get("path", b"").decode("utf-8", errors="replace")
-                    if isinstance(e.get("path"), (bytes, bytearray))
+                    if isinstance(e.get("path"), bytes | bytearray)
                     else e.get("path")
                 ),
             )
@@ -481,7 +554,7 @@ def create_app(config_path: Path) -> FastAPI:
             return _default_editor_response(config_path)
         try:
             cfg = load_deck_config(config_path)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise HTTPException(
                 status_code=422,
                 detail=f"config parse failed: {exc}",
@@ -490,6 +563,20 @@ def create_app(config_path: Path) -> FastAPI:
             cfg,
             path=config_path,
             config_exists=True,
+        )
+
+    @app.get(
+        "/api/small-window/preview",
+        response_model=SmallWindowPreviewResponse,
+    )
+    def get_small_window_preview(
+        time_format: str = DEFAULT_TIME_FORMAT,
+    ) -> SmallWindowPreviewResponse:
+        return SmallWindowPreviewResponse(
+            time_text=metrics_reader.format_time(time_format),
+            cpu_percent=metrics_reader.read_cpu_percent(),
+            mem_percent=metrics_reader.read_memory_percent(),
+            gpu_percent=0,
         )
 
     # ------------------------------------------------------------------ #
@@ -543,9 +630,21 @@ def create_app(config_path: Path) -> FastAPI:
 
         # Ensure parent dir exists — first-time save on a fresh box.
         config_path.parent.mkdir(parents=True, exist_ok=True)
+        versioned_config_path: Path | None = None
+        saved_firmware_bundle_path: Path | None = None
+        save_token = timestamp_token()
         try:
+            cfg = _load_config_from_text(req.content) if req.save_firmware_bundle else None
+            versioned_config_path, saved_firmware_bundle_path = _write_versioned_artifacts(
+                config_path=config_path,
+                yaml_text=req.content,
+                token=save_token,
+                cfg=cfg,
+                save_firmware_bundle=req.save_firmware_bundle,
+            )
             _atomic_write(config_path, req.content)
         except OSError as exc:
+            _cleanup_paths(versioned_config_path, saved_firmware_bundle_path)
             logger.error(
                 "config_save_write_failed",
                 path=str(config_path),
@@ -559,8 +658,23 @@ def create_app(config_path: Path) -> FastAPI:
             path=str(config_path),
             bytes=len(req.content.encode("utf-8")),
             pages=[p.name for p in summary.pages],
+            versioned_config_path=str(versioned_config_path),
+            saved_firmware_bundle_path=(
+                str(saved_firmware_bundle_path)
+                if saved_firmware_bundle_path is not None
+                else None
+            ),
         )
-        return summary
+        return summary.model_copy(
+            update={
+                "versioned_config_path": str(versioned_config_path),
+                "saved_firmware_bundle_path": (
+                    str(saved_firmware_bundle_path)
+                    if saved_firmware_bundle_path is not None
+                    else None
+                ),
+            }
+        )
 
     @app.put("/api/editor", response_model=EditorConfigResponse)
     def put_editor(req: EditorConfigPutRequest) -> EditorConfigResponse:
@@ -572,9 +686,21 @@ def create_app(config_path: Path) -> FastAPI:
             )  # type: ignore[return-value]
 
         config_path.parent.mkdir(parents=True, exist_ok=True)
+        cfg = _load_config_from_text(yaml_text)
+        versioned_config_path: Path | None = None
+        saved_firmware_bundle_path: Path | None = None
+        save_token = timestamp_token()
         try:
+            versioned_config_path, saved_firmware_bundle_path = _write_versioned_artifacts(
+                config_path=config_path,
+                yaml_text=yaml_text,
+                token=save_token,
+                cfg=cfg,
+                save_firmware_bundle=req.save_firmware_bundle,
+            )
             _atomic_write(config_path, yaml_text)
         except OSError as exc:
+            _cleanup_paths(versioned_config_path, saved_firmware_bundle_path)
             logger.error(
                 "config_save_write_failed",
                 path=str(config_path),
@@ -585,29 +711,47 @@ def create_app(config_path: Path) -> FastAPI:
                 detail=f"write failed: {exc}",
             ) from exc
 
-        cfg = load_deck_config(config_path)
         logger.info(
             "editor_config_saved",
             path=str(config_path),
             pages=[page.name for page in summary.pages],
             fixed_buttons=len(req.fixed_buttons),
+            versioned_config_path=str(versioned_config_path),
+            saved_firmware_bundle_path=(
+                str(saved_firmware_bundle_path)
+                if saved_firmware_bundle_path is not None
+                else None
+            ),
         )
         return _config_to_editor_response(
             cfg,
             path=config_path,
             config_exists=True,
+            versioned_config_path=str(versioned_config_path),
+            saved_firmware_bundle_path=(
+                str(saved_firmware_bundle_path)
+                if saved_firmware_bundle_path is not None
+                else None
+            ),
         )
 
     @app.post("/api/assets", response_model=AssetUploadResponse)
-    async def upload_asset(file: UploadFile = File(...)) -> AssetUploadResponse:
-        filename = _sanitize_filename(file.filename or "button-icon.png")
+    async def upload_asset(file: UploadFile = UPLOAD_FILE_FIELD) -> AssetUploadResponse:
+        filename = _normalize_uploaded_filename(file.filename or "button-icon.png")
         target_dir = config_path.parent / "icons"
         target_dir.mkdir(parents=True, exist_ok=True)
         target = _allocate_asset_path(target_dir, filename)
 
-        with target.open("wb") as fh:
+        try:
             await file.seek(0)
-            shutil.copyfileobj(file.file, fh)
+            _normalize_uploaded_image(file, target)
+        except (OSError, UnidentifiedImageError) as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"invalid image upload: {exc}",
+            ) from exc
+        finally:
+            await file.close()
 
         compact = _compact_path(target)
         assert compact is not None
@@ -616,6 +760,7 @@ def create_app(config_path: Path) -> FastAPI:
             path=str(target),
             filename=filename,
             bytes=target.stat().st_size,
+            normalized_size=f"{ICON_SIZE[0]}x{ICON_SIZE[1]}",
         )
         return AssetUploadResponse(
             path=compact,

@@ -7,9 +7,12 @@ leave a corrupt config on disk.
 
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 pytest.importorskip("fastapi")  # skip cleanly when [web] extra is absent
 from fastapi.testclient import TestClient
@@ -19,7 +22,6 @@ from ulanzi_linux.interface.web.app import (
     _validate_yaml_text,
     create_app,
 )
-
 
 VALID_YAML = (
     "default_page: main\n"
@@ -150,6 +152,21 @@ def test_get_editor_returns_structured_config(
     assert body["pages"][0]["name"] == "main"
     assert body["small_window"]["show_metrics"] is True
     assert body["pages"][0]["buttons"][0]["text_style"]["background_color"] == "#111827"
+    assert body["versioned_config_path"] is None
+    assert body["saved_firmware_bundle_path"] is None
+
+
+def test_small_window_preview_returns_live_payload(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    r = c.get("/api/small-window/preview", params={"time_format": "%H:%M"})
+    assert r.status_code == 200
+    body = r.json()
+    assert isinstance(body["time_text"], str)
+    assert isinstance(body["cpu_percent"], int)
+    assert isinstance(body["mem_percent"], int)
+    assert body["gpu_percent"] == 0
 
 
 def test_get_config_returns_404_when_missing(tmp_path: Path) -> None:
@@ -262,6 +279,28 @@ def test_put_editor_persists_text_style_for_text_only_button(
     assert 'font_family: Liberation Serif' in saved
 
 
+def test_put_editor_can_also_save_firmware_bundle(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    payload = c.get("/api/editor").json()
+    payload["save_firmware_bundle"] = True
+
+    r = c.put("/api/editor", json=payload)
+    assert r.status_code == 200
+    body = r.json()
+
+    versioned = Path(body["versioned_config_path"])
+    bundle = Path(body["saved_firmware_bundle_path"])
+    assert versioned.exists()
+    assert bundle.exists()
+    with zipfile.ZipFile(bundle) as archive:
+        names = archive.namelist()
+        assert "manifest.json" in names
+        assert "dummy.txt" in names
+        assert "sentinel.txt" in names
+
+
 def test_put_config_persists_valid_yaml(
     client: tuple[TestClient, Path],
 ) -> None:
@@ -272,6 +311,10 @@ def test_put_config_persists_valid_yaml(
     body = r.json()
     assert body["ok"] is True
     assert path.read_text() == new
+    versioned = Path(body["versioned_config_path"])
+    assert versioned.exists()
+    assert versioned.read_text() == new
+    assert body["saved_firmware_bundle_path"] is None
 
 
 def test_put_config_rejects_bad_yaml_and_preserves_disk(
@@ -298,6 +341,33 @@ def test_put_config_creates_parent_directory(tmp_path: Path) -> None:
     assert r.status_code == 200
     assert nested.exists()
     assert nested.read_text() == VALID_YAML
+
+
+def test_upload_asset_normalizes_image_to_png_canvas(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    image = Image.new("RGB", (320, 80), (255, 0, 0))
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    buffer.seek(0)
+
+    r = c.post(
+        "/api/assets",
+        files={"file": ("wide-banner.jpg", buffer.getvalue(), "image/jpeg")},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    saved = Path(body["path"]).expanduser()
+    assert saved.suffix == ".png"
+
+    with Image.open(saved) as normalized:
+        assert normalized.size == (196, 196)
+        assert normalized.getpixel((0, 0))[3] == 0
+        center = normalized.getpixel((98, 98))
+        assert center[0] >= 250
+        assert center[1] <= 5
+        assert center[2] <= 5
 
 
 def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:

@@ -37,6 +37,16 @@ image, the label is previewed centered in the tile and you can tweak
 background color, text color, weight, italic, underline, font family and
 font size directly from the inspector.
 
+The simulator uses fixed 96×96 button tiles and the wide bottom-right slot
+now renders a live small-window preview. When `show_metrics` is off it shows
+the current clock; when it is on it shows live CPU and memory values from the
+host, matching the D200 mode switch already validated on hardware.
+
+Image uploads are normalized immediately into 196×196 PNG assets, preserving
+their aspect ratio and keeping at least 5 px of margin on every edge. Each
+save also creates a timestamped sibling copy of `deck.yaml`, and the UI can
+optionally persist the generated ZIP payload next to the config file.
+
 ## Design
 
 The UI is three small files under
@@ -90,9 +100,15 @@ home directory.
 | --- | --- | --- |
 | `GET`  | `/api/health` | Version, config path, device count — used in the UI header. |
 | `GET`  | `/api/devices` | Enumerate D200 units currently attached. |
+| `GET`  | `/api/editor` | Read the structured visual-editor payload. |
+| `GET`  | `/api/small-window/preview` | Return live clock and CPU/MEM values for the simulator tile. |
 | `GET`  | `/api/config` | Read the YAML file as text + metadata. |
 | `POST` | `/api/config/validate` | Parse without saving — for live feedback. |
-| `PUT`  | `/api/config` | Validate and save atomically. |
+| `POST` | `/api/editor/validate` | Validate the structured editor payload before saving. |
+| `PUT`  | `/api/config` | Validate, snapshot and save the raw YAML atomically. |
+| `PUT`  | `/api/editor` | Save the structured editor payload and optionally persist the ZIP bundle. |
+| `POST` | `/api/assets` | Upload and normalize an icon into the local `icons/` folder. |
+| `GET`  | `/api/asset` | Serve a stored icon back to the browser for previews. |
 
 FastAPI auto-generates an OpenAPI spec at `/docs` while the server is
 running, handy for quickly curling against the API.
