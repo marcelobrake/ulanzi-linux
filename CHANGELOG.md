@@ -7,6 +7,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] — 2026-04-19
+
+### Fixed
+
+- The localhost editor now serves the main HTML with `Cache-Control: no-store`
+  and appends the running package version to the local CSS and JavaScript asset
+  URLs, preventing browsers from reusing stale `app.js` after upgrades and
+  breaking new UI features such as the icon-library modal and predefined-command
+  selector.
+
 ## [0.6.0] — 2026-04-19
 
 ### Added

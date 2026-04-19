@@ -439,9 +439,11 @@ def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     r = c.get("/")
     assert r.status_code == 200
     assert "<title>" in r.text and "ulanzi-linux" in r.text
-    assert "/static/app.js" in r.text
+    assert "/static/app.js?build=" in r.text
+    assert "/static/app.css?build=" in r.text
     assert "alpinejs" in r.text
-    assert r.text.index("/static/app.js") < r.text.index("alpinejs")
+    assert r.text.index("/static/app.js?build=") < r.text.index("alpinejs")
+    assert r.headers["cache-control"] == "no-store, max-age=0"
     assert "Reset" in r.text
     assert "Biblioteca de ícones" in r.text
     assert "Comando pré-definido" in r.text
