@@ -20,6 +20,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UNIT_PATH = REPO_ROOT / "systemd" / "ulanzi-linux.service"
 INSTALL_SCRIPT = REPO_ROOT / "systemd" / "install.sh"
+AUTOSTART_PATH = REPO_ROOT / "autostart" / "ulanzi-linux-session-agent.desktop"
 
 
 @pytest.fixture(scope="module")
@@ -106,3 +107,16 @@ def test_install_script_references_correct_unit_name() -> None:
     assert 'UNIT_NAME="ulanzi-linux.service"' in text
     # Script targets the user systemd tree, not system-wide.
     assert "systemctl --user" in text
+    assert 'AUTOSTART_NAME="ulanzi-linux-session-agent.desktop"' in text
+    assert 'systemctl --user restart "${UNIT_NAME}"' in text
+
+
+def test_autostart_desktop_file_has_expected_shape() -> None:
+    assert AUTOSTART_PATH.exists(), f"missing autostart file: {AUTOSTART_PATH}"
+    cp = configparser.ConfigParser(interpolation=None)
+    cp.read(AUTOSTART_PATH, encoding="utf-8")
+
+    assert cp.has_section("Desktop Entry")
+    assert cp.get("Desktop Entry", "Type") == "Application"
+    assert cp.get("Desktop Entry", "Terminal") == "false"
+    assert "session-agent" in cp.get("Desktop Entry", "Exec")

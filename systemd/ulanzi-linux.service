@@ -10,10 +10,12 @@
 #     log out, which is what you want.
 #
 # Install:
-#   mkdir -p ~/.config/systemd/user
-#   cp systemd/ulanzi-linux.service ~/.config/systemd/user/
-#   systemctl --user daemon-reload
-#   systemctl --user enable --now ulanzi-linux.service
+#   ./systemd/install.sh
+#
+# Manual install is still possible, but the helper script is preferred
+# because it rewrites ExecStart to the actual `ulanzi-linux` entry point
+# when the package is installed via pyenv / virtualenv instead of the
+# traditional `~/.local/bin` user path.
 #
 # Status / logs:
 #   systemctl --user status ulanzi-linux.service
@@ -40,8 +42,9 @@ PartOf=graphical-session.target
 Type=simple
 
 # Entry point shipped by pip (``project.scripts`` in pyproject.toml).
-# ``%h`` expands to the user's home directory so the unit is portable
-# across accounts without editing.
+# The template defaults to ``%h/.local/bin`` for the common
+# ``pip install --user .`` case, while ``systemd/install.sh`` rewrites the
+# line below to the resolved binary path when the install lives elsewhere.
 #
 # Flags:
 #   --json-logs  — structured logs to journald (queryable with

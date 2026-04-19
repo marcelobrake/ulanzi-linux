@@ -76,6 +76,7 @@ function makeResetEditor(defaultPage = "main") {
             interval_s: 2.0,
             time_format: "%H:%M",
             show_metrics: false,
+            rotate_every_s: null,
         },
     };
 }
@@ -201,9 +202,29 @@ window.editorApp = function editorApp() {
                 interval_s: 2.0,
                 time_format: "%H:%M",
                 show_metrics: true,
+                rotate_every_s: null,
             };
             editor.small_window.show_metrics = editor.small_window.show_metrics !== false;
+            editor.small_window.rotate_every_s = this.parseOptionalNumber(editor.small_window.rotate_every_s);
             return editor;
+        },
+
+        parseOptionalNumber(value) {
+            if (value === null || value === undefined || value === "") {
+                return null;
+            }
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : null;
+        },
+
+        formatSeconds(value) {
+            const parsed = Number(value);
+            if (!Number.isFinite(parsed)) {
+                return "";
+            }
+            return Number.isInteger(parsed)
+                ? String(parsed)
+                : parsed.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
         },
 
         normalizeButton(button) {
@@ -439,6 +460,7 @@ window.editorApp = function editorApp() {
                     interval_s: Number(this.editor.small_window.interval_s),
                     time_format: this.editor.small_window.time_format,
                     show_metrics: this.editor.small_window.show_metrics !== false,
+                    rotate_every_s: this.parseOptionalNumber(this.editor.small_window.rotate_every_s),
                 },
                 save_firmware_bundle: Boolean(this.saveFirmwareBundle),
             };
@@ -703,9 +725,25 @@ window.editorApp = function editorApp() {
             if (!this.editor?.small_window?.enabled) {
                 return "Desligado";
             }
+            if (this.smallWindowAlternates) {
+                const seconds = this.formatSeconds(this.editor.small_window.rotate_every_s);
+                return `Relógio ${seconds}s / estatísticas ${seconds}s`;
+            }
             return this.editor.small_window.show_metrics === false
                 ? "Somente relógio"
                 : "Estatísticas";
+        },
+
+        get smallWindowAlternates() {
+            return Boolean(
+                this.editor?.small_window?.enabled
+                && this.editor.small_window.show_metrics !== false
+                && this.parseOptionalNumber(this.editor.small_window.rotate_every_s) !== null,
+            );
+        },
+
+        get smallWindowRotateLabel() {
+            return this.formatSeconds(this.editor?.small_window?.rotate_every_s);
         },
 
         get smallWindowTimeLabel() {

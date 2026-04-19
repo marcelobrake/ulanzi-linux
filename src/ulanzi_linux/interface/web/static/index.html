@@ -91,14 +91,21 @@
             <div class="deck-icon-frame" :class="slot.kind === 'info' ? 'small-window-frame' : ''">
               <template x-if="slot.kind === 'info'">
                 <div class="small-window-preview" :class="editor?.small_window?.enabled ? 'on' : 'off'">
-                  <template x-if="editor?.small_window?.enabled && editor?.small_window?.show_metrics === false">
+                  <template x-if="editor?.small_window?.enabled && smallWindowAlternates">
+                    <div class="small-window-clock">
+                      <span class="small-window-badge">alternando</span>
+                      <strong x-text="smallWindowTimeLabel"></strong>
+                      <small x-text="'relógio ↔ CPU/MEM · ' + smallWindowRotateLabel + 's'"></small>
+                    </div>
+                  </template>
+                  <template x-if="editor?.small_window?.enabled && !smallWindowAlternates && editor?.small_window?.show_metrics === false">
                     <div class="small-window-clock">
                       <span class="small-window-badge">ao vivo</span>
                       <strong x-text="smallWindowTimeLabel"></strong>
                       <small x-text="editor?.small_window?.time_format || '%H:%M'"></small>
                     </div>
                   </template>
-                  <template x-if="editor?.small_window?.enabled && editor?.small_window?.show_metrics !== false">
+                  <template x-if="editor?.small_window?.enabled && !smallWindowAlternates && editor?.small_window?.show_metrics !== false">
                     <div class="small-window-stats">
                       <div class="small-window-metric">
                         <span>CPU</span>
@@ -402,6 +409,17 @@
                x-model="editor.small_window.time_format"
                @input="dirty = true"
                placeholder="%H:%M" />
+      </label>
+
+      <label class="field">
+        <span>Alternar relógio e estatísticas a cada (s)</span>
+        <input type="number"
+               step="0.05"
+               min="0.05"
+               x-model="editor.small_window.rotate_every_s"
+               @input="dirty = true"
+               :disabled="!editor.small_window.enabled || !editor.small_window.show_metrics"
+               placeholder="vazio = estatísticas fixas" />
       </label>
     </div>
 

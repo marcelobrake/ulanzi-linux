@@ -150,11 +150,17 @@ def _parse_small_window(raw: dict[str, Any] | None) -> SmallWindowConfig:
     """Parse the ``small_window:`` YAML block (all keys optional)."""
     if not raw:
         return SmallWindowConfig()
+    rotate_every_raw = raw.get("rotate_every_s")
     return SmallWindowConfig(
         enabled=bool(raw.get("enabled", False)),
         interval_s=float(raw.get("interval_s", 2.0)),
         time_format=str(raw.get("time_format", DEFAULT_TIME_FORMAT)),
         show_metrics=bool(raw.get("show_metrics", True)),
+        rotate_every_s=(
+            None
+            if rotate_every_raw in (None, "")
+            else float(rotate_every_raw)
+        ),
     )
 
 

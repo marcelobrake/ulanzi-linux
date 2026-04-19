@@ -119,6 +119,7 @@ class EditorSmallWindowModel(BaseModel):
     interval_s: float = 2.0
     time_format: str = DEFAULT_TIME_FORMAT
     show_metrics: bool = True
+    rotate_every_s: float | None = None
 
 
 class EditorConfigResponse(BaseModel):

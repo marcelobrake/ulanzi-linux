@@ -33,6 +33,7 @@ from ulanzi_linux.application.config_loader import load_deck_config
 from ulanzi_linux.application.config_watcher import ConfigWatcher
 from ulanzi_linux.application.daemon import DeckDaemon
 from ulanzi_linux.application.deck_service import DeckService
+from ulanzi_linux.application.session_agent import GraphicalSessionAgentServer
 from ulanzi_linux.domain.events import ButtonEvent, DeviceInfoEvent
 from ulanzi_linux.infrastructure.hid_transport import (
     DeviceNotFoundError,
@@ -314,6 +315,34 @@ async def _daemon_async(
             f"watch={'on' if watch else 'off'}. Ctrl-C to stop."
         )
         await daemon.run(stop_event=stop, watcher=watcher)
+
+
+# ---------------------------------------------------------------------- #
+# session-agent                                                           #
+# ---------------------------------------------------------------------- #
+
+
+@cli.command("session-agent")
+def session_agent_command() -> None:
+    """Run the graphical-session bridge for shell, URL and shortcut actions."""
+    try:
+        asyncio.run(_session_agent_async())
+    except ValueError as exc:
+        _bail(str(exc))
+
+
+async def _session_agent_async() -> None:
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        with suppress(NotImplementedError):
+            loop.add_signal_handler(sig, stop.set)
+
+    server = GraphicalSessionAgentServer()
+    console.print(
+        f"[green]session-agent running[/] — socket='{server.socket_path}'. Ctrl-C to stop."
+    )
+    await server.serve(stop_event=stop)
 
 
 # ---------------------------------------------------------------------- #

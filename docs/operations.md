@@ -126,7 +126,10 @@ ulanzi-linux push-config <CONFIG_PATH> [--partial] [--save-firmware]
 
 By default logs are pretty-printed (`level=INFO`). Add `--verbose` for
 `DEBUG`, add `--json-logs` to output one JSON object per line (this is
-what the systemd unit uses so `journalctl -o json` works).
+what the systemd unit uses so `journalctl -o json` works). On POSIX hosts
+the same structured events are also mirrored to syslog by default, so
+operators can inspect them with tools such as `tail -f /var/log/syslog`
+when that path exists on the distro.
 
 Key events to watch for:
 
@@ -326,7 +329,10 @@ backend is alive with `curl http://127.0.0.1:8765/api/health`.
 ### 10.6 — Actions don't execute from a systemd-managed daemon
 
 Typical when running headless. The user session bus may not be where
-the action expects it. Quick check:
+the action expects it. The daemon now augments `$PATH` with the login
+shell's search path plus the usual Snap / Flatpak export directories, so
+missing graphical session variables are the more likely culprit now.
+Quick check:
 
 ```bash
 systemctl --user show-environment | grep -E 'DISPLAY|DBUS|WAYLAND'
