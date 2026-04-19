@@ -163,15 +163,18 @@ class SmallWindowConfig:
     When ``enabled``, the daemon takes over the small window. On the real
     D200 firmware observed on this host, ``show_metrics`` behaves as a mode
     switch between a clock layout and a stats layout rather than a combined
-    overlay. Clock mode therefore sends the time plus zeroed metric slots,
-    while stats mode sends the live CPU / memory payload that the firmware
-    expects for that layout.
+    overlay. ``rotate_every_s`` optionally alternates between those two
+    layouts while the daemon keeps refreshing under the watchdog threshold.
+    Clock mode therefore sends the time plus zeroed metric slots, while
+    stats mode sends the live CPU / memory payload that the firmware expects
+    for that layout.
     """
 
     enabled: bool = False
     interval_s: float = 2.0
     time_format: str = DEFAULT_TIME_FORMAT
     show_metrics: bool = True
+    rotate_every_s: float | None = None
 
     def __post_init__(self) -> None:
         if not (
@@ -183,6 +186,13 @@ class SmallWindowConfig:
                 f"small_window.interval_s={self.interval_s} out of range "
                 f"[{SMALL_WINDOW_MIN_INTERVAL_S}, "
                 f"{SMALL_WINDOW_MAX_INTERVAL_S}]"
+            )
+        if self.rotate_every_s is not None and (
+            self.rotate_every_s < SMALL_WINDOW_MIN_INTERVAL_S
+        ):
+            raise ValueError(
+                f"small_window.rotate_every_s={self.rotate_every_s} out of range "
+                f"[{SMALL_WINDOW_MIN_INTERVAL_S}, inf)"
             )
 
 

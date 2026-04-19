@@ -14,6 +14,7 @@ default_page: main
 small_window:
   enabled: true
   interval_s: 2.0
+  rotate_every_s: 5.0          # optional: 5 s clock, 5 s stats
   time_format: "%d/%m %H:%M"  # day/month hour:minute
 
 # Buttons that render on every page. Typically the physical bottom row used
