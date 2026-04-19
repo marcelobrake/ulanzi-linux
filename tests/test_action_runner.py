@@ -7,6 +7,7 @@ import asyncio
 import pytest
 
 from ulanzi_linux.application.action_runner import ActionRunner
+from ulanzi_linux.application.session_agent import SessionAgentDispatchResult
 from ulanzi_linux.domain.button_config import ShellAction, UrlAction
 
 
@@ -28,10 +29,23 @@ def _disable_browser_focus(
     monkeypatch.setattr(ActionRunner, "_default_browser_target", lambda self: None)
 
 
+def _disable_session_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _unavailable(
+        self: ActionRunner,
+        _action: object,
+    ) -> bool:
+        return False
+
+    monkeypatch.setattr(ActionRunner, "_delegate_to_session_agent", _unavailable)
+
+
 @pytest.mark.asyncio
 async def test_url_action_prefers_gio_open(monkeypatch: pytest.MonkeyPatch) -> None:
     _disable_login_shell_path(monkeypatch)
     _disable_browser_focus(monkeypatch)
+    _disable_session_agent(monkeypatch)
     runner = ActionRunner()
     calls: list[list[str]] = []
 
@@ -56,6 +70,7 @@ async def test_url_action_prefers_default_browser_exec_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _disable_login_shell_path(monkeypatch)
+    _disable_session_agent(monkeypatch)
     runner = ActionRunner()
     calls: list[list[str]] = []
     focus_calls: list[object] = []
@@ -99,6 +114,7 @@ async def test_url_action_falls_back_to_webbrowser(
 ) -> None:
     _disable_login_shell_path(monkeypatch)
     _disable_browser_focus(monkeypatch)
+    _disable_session_agent(monkeypatch)
     runner = ActionRunner()
     opened: list[str] = []
 
@@ -170,6 +186,7 @@ async def test_shell_action_uses_augmented_env(
     monkeypatch.setattr(ActionRunner, "_login_shell_path", lambda self: "/opt/bin")
     monkeypatch.setattr(ActionRunner, "_user_specific_path_entries", lambda self: [])
     _disable_desktop_launch(monkeypatch)
+    _disable_session_agent(monkeypatch)
     runner = ActionRunner()
     observed: dict[str, object] = {}
 
@@ -215,9 +232,11 @@ async def test_shell_action_prefers_desktop_launcher_for_simple_apps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _disable_login_shell_path(monkeypatch)
+    _disable_session_agent(monkeypatch)
     runner = ActionRunner()
     calls: list[list[str]] = []
     focus_calls: list[object] = []
+    tasks: list[asyncio.Task[object]] = []
     fake_target = type(
         "FakeTarget",
         (),
@@ -226,6 +245,7 @@ async def test_shell_action_prefers_desktop_launcher_for_simple_apps(
             "window_tokens": ("claude",),
         },
     )()
+    real_create_task = asyncio.create_task
 
     monkeypatch.setattr(runner, "_desktop_launch_target", lambda cmd: fake_target)
     monkeypatch.setattr(
@@ -235,7 +255,17 @@ async def test_shell_action_prefers_desktop_launcher_for_simple_apps(
     )
     monkeypatch.setattr(runner, "_focus_existing_desktop_target", lambda _target: asyncio.sleep(0, result=None))
 
-    async def fake_focus_desktop_target(target: object) -> str:
+    def fake_create_task(coro: object, *, name: str | None = None) -> asyncio.Task[object]:
+        task = real_create_task(coro, name=name)
+        tasks.append(task)
+        return task
+
+    async def fake_focus_desktop_target_with_retries(
+        target: object,
+        *,
+        retries: int,
+        delay_s: float = 0.25,
+    ) -> str:
         focus_calls.append(target)
         return "0x01200004"
 
@@ -256,13 +286,22 @@ async def test_shell_action_prefers_desktop_launcher_for_simple_apps(
         raise AssertionError(f"desktop launch should avoid shell spawn: {cmd}")
 
     monkeypatch.setattr(runner, "_try_exec", fake_try_exec)
-    monkeypatch.setattr(runner, "_focus_desktop_target", fake_focus_desktop_target)
+    monkeypatch.setattr(
+        runner,
+        "_focus_desktop_target_with_retries",
+        fake_focus_desktop_target_with_retries,
+    )
+    monkeypatch.setattr(
+        "ulanzi_linux.application.action_runner.asyncio.create_task",
+        fake_create_task,
+    )
     monkeypatch.setattr(
         "ulanzi_linux.application.action_runner.asyncio.create_subprocess_shell",
         unexpected_create_subprocess_shell,
     )
 
     await runner.run(ShellAction(type="shell", cmd="claude-desktop"))
+    await asyncio.gather(*tasks)
 
     assert calls == [["gtk-launch", "claude-desktop.desktop"]]
     assert focus_calls == [fake_target]
@@ -273,17 +312,19 @@ async def test_shell_action_reuses_existing_window_before_launch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _disable_login_shell_path(monkeypatch)
+    _disable_session_agent(monkeypatch)
     runner = ActionRunner()
     fake_target = type(
         "FakeTarget",
         (),
         {
+            "aliases": ("chatgpt-desktop",),
             "desktop_id": "chatgpt-desktop_chatgpt-desktop.desktop",
             "window_tokens": ("chatgpt desktop",),
         },
     )()
 
-    monkeypatch.setattr(runner, "_desktop_launch_target", lambda cmd: fake_target)
+    monkeypatch.setattr(runner, "_desktop_targets_for_session", lambda: (fake_target,))
     monkeypatch.setattr(
         runner,
         "_focus_existing_desktop_target",
@@ -295,45 +336,48 @@ async def test_shell_action_reuses_existing_window_before_launch(
 
     monkeypatch.setattr(runner, "_try_exec", unexpected_try_exec)
 
-    await runner.run(ShellAction(type="shell", cmd="chatgpt-desktop"))
+    await runner.run(
+        ShellAction(type="shell", cmd="chatgpt-desktop --disable-gpu --no-sandbox")
+    )
 
 
 @pytest.mark.asyncio
-async def test_shell_action_falls_back_to_shell_when_desktop_launch_has_no_window(
+async def test_shell_action_tries_desktop_launcher_after_shell_failure_with_args(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("PATH", "/usr/bin")
     _disable_login_shell_path(monkeypatch)
+    _disable_session_agent(monkeypatch)
     runner = ActionRunner()
-    desktop_calls: list[list[str]] = []
+    fallback_calls: list[tuple[str, object]] = []
     observed: dict[str, object] = {}
     fake_target = type(
         "FakeTarget",
         (),
         {
-            "desktop_id": "claude-desktop.desktop",
-            "window_tokens": ("claude",),
+            "aliases": ("chatgpt-desktop",),
+            "desktop_id": "chatgpt-desktop_chatgpt-desktop.desktop",
+            "window_tokens": ("chatgpt desktop",),
         },
     )()
 
-    monkeypatch.setattr(runner, "_desktop_launch_target", lambda cmd: fake_target)
+    monkeypatch.setattr(runner, "_desktop_targets_for_session", lambda: (fake_target,))
+    monkeypatch.setattr(runner, "_focus_existing_desktop_target", lambda _target: asyncio.sleep(0, result=None))
     monkeypatch.setattr(
         runner,
-        "_desktop_launch_candidates",
-        lambda _target: [["gtk-launch", "claude-desktop.desktop"]],
+        "_focus_desktop_target_with_retries",
+        lambda _target, *, retries, delay_s=0.25: asyncio.sleep(0, result=None),
     )
-    monkeypatch.setattr(runner, "_focus_existing_desktop_target", lambda _target: asyncio.sleep(0, result=None))
-    monkeypatch.setattr(runner, "_focus_desktop_target", lambda _target: asyncio.sleep(0, result=None))
 
     class FakeProcess:
         pid = 777
 
         async def wait(self) -> int:
-            return 0
+            return 1
 
-    async def fake_try_exec(argv: list[str]) -> int:
-        desktop_calls.append(argv)
-        return 0
+    async def fake_launch_desktop_target(cmd: str, target: object) -> bool:
+        fallback_calls.append((cmd, target))
+        return True
 
     async def fake_create_subprocess_shell(
         cmd: str,
@@ -349,16 +393,22 @@ async def test_shell_action_falls_back_to_shell_when_desktop_launch_has_no_windo
         observed["cwd"] = cwd
         return FakeProcess()
 
-    monkeypatch.setattr(runner, "_try_exec", fake_try_exec)
+    monkeypatch.setattr(runner, "_launch_desktop_target", fake_launch_desktop_target)
     monkeypatch.setattr(
         "ulanzi_linux.application.action_runner.asyncio.create_subprocess_shell",
         fake_create_subprocess_shell,
     )
 
-    await runner.run(ShellAction(type="shell", cmd="claude-desktop"))
+    await runner.run(
+        ShellAction(type="shell", cmd="chatgpt-desktop --disable-gpu --no-sandbox")
+    )
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
 
-    assert desktop_calls == [["gtk-launch", "claude-desktop.desktop"]]
-    assert observed["cmd"] == "claude-desktop"
+    assert observed["cmd"] == "chatgpt-desktop --disable-gpu --no-sandbox"
+    assert fallback_calls == [
+        ("chatgpt-desktop --disable-gpu --no-sandbox", fake_target)
+    ]
 
 
 @pytest.mark.asyncio
@@ -366,6 +416,7 @@ async def test_url_action_focuses_default_browser_after_open(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _disable_login_shell_path(monkeypatch)
+    _disable_session_agent(monkeypatch)
     runner = ActionRunner()
     calls: list[list[str]] = []
     focus_calls: list[object] = []
@@ -409,6 +460,7 @@ async def test_shell_action_logs_nonzero_exit_codes(
 ) -> None:
     _disable_login_shell_path(monkeypatch)
     _disable_desktop_launch(monkeypatch)
+    _disable_session_agent(monkeypatch)
     runner = ActionRunner()
     warnings: list[dict[str, object]] = []
 
@@ -450,3 +502,27 @@ async def test_shell_action_logs_nonzero_exit_codes(
             "exit_code": 127,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_runner_delegates_shell_action_to_session_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _disable_login_shell_path(monkeypatch)
+    runner = ActionRunner()
+    calls: list[object] = []
+
+    async def fake_dispatch(action: object) -> SessionAgentDispatchResult:
+        calls.append(action)
+        return SessionAgentDispatchResult(status="accepted", detail="shell_nohup")
+
+    async def unexpected_run_shell(_action: object) -> None:
+        raise AssertionError("local shell path should not run when session agent accepts")
+
+    monkeypatch.setattr(runner._session_agent, "dispatch", fake_dispatch)
+    monkeypatch.setattr(runner, "_run_shell", unexpected_run_shell)
+
+    action = ShellAction(type="shell", cmd="postman")
+    await runner.run(action)
+
+    assert calls == [action]

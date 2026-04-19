@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import os
 import pwd
 import shlex
@@ -30,6 +31,7 @@ from ulanzi_linux.domain.button_config import (
     ShortcutAction,
     UrlAction,
 )
+from ulanzi_linux.application.session_agent import GraphicalSessionAgentClient
 
 logger = structlog.get_logger(__name__)
 
@@ -79,6 +81,10 @@ SHELL_CONTROL_TOKENS = frozenset(
 DESKTOP_ENTRY_SUFFIX = ".desktop"
 WINDOW_FOCUS_RETRIES = 20
 WINDOW_FOCUS_DELAY_S = 0.25
+WINDOW_FOCUS_POST_LAUNCH_RETRIES = 40
+WINDOW_FOCUS_POST_LAUNCH_DELAY_S = 0.5
+SHELL_FAILURE_FOCUS_RETRIES = 8
+SHELL_FAILURE_FOCUS_DELAY_S = 0.25
 
 
 @dataclass(frozen=True)
@@ -115,10 +121,13 @@ class ActionRunner:
 
     def __init__(self) -> None:
         self._env = self._build_subprocess_env()
-        self._background_tasks: set[asyncio.Task[int]] = set()
+        self._background_tasks: set[asyncio.Task[object]] = set()
         self._desktop_targets: tuple[DesktopLaunchTarget, ...] | None = None
+        self._session_agent = GraphicalSessionAgentClient(self._env)
 
     async def run(self, action: Action) -> None:
+        if await self._delegate_to_session_agent(action):
+            return
         if isinstance(action, ShellAction):
             await self._run_shell(action)
         elif isinstance(action, ShortcutAction):
@@ -128,10 +137,54 @@ class ActionRunner:
         else:
             logger.warning("unknown_action", action=repr(action))
 
+    async def _delegate_to_session_agent(self, action: Action) -> bool:
+        if not isinstance(action, (ShellAction, ShortcutAction, UrlAction)):
+            return False
+        result = await self._session_agent.dispatch(action)
+        if result.status == "accepted":
+            logger.info(
+                "action_session_agent_accepted",
+                action_type=action.type,
+                detail=result.detail,
+            )
+            return True
+        if result.status == "rejected":
+            logger.warning(
+                "action_session_agent_rejected",
+                action_type=action.type,
+                detail=result.detail,
+            )
+            return False
+        logger.debug(
+            "action_session_agent_unavailable",
+            action_type=action.type,
+            detail=result.detail,
+        )
+        return False
+
     async def _run_shell(self, action: ShellAction) -> None:
         logger.info("action_shell", cmd=action.cmd)
-        if await self._try_launch_desktop_app(action.cmd):
-            return
+        desktop_target = self._desktop_launch_target(action.cmd)
+        desktop_launch_allowed = (
+            desktop_target is not None
+            and self._command_supports_desktop_launch(action.cmd)
+        )
+        if desktop_target is not None:
+            existing_window_id = await self._focus_existing_desktop_target(desktop_target)
+            if existing_window_id is not None:
+                logger.info(
+                    "action_shell_focused",
+                    cmd=action.cmd,
+                    desktop_id=desktop_target.desktop_id,
+                    window_id=existing_window_id,
+                    phase="before_launch",
+                )
+                return
+            if desktop_launch_allowed and await self._launch_desktop_target(
+                action.cmd,
+                desktop_target,
+            ):
+                return
         proc = await asyncio.create_subprocess_shell(
             action.cmd,
             env=self._env,
@@ -148,11 +201,16 @@ class ActionRunner:
         )
         # Fire-and-forget: don't block the event loop on long-running cmds.
         wait_task = asyncio.create_task(
-            self._monitor_shell_proc(proc, action.cmd),
+            self._monitor_shell_proc(
+                proc,
+                action.cmd,
+                desktop_target=(
+                    desktop_target if desktop_target is not None and not desktop_launch_allowed else None
+                ),
+            ),
             name=f"action_shell_{id(proc)}",
         )
-        self._background_tasks.add(wait_task)
-        wait_task.add_done_callback(self._background_tasks.discard)
+        self._track_background_task(wait_task)
 
     async def _run_shortcut(self, action: ShortcutAction) -> None:
         logger.info("action_shortcut", keys=action.keys)
@@ -328,20 +386,11 @@ class ActionRunner:
         )
         return await proc.wait()
 
-    async def _try_launch_desktop_app(self, command: str) -> bool:
-        target = self._desktop_launch_target(command)
-        if target is None:
-            return False
-        existing_window_id = await self._focus_existing_desktop_target(target)
-        if existing_window_id is not None:
-            logger.info(
-                "action_shell_focused",
-                cmd=command,
-                desktop_id=target.desktop_id,
-                window_id=existing_window_id,
-                phase="before_launch",
-            )
-            return True
+    async def _launch_desktop_target(
+        self,
+        command: str,
+        target: DesktopLaunchTarget,
+    ) -> bool:
         for argv in self._desktop_launch_candidates(target):
             exit_code = await self._try_exec(argv)
             if exit_code == 0:
@@ -351,24 +400,8 @@ class ActionRunner:
                     opener=argv[0],
                     desktop_id=target.desktop_id,
                 )
-                window_id = await self._focus_desktop_target(target)
-                if window_id is not None:
-                    logger.info(
-                        "action_shell_focused",
-                        cmd=command,
-                        desktop_id=target.desktop_id,
-                        window_id=window_id,
-                        phase="after_launch",
-                    )
-                    return True
-                logger.warning(
-                    "action_shell_window_not_found",
-                    cmd=command,
-                    opener=argv[0],
-                    desktop_id=target.desktop_id,
-                    window_tokens=target.window_tokens,
-                )
-                continue
+                self._schedule_shell_focus_after_launch(command, target, opener=argv[0])
+                return True
             logger.warning(
                 "action_shell_opener_failed",
                 cmd=command,
@@ -382,6 +415,8 @@ class ActionRunner:
         self,
         proc: asyncio.subprocess.Process,
         cmd: str,
+        *,
+        desktop_target: DesktopLaunchTarget | None = None,
     ) -> int:
         exit_code = await proc.wait()
         if exit_code == 0:
@@ -391,6 +426,8 @@ class ActionRunner:
                 pid=proc.pid,
                 exit_code=exit_code,
             )
+            if desktop_target is not None:
+                self._schedule_shell_focus_after_launch(cmd, desktop_target, opener="shell")
         else:
             logger.warning(
                 "action_shell_failed",
@@ -398,7 +435,72 @@ class ActionRunner:
                 pid=proc.pid,
                 exit_code=exit_code,
             )
+            if desktop_target is not None:
+                window_id = await self._focus_desktop_target_with_retries(
+                    desktop_target,
+                    retries=SHELL_FAILURE_FOCUS_RETRIES,
+                    delay_s=SHELL_FAILURE_FOCUS_DELAY_S,
+                )
+                if window_id is not None:
+                    logger.info(
+                        "action_shell_focused",
+                        cmd=cmd,
+                        desktop_id=desktop_target.desktop_id,
+                        window_id=window_id,
+                        phase="after_failure",
+                    )
+                    return exit_code
+                await self._launch_desktop_target(cmd, desktop_target)
         return exit_code
+
+    def _track_background_task(self, task: asyncio.Task[object]) -> None:
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    def _schedule_shell_focus_after_launch(
+        self,
+        command: str,
+        target: DesktopLaunchTarget,
+        *,
+        opener: str,
+    ) -> None:
+        task = asyncio.create_task(
+            self._focus_shell_after_launch(command, target, opener=opener),
+            name=(
+                f"action_shell_focus_{target.desktop_id}_"
+                f"{hashlib.sha256(command.encode('utf-8')).hexdigest()[:8]}"
+            ),
+        )
+        self._track_background_task(task)
+
+    async def _focus_shell_after_launch(
+        self,
+        command: str,
+        target: DesktopLaunchTarget,
+        *,
+        opener: str,
+    ) -> None:
+        window_id = await self._focus_desktop_target_with_retries(
+            target,
+            retries=WINDOW_FOCUS_POST_LAUNCH_RETRIES,
+            delay_s=WINDOW_FOCUS_POST_LAUNCH_DELAY_S,
+        )
+        if window_id is not None:
+            logger.info(
+                "action_shell_focused",
+                cmd=command,
+                desktop_id=target.desktop_id,
+                window_id=window_id,
+                phase="after_launch",
+            )
+            return
+        logger.warning(
+            "action_shell_window_not_found",
+            cmd=command,
+            opener=opener,
+            desktop_id=target.desktop_id,
+            window_tokens=target.window_tokens,
+        )
 
     def _which(self, executable: str) -> str | None:
         return shutil.which(executable, path=self._env.get("PATH"))
@@ -468,10 +570,7 @@ class ActionRunner:
         return [str(home / suffix) for suffix in USER_PATH_SUFFIXES]
 
     def _desktop_launch_target(self, command: str) -> DesktopLaunchTarget | None:
-        argv = self._simple_command_argv(command)
-        if argv is None or len(argv) != 1:
-            return None
-        executable = Path(argv[0]).name.lower()
+        executable = self._command_executable(command)
         if not executable:
             return None
         exact_matches: list[DesktopLaunchTarget] = []
@@ -487,6 +586,10 @@ class ActionRunner:
         if partial_matches:
             return partial_matches[0]
         return None
+
+    def _command_supports_desktop_launch(self, command: str) -> bool:
+        argv = self._simple_command_argv(command)
+        return argv is not None and len(argv) == 1
 
     def _desktop_targets_for_session(self) -> tuple[DesktopLaunchTarget, ...]:
         if self._desktop_targets is not None:
@@ -606,18 +709,31 @@ class ActionRunner:
 
     def _exec_name_from_desktop_entry(self, exec_line: str) -> str | None:
         with contextlib.suppress(ValueError):
-            for token in shlex.split(exec_line, posix=True):
-                stripped = token.strip()
-                if not stripped or stripped == "env" or stripped.startswith("%"):
-                    continue
-                if (
-                    "=" in stripped
-                    and not stripped.startswith("/")
-                    and stripped.split("=", 1)[0].replace("_", "").isalnum()
-                ):
-                    continue
-                return Path(stripped).name
+            return self._first_executable_token(shlex.split(exec_line, posix=True))
         return None
+
+    def _command_executable(self, command: str) -> str | None:
+        argv = self._simple_command_argv(command)
+        if argv is None:
+            return None
+        executable = self._first_executable_token(argv)
+        if executable is None:
+            return None
+        return executable.lower()
+
+    def _first_executable_token(self, tokens: Iterable[str]) -> str | None:
+        for token in tokens:
+            stripped = token.strip()
+            if not stripped or stripped == "env" or stripped.startswith("%"):
+                continue
+            if self._looks_like_env_assignment(stripped):
+                continue
+            return Path(stripped).name
+        return None
+
+    def _looks_like_env_assignment(self, token: str) -> bool:
+        head, separator, _tail = token.partition("=")
+        return bool(separator) and not token.startswith("/") and head.replace("_", "").isalnum()
 
     def _argv_from_desktop_entry(
         self,
@@ -727,6 +843,7 @@ class ActionRunner:
         target: DesktopLaunchTarget,
         *,
         retries: int,
+        delay_s: float = WINDOW_FOCUS_DELAY_S,
     ) -> str | None:
         if self._which("wmctrl") is None:
             return None
@@ -736,7 +853,7 @@ class ActionRunner:
                 if activated:
                     return window_id
             if attempt + 1 < retries:
-                await asyncio.sleep(WINDOW_FOCUS_DELAY_S)
+                await asyncio.sleep(delay_s)
         return None
 
     def _window_ids_for_target(self, target: DesktopLaunchTarget) -> list[str]:

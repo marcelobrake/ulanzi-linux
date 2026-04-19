@@ -11,10 +11,14 @@
 set -euo pipefail
 
 UNIT_NAME="ulanzi-linux.service"
+AUTOSTART_NAME="ulanzi-linux-session-agent.desktop"
 SRC_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SRC_UNIT="${SRC_DIR}/${UNIT_NAME}"
+SRC_AUTOSTART="${SRC_DIR}/../autostart/${AUTOSTART_NAME}"
 DST_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
 DST_UNIT="${DST_DIR}/${UNIT_NAME}"
+AUTOSTART_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/autostart"
+AUTOSTART_DST="${AUTOSTART_DIR}/${AUTOSTART_NAME}"
 DECK_YAML="${HOME}/.config/ulanzi/deck.yaml"
 DEFAULT_ULANZI_BIN="${HOME}/.local/bin/ulanzi-linux"
 ULANZI_BIN=""
@@ -94,6 +98,14 @@ build_unit_with_binary() {
     printf '%s\n' "${TMP_UNIT}"
 }
 
+build_autostart_with_binary() {
+    local bin_path="$1"
+    TMP_UNIT="$(mktemp)"
+    sed "s|^Exec=.*$|Exec=${bin_path} --json-logs session-agent|" \
+        "${SRC_AUTOSTART}" > "${TMP_UNIT}"
+    printf '%s\n' "${TMP_UNIT}"
+}
+
 # --- args ------------------------------------------------------------------
 
 for arg in "$@"; do
@@ -125,6 +137,7 @@ if (( UNINSTALL )); then
     # ``disable --now`` fails if the unit was never enabled — tolerate it.
     run_ok systemctl --user disable --now "${UNIT_NAME}"
     run rm -f "${DST_UNIT}"
+    run rm -f "${AUTOSTART_DST}"
     run systemctl --user daemon-reload
     log "done."
     exit 0
@@ -134,6 +147,11 @@ fi
 
 if [[ ! -f "${SRC_UNIT}" ]]; then
     err "unit file not found at ${SRC_UNIT}"
+    exit 1
+fi
+
+if [[ ! -f "${SRC_AUTOSTART}" ]]; then
+    err "autostart file not found at ${SRC_AUTOSTART}"
     exit 1
 fi
 
@@ -160,14 +178,28 @@ else
     run install -m 0644 "${SRC_UNIT}" "${DST_UNIT}"
 fi
 
+log "copying ${AUTOSTART_NAME} -> ${AUTOSTART_DST}"
+run mkdir -p "${AUTOSTART_DIR}"
+if [[ -n "${ULANZI_BIN}" ]]; then
+    TMP_UNIT="$(build_autostart_with_binary "${ULANZI_BIN}")"
+    run install -m 0644 "${TMP_UNIT}" "${AUTOSTART_DST}"
+else
+    run install -m 0644 "${SRC_AUTOSTART}" "${AUTOSTART_DST}"
+fi
+
 log "reloading user systemd"
 run systemctl --user daemon-reload
 
-log "enabling + starting ${UNIT_NAME}"
-run systemctl --user enable --now "${UNIT_NAME}"
+log "enabling ${UNIT_NAME}"
+run systemctl --user enable "${UNIT_NAME}"
+
+log "restarting ${UNIT_NAME} to load the current package code"
+run systemctl --user restart "${UNIT_NAME}"
 
 if (( ! DRY_RUN )); then
     log "status:"
     systemctl --user --no-pager status "${UNIT_NAME}" || true
     log "tail logs with:  journalctl --user -u ${UNIT_NAME} -f"
+    log "session agent autostart installed at: ${AUTOSTART_DST}"
+    log "start it now with: ${ULANZI_BIN:-ulanzi-linux} --json-logs session-agent"
 fi

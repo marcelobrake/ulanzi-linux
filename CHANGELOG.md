@@ -7,6 +7,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-04-19
+
+### Fixed
+
+- `systemd/install.sh` now forces a real `systemctl --user restart`
+  after installation so an already-running daemon reloads the current
+  package code instead of keeping the previous Python module set in
+  memory.
+
+## [0.4.0] — 2026-04-19
+
+### Added
+
+- Added a graphical-session agent launched from desktop autostart that
+  listens on a per-user Unix socket and executes shell, URL and shortcut
+  actions from the active graphical login instead of relying exclusively
+  on the systemd daemon process environment.
+
+### Changed
+
+- The daemon ActionRunner now attempts to delegate GUI-relevant actions
+  to the session agent first and only falls back to the previous local
+  execution strategy when the agent socket is unavailable.
+
+### Fixed
+
+- The systemd installer now also installs a desktop autostart entry for
+  the graphical-session agent, so daemon-managed button actions can still
+  open applications reliably after login on hosts where systemd's user
+  environment is not enough by itself.
+
+## [0.3.10] — 2026-04-19
+
+### Fixed
+
+- GUI shell commands that include extra flags now still recognize the
+  underlying desktop app for window reuse, and if the raw command exits
+  quickly without surfacing a window the daemon now tries the matching
+  desktop launcher as an asynchronous fallback instead of stopping at the
+  shell failure.
+- Generated text-only button tiles now use content-specific icon names in
+  the ZIP payload, which prevents stale labels from being reused by the
+  firmware cache when two pages assign different text to the same button
+  index.
+
 ## [0.3.9] — 2026-04-19
 
 ### Fixed
