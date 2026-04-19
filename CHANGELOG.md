@@ -7,6 +7,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] — 2026-04-19
+
+### Fixed
+
+- After a successful GUI app launch through a desktop entry, the daemon
+  now tries to activate the matching application window on X11 hosts that
+  provide `wmctrl`, so buttons behave more like bringing an already-open
+  app to the foreground.
+- After handing a URL to the desktop opener, the daemon now also tries to
+  focus the default browser window on X11 hosts with `wmctrl`, reducing
+  the cases where the tab opens in the background with no visible change.
+
+## [0.3.5] — 2026-04-19
+
+### Fixed
+
+- URL actions now prefer the desktop session opener path (`gio open`
+  before the older fallbacks), which improves opening links in the active
+  browser session and falls back to the default browser when needed.
+- Simple GUI shell actions such as `code`, `claude-desktop`, and
+  `chatgpt-desktop` now try the matching `.desktop` launcher
+  (`gtk-launch` / `gio launch`) before spawning the raw binary, making
+  app buttons behave more like clicking an application icon from the
+  desktop environment.
+
+## [0.3.4] — 2026-04-19
+
+### Added
+
+- Structured logs are now mirrored to the host syslog facility by default on
+  POSIX systems, so daemon activity can be inspected outside the journal when
+  operators prefer syslog-based troubleshooting.
+
+### Changed
+
+- Button handling now logs a fuller action lifecycle: physical button event,
+  resolved action payload, dispatch acceptance, and per-action completion or
+  failure details for shell, shortcut and URL actions.
+
+## [0.3.3] — 2026-04-19
+
+### Fixed
+
+- Shell actions now log non-zero exit codes instead of failing silently in the
+  background, which makes bad commands in `deck.yaml` diagnosable from daemon
+  logs.
+
 ## [0.3.2] — 2026-04-19
 
 ### Changed

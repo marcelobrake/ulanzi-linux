@@ -25,7 +25,6 @@ from ulanzi_linux.domain.commands import SmallWindowMode
 from ulanzi_linux.domain.device import DeckDevice, DeckSpec
 from ulanzi_linux.domain.events import ButtonEvent, DeviceInfoEvent
 
-
 # ---------------------------------------------------------------------- #
 # Domain tests                                                           #
 # ---------------------------------------------------------------------- #
@@ -243,6 +242,16 @@ class FakeDeck(DeckDevice):
         )
 
 
+class RecordingRunner:
+    """Runner double that records accepted actions."""
+
+    def __init__(self) -> None:
+        self.actions: list[object] = []
+
+    async def run(self, action: object) -> None:
+        self.actions.append(action)
+
+
 def _make_cfg() -> DeckConfig:
     return DeckConfig(
         pages={
@@ -393,3 +402,52 @@ async def test_event_loop_switches_page_on_fixed_button_press() -> None:
 
     assert daemon.current_page == "media"
     assert len(fake.button_uploads) == 2
+
+
+@pytest.mark.asyncio
+async def test_event_loop_logs_action_dispatch_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeDeck()
+    cfg = _make_cfg()
+    runner = RecordingRunner()
+    info_calls: list[tuple[str, dict[str, object]]] = []
+
+    monkeypatch.setattr(
+        "ulanzi_linux.application.daemon.logger.info",
+        lambda event, **kwargs: info_calls.append((event, kwargs)),
+    )
+
+    async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
+        daemon = DeckDaemon(svc, cfg, runner=runner)
+        await daemon.sync_layout()
+
+        stop = asyncio.Event()
+
+        async def drive() -> None:
+            fake.inject_press(0)
+            await asyncio.sleep(0.05)
+            stop.set()
+
+        await asyncio.gather(daemon.run(stop_event=stop), drive())
+
+    assert len(runner.actions) == 1
+    assert isinstance(runner.actions[0], ShellAction)
+    assert any(
+        event == "button_event_received"
+        and kwargs["index"] == 0
+        and kwargs["pressed"] is True
+        for event, kwargs in info_calls
+    )
+    assert any(
+        event == "button_action_dispatch"
+        and kwargs["action_type"] == "shell"
+        and kwargs["cmd"] == "echo A"
+        for event, kwargs in info_calls
+    )
+    assert any(
+        event == "button_action_accepted"
+        and kwargs["action_type"] == "shell"
+        and kwargs["index"] == 0
+        for event, kwargs in info_calls
+    )

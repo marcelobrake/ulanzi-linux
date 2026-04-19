@@ -172,6 +172,17 @@ Snap and Flatpak:
 - `/snap/bin`
 - `/var/lib/flatpak/exports/bin`
 
+When the command is a simple GUI app launcher such as `code`,
+`claude-desktop`, or `chatgpt-desktop`, the daemon first tries to hand it
+to the current desktop session through the matching `.desktop` entry
+(`gtk-launch` / `gio launch`). That makes it behave much closer to
+clicking the app in your launcher: reuse the running instance when the
+desktop supports it, otherwise start the default app instance. More
+complex commands with arguments, pipes, or shell syntax still use the raw
+shell path below. On X11 hosts with `wmctrl` available, the daemon also
+tries to bring the matching application window to the foreground after a
+successful launch request.
+
 ```yaml
 action: { type: shell, cmd: "gnome-terminal -- bash -lc 'docker ps; exec bash'" }
 ```
@@ -195,10 +206,14 @@ Relies on the daemon running inside a session where `$DISPLAY` /
 
 ### 5.3 — `url`
 
-Open a URL with the desktop opener (`xdg-open`, `gio open`, or the
-stdlib browser fallback). Respects your default browser. If you omit the
-scheme, `https://` is added automatically so entries like
-`claude.ai` still open correctly.
+Open a URL with the desktop opener. The daemon prefers `gio open` first,
+then falls back to `xdg-open`, `sensible-browser`, and finally the stdlib
+browser registry. In a normal desktop session this tends to reuse the
+current browser window or session when one is already running; otherwise
+it opens the configured default browser. If you omit the scheme,
+`https://` is added automatically so entries like `claude.ai` still open
+correctly. On X11 hosts with `wmctrl` available, the daemon also tries to
+activate the default browser window after the URL is handed off.
 
 ```yaml
 action: { type: url, url: "https://claude.ai" }
