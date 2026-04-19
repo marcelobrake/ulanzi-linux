@@ -7,6 +7,164 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.19] — 2026-04-18
+
+### Changed
+
+- Updated the public documentation to match the behavior now validated on the
+  real D200: `show_metrics` switches between clock and stats layouts, icon
+  uploads are fitted into 196×196 opaque PNG tiles, and real icon buttons do
+  not rely on manifest text overlays.
+
+### Removed
+
+- Removed leftover local debugging artifacts and generated ZIP snapshots that
+  were useful during reverse engineering but are not part of the project.
+
+## [0.2.18] — 2026-04-18
+
+### Fixed
+
+- Changed uploaded icon assets to keep their original source basenames inside
+  the `SET_BUTTONS` ZIP instead of always renaming them to numeric indices.
+  The older D200 path preserved source names, and the real hardware still
+  appears sensitive to that archive layout.
+- Flattened uploaded PNG icons onto an opaque button-sized background before
+  zipping them, instead of streaming transparent RGBA assets directly. This
+  matches the more conservative rendering path used by generated text tiles
+  and avoids firmware-side transparency quirks.
+
+## [0.2.17] — 2026-04-18
+
+### Fixed
+
+- Stopped including `Text` in the `SET_BUTTONS` manifest for buttons that
+  already have a real uploaded icon file. On the real D200, the firmware can
+  prefer manifest text fallback over the PNG asset, which left icon-backed
+  buttons rendering only their labels.
+
+## [0.2.16] — 2026-04-18
+
+### Fixed
+
+- Reordered the `SET_BUTTONS` ZIP so `dummy.txt` once again sits before the
+  icon files, matching the padding strategy that previously worked on the real
+  D200. This keeps the firmware boundary workaround affecting the icon entries
+  instead of only the archive tail.
+- Added a separate final `sentinel.txt` entry so the firmware can still drop
+  the last ZIP member without sacrificing a real icon asset.
+
+## [0.2.15] — 2026-04-18
+
+### Fixed
+
+- Restored the small-window mode mapping that kept stats mode working on the
+  real D200: `STATS=0` and `CLOCK=1`.
+- Changed clock-mode updates to send zeroed metric slots (`1|0|0|HH:MM:SS|0`)
+  instead of empty fields. The device was treating empty metric fields as the
+  stats layout with `0%`, so disabling the stats option no longer falls back
+  to fake zeroed stats.
+
+## [0.2.14] — 2026-04-18
+
+### Fixed
+
+- Corrected the D200 small-window mode mapping again based on the current
+  hardware behavior: `CLOCK=0` and `STATS=1`. The daemon was sending
+  `mode_value=1` for clock mode, and the device kept rendering the stats
+  layout with `0%` values instead of switching back to the clock.
+- Updated the small-window regression tests and protocol notes to reflect the
+  corrected clock payload wire format.
+
+## [0.2.13] — 2026-04-18
+
+### Fixed
+
+- Restored time-bearing payloads in CLOCK mode. Version 0.2.12 kept the deck
+  alive with the mode byte only, which left the real D200 without any clock
+  text to render when `show_metrics` was disabled.
+- Reconnect now replays cached CLOCK state with both the mode byte and the
+  last time-only payload, so the small window comes back correctly after a
+  transport reset.
+
+## [0.2.12] — 2026-04-18
+
+### Fixed
+
+- Stopped sending telemetry payloads while the D200 is in clock mode. The real
+  device was rendering `0%` stats whenever a clock-mode payload still carried
+  metric slots, so clock mode now keeps itself alive with the mode byte only.
+- Updated the web editor copy to match the observed firmware behavior: the
+  toggle currently acts as a switch between exclusive clock and stats layouts,
+  not a combined `clock + CPU/mem` overlay.
+
+## [0.2.11] — 2026-04-18
+
+### Fixed
+
+- Combined the two small-window findings from the real device: keep sending a
+  one-byte mode payload to flip layouts, but restore the pipe-separated data
+  payload that was the last variant to produce real CPU/memory readings.
+- Restored a final `dummy.txt` ZIP sentinel while keeping a separate
+  `padding.bin` entry for boundary shifting. This preserves the 1024-byte
+  workaround without risking the last physical button icon being treated as the
+  final archive entry.
+
+## [0.2.10] — 2026-04-18
+
+### Fixed
+
+- Restored the historical D200 small-window wire protocol: mode changes are
+  again sent as a single-byte payload, while telemetry updates are sent as
+  ASCII `cpu,mem,gpu[,time]`.
+- Replaced the unified `mode|cpu|mem|time|gpu` payload after validating on the
+  real device that it could surface stats but would not render the clock area
+  correctly.
+
+## [0.2.9] — 2026-04-18
+
+### Fixed
+
+- Restored the D200 small-window mode mapping to `STATS=0` and `CLOCK=1`
+  after validating 0.2.8 against the real device: the hardware still rendered
+  plain clock for wire mode `1` and stats-with-zeroes for wire mode `0` with
+  empty metric fields.
+- Kept the cached-mode fallback fix so mode `0` is no longer lost during the
+  normal data update path or reconnect replay.
+
+## [0.2.8] — 2026-04-18
+
+### Fixed
+
+- Fixed the D200 small-window mode mapping again based on the now-clean device
+  behavior: `CLOCK=0` and `STATS=1`.
+- Fixed cached small-window mode handling to avoid treating mode `0` as false
+  during payload generation and reconnect replay. This restores the expected
+  behavior where enabling stats shows CPU/memory values and disabling stats
+  returns to the plain clock screen.
+
+## [0.2.7] — 2026-04-18
+
+### Fixed
+
+- Fixed the SET_BUTTONS ZIP boundary workaround for layouts that combine a real
+  uploaded icon with the bottom-row page buttons. The padding file now shifts
+  the icon data that follows instead of being written too late to affect the
+  failing 1024-byte boundaries.
+- Added a regression test that reproduces the current `OpenAI + Media/Main/Dev`
+  layout so this firmware workaround stays covered.
+
+## [0.2.6] — 2026-04-18
+
+### Fixed
+
+- Fixed the D200 small-window mode mapping again after validating the cleaned
+  runtime without the legacy daemon. The stats layout now uses the numeric mode
+  that matches the device behavior observed on this host, which should restore
+  CPU/memory display and the lower button row together.
+- Added numeric mode values to small-window runtime logs so future hardware
+  checks can verify the exact wire-mode being sent without ambiguity.
+
 ## [0.2.5] — 2026-04-18
 
 ### Fixed

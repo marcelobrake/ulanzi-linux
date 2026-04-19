@@ -648,8 +648,8 @@ window.editorApp = function editorApp() {
                 return "Desligado";
             }
             return this.editor.small_window.show_metrics === false
-                ? "Somente hora"
-                : "Hora + CPU/Mem";
+                ? "Somente relógio"
+                : "Estatísticas";
         },
 
         get currentTextTileStyle() {

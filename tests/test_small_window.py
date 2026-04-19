@@ -172,7 +172,33 @@ def test_small_window_payload_uses_clock_wire_format() -> None:
         gpu=0,
         time_str="14:32:00",
     )
-    assert payload == b"0|17|63|14:32:00|0"
+    assert payload == b"1|17|63|14:32:00|0"
+
+
+def test_small_window_payload_supports_time_only_clock_updates() -> None:
+    payload = UlanziD200Device._build_small_window_payload(
+        mode=SmallWindowMode.CLOCK,
+        cpu=0,
+        mem=0,
+        gpu=0,
+        time_str="14:32:00",
+    )
+    assert payload == b"1|0|0|14:32:00|0"
+
+
+@pytest.mark.asyncio
+async def test_small_window_data_respects_cached_stats_mode_zero() -> None:
+    from tests.test_reconnect import FakeTransport, _raw_small_window_payloads
+
+    transport = FakeTransport()
+    device = UlanziD200Device(transport)
+
+    await device.set_small_window_mode(SmallWindowMode.STATS)
+    await device.set_small_window_data(cpu=17, mem=63, gpu=0, time_str="14:32:00")
+    await device.close()
+
+    assert b"\x00" in _raw_small_window_payloads(transport.writes)
+    assert b"0|17|63|14:32:00|0" in _raw_small_window_payloads(transport.writes)
 
 
 def test_small_window_rejects_interval_below_floor() -> None:
@@ -305,10 +331,11 @@ async def test_small_window_can_run_in_time_only_mode() -> None:
     assert fake.small_window_data_calls
     assert SmallWindowMode.CLOCK in fake.small_window_modes
     last = fake.small_window_data_calls[-1]
-    assert last["cpu"] is None
-    assert last["mem"] is None
-    assert last["gpu"] is None
+    assert last["cpu"] == 0
+    assert last["mem"] == 0
+    assert last["gpu"] == 0
     assert last["time_str"] == "14:32:00"
+    assert fake.keep_alive_calls == 0
     assert metrics.mem_reads == 0
 
 

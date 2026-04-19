@@ -8,7 +8,7 @@ import json
 import pytest
 
 from ulanzi_linux.domain.button_config import ButtonConfig
-from ulanzi_linux.domain.commands import IncomingCommand, OutgoingCommand
+from ulanzi_linux.domain.commands import IncomingCommand, OutgoingCommand, SmallWindowMode
 from ulanzi_linux.domain.events import ButtonEvent
 from ulanzi_linux.infrastructure.packet import PACKET_SIZE
 from ulanzi_linux.infrastructure.ulanzi_d200 import UlanziD200Device
@@ -71,6 +71,19 @@ def _framed_payloads(writes: list[bytes]) -> list[bytes]:
     return payloads
 
 
+def _raw_small_window_payloads(writes: list[bytes]) -> list[bytes]:
+    payloads: list[bytes] = []
+    for packet in writes:
+        if packet[:3] != b"\x00\x7c\x7c":
+            continue
+        code = int.from_bytes(packet[3:5], "big")
+        if code != int(OutgoingCommand.SET_SMALL_WINDOW_DATA):
+            continue
+        length = int.from_bytes(packet[5:9][::-1], "big")
+        payloads.append(packet[9 : 9 + length])
+    return payloads
+
+
 @pytest.mark.asyncio
 async def test_write_failure_reconnects_and_replays_cached_state() -> None:
     first = FakeTransport()
@@ -90,6 +103,7 @@ async def test_write_failure_reconnects_and_replays_cached_state() -> None:
 
     await device.set_brightness(42)
     await device.set_buttons((ButtonConfig(index=0, label="A"),))
+    await device.set_small_window_mode(SmallWindowMode.STATS)
 
     first.write_failures = 1
     await device.set_small_window_data(cpu=11, mem=22, gpu=0, time_str="18:42")
@@ -102,7 +116,44 @@ async def test_write_failure_reconnects_and_replays_cached_state() -> None:
     assert int(OutgoingCommand.SET_LABEL_STYLE) in codes
     assert int(OutgoingCommand.SET_BUTTONS) in codes
     assert int(OutgoingCommand.SET_SMALL_WINDOW_DATA) in codes
-    assert b"0|11|22|18:42|0" in _framed_payloads(second.writes)
+    payloads = _raw_small_window_payloads(second.writes)
+    assert b"\x00" in payloads
+    assert b"0|11|22|18:42|0" in payloads
+
+
+@pytest.mark.asyncio
+async def test_write_failure_reconnects_and_replays_cached_clock_state() -> None:
+    first = FakeTransport()
+    second = FakeTransport()
+    factory_calls = 0
+
+    def factory() -> FakeTransport:
+        nonlocal factory_calls
+        factory_calls += 1
+        return second
+
+    device = UlanziD200Device(
+        first,
+        transport_factory=factory,
+        reconnect_poll_interval_s=0.001,
+    )
+
+    await device.set_small_window_mode(SmallWindowMode.CLOCK)
+
+    first.write_failures = 1
+    await device.set_small_window_data(
+        cpu=0,
+        mem=0,
+        gpu=0,
+        time_str="18:42:00",
+    )
+    await device.close()
+
+    assert factory_calls == 1
+    assert first.closed is True
+    payloads = _raw_small_window_payloads(second.writes)
+    assert b"\x01" in payloads
+    assert b"1|0|0|18:42:00|0" in payloads
 
 
 @pytest.mark.asyncio

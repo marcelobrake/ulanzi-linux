@@ -192,7 +192,12 @@ class UlanziD200Device(DeckDevice):
     async def keep_alive(self) -> None:
         # Any outbound command would satisfy the watchdog; strmdck uses
         # SET_SMALL_WINDOW_DATA because it is idempotent and cheap.
-        if self._last_small_window_data is not None:
+        if self._cached_small_window_mode == SmallWindowMode.BACKGROUND:
+            await self._send(
+                OutgoingCommand.SET_SMALL_WINDOW_DATA,
+                self._build_small_window_mode_payload(SmallWindowMode.BACKGROUND),
+            )
+        elif self._last_small_window_data is not None:
             cpu, mem, gpu, time_str = self._last_small_window_data
             await self.set_small_window_data(
                 cpu=cpu,
@@ -203,13 +208,7 @@ class UlanziD200Device(DeckDevice):
         elif self._cached_small_window_mode is not None:
             await self._send(
                 OutgoingCommand.SET_SMALL_WINDOW_DATA,
-                self._build_small_window_payload(
-                    mode=self._cached_small_window_mode,
-                    cpu=None,
-                    mem=None,
-                    gpu=None,
-                    time_str=None,
-                ),
+                self._build_small_window_mode_payload(self._cached_small_window_mode),
             )
         else:
             await self._send(OutgoingCommand.SET_SMALL_WINDOW_DATA, b"")
@@ -217,24 +216,20 @@ class UlanziD200Device(DeckDevice):
 
     async def set_small_window_mode(self, mode: SmallWindowMode) -> None:
         self._cached_small_window_mode = mode
-        if mode != SmallWindowMode.BACKGROUND and self._last_small_window_data is None:
-            logger.info("small_window_mode_set", mode=mode.name, deferred=True)
-            return
         if self._last_small_window_data is not None:
             cpu, mem, gpu, time_str = self._last_small_window_data
         else:
             cpu, mem, gpu, time_str = None, None, None, None
         await self._send(
             OutgoingCommand.SET_SMALL_WINDOW_DATA,
-            self._build_small_window_payload(
-                mode=mode,
-                cpu=cpu,
-                mem=mem,
-                gpu=gpu,
-                time_str=time_str,
-            ),
+            self._build_small_window_mode_payload(mode),
         )
-        logger.info("small_window_mode_set", mode=mode.name)
+        logger.info(
+            "small_window_mode_set",
+            mode=mode.name,
+            mode_value=int(mode),
+            deferred=self._last_small_window_data is None,
+        )
 
     async def set_small_window_data(
         self,
@@ -244,10 +239,14 @@ class UlanziD200Device(DeckDevice):
         gpu: int | None = 0,
         time_str: str | None = None,
     ) -> None:
-        mode = self._cached_small_window_mode or SmallWindowMode.CLOCK
         self._last_small_window_data = (cpu, mem, gpu, time_str)
+        active_mode = (
+            self._cached_small_window_mode
+            if self._cached_small_window_mode is not None
+            else SmallWindowMode.CLOCK
+        )
         payload = self._build_small_window_payload(
-            mode=mode,
+            mode=active_mode,
             cpu=cpu,
             mem=mem,
             gpu=gpu,
@@ -256,7 +255,8 @@ class UlanziD200Device(DeckDevice):
         await self._send(OutgoingCommand.SET_SMALL_WINDOW_DATA, payload)
         logger.info(
             "small_window_data_set",
-            mode=mode.name,
+            mode=active_mode.name,
+            mode_value=int(active_mode),
             cpu=cpu,
             mem=mem,
             gpu=gpu,
@@ -575,18 +575,40 @@ class UlanziD200Device(DeckDevice):
                 build_buttons_zip(buttons, fill_missing=self._button_state_is_full),
             )
 
-        if self._last_small_window_data is not None:
+        if self._cached_small_window_mode == SmallWindowMode.BACKGROUND:
+            await self._send_raw(
+                transport,
+                OutgoingCommand.SET_SMALL_WINDOW_DATA,
+                self._build_small_window_mode_payload(SmallWindowMode.BACKGROUND),
+            )
+        elif self._last_small_window_data is not None:
             cpu, mem, gpu, time_str = self._last_small_window_data
+            if self._cached_small_window_mode is not None:
+                await self._send_raw(
+                    transport,
+                    OutgoingCommand.SET_SMALL_WINDOW_DATA,
+                    self._build_small_window_mode_payload(self._cached_small_window_mode),
+                )
             await self._send_raw(
                 transport,
                 OutgoingCommand.SET_SMALL_WINDOW_DATA,
                 self._build_small_window_payload(
-                    mode=self._cached_small_window_mode or SmallWindowMode.CLOCK,
+                    mode=(
+                        self._cached_small_window_mode
+                        if self._cached_small_window_mode is not None
+                        else SmallWindowMode.CLOCK
+                    ),
                     cpu=cpu,
                     mem=mem,
                     gpu=gpu,
                     time_str=time_str,
                 ),
+            )
+        elif self._cached_small_window_mode is not None:
+            await self._send_raw(
+                transport,
+                OutgoingCommand.SET_SMALL_WINDOW_DATA,
+                self._build_small_window_mode_payload(self._cached_small_window_mode),
             )
 
     def _remember_buttons(
@@ -642,6 +664,10 @@ class UlanziD200Device(DeckDevice):
         return (
             f"{int(mode)}|{cpu_field}|{mem_field}|{time_field}|{gpu_field}"
         ).encode("utf-8")
+
+    @staticmethod
+    def _build_small_window_mode_payload(mode: SmallWindowMode) -> bytes:
+        return bytes([int(mode)])
 
     async def _event_iterator(
         self,

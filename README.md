@@ -25,7 +25,7 @@ HID, with no dependency on the proprietary app.
 | Multi-page layouts + page switchers | ✅ | `fixed_buttons` + `switch_page` action |
 | Daemon with action runner (shell / shortcut / url / switch_page) | ✅ | `ulanzi-linux daemon deck.yaml` |
 | YAML hot-reload (no restart) | ✅ | on by default in daemon |
-| Small-window panel (CPU / mem / date-time) | ✅ | `small_window:` in YAML |
+| Small-window panel (clock or CPU / mem stats) | ✅ | `small_window:` in YAML |
 | Firmware watchdog keep-alive | ✅ | absorbed by small-window loop when enabled |
 | systemd **user** unit | ✅ | `systemd/ulanzi-linux.service` |
 | Localhost web editor | ✅ | `ulanzi-linux gui deck.yaml` |

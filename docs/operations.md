@@ -112,11 +112,12 @@ ulanzi-linux daemon <CONFIG_PATH> [--skip-sync] [--no-watch]
 1. **Startup** — validate YAML, open HID device, sync layout, spawn the
    event listener, start the small-window loop (if enabled), start the
    `ConfigWatcher` (if `--no-watch` not passed).
-3. **Runtime** — button events are converted into `ButtonEvent`
-  messages; the action runner executes the bound action; a large clock
-  plus CPU/MEM are pushed to the small window every `interval_s` seconds; the
-   watcher polls `deck.yaml`'s mtime every ~1 s and triggers an atomic
-   swap on change.
+2. **Runtime** — button events are converted into `ButtonEvent`
+  messages; the action runner executes the bound action; the small-window
+  loop pushes either the plain clock layout or the CPU/MEM stats layout
+  every `interval_s` seconds depending on `small_window.show_metrics`; the
+  watcher polls `deck.yaml`'s mtime every ~1 s and triggers an atomic
+  swap on change.
 3. **Shutdown** — on `SIGINT`/`SIGTERM` the daemon cancels its async
    tasks, flushes the final HID packet, closes the device, and exits 0.
 

@@ -269,17 +269,21 @@ class DeckDaemon:
                             cpu: int | None = self._metrics_reader.read_cpu_percent()
                             mem: int | None = self._metrics_reader.read_memory_percent()
                             gpu: int | None = 0
+                            time_str = self._wire_time_string(sw_cfg.time_format)
+                            await self._service._device.set_small_window_data(  # noqa: SLF001
+                                cpu=cpu,
+                                mem=mem,
+                                gpu=gpu,
+                                time_str=time_str,
+                            )
                         else:
-                            cpu = None
-                            mem = None
-                            gpu = None
-                        time_str = self._wire_time_string(sw_cfg.time_format)
-                        await self._service._device.set_small_window_data(  # noqa: SLF001
-                            cpu=cpu,
-                            mem=mem,
-                            gpu=gpu,
-                            time_str=time_str,
-                        )
+                            time_str = self._wire_time_string(sw_cfg.time_format)
+                            await self._service._device.set_small_window_data(  # noqa: SLF001
+                                cpu=0,
+                                mem=0,
+                                gpu=0,
+                                time_str=time_str,
+                            )
                         timeout = sw_cfg.interval_s
                     else:
                         if active_mode != SmallWindowMode.BACKGROUND:

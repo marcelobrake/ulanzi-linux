@@ -160,11 +160,12 @@ SMALL_WINDOW_MAX_INTERVAL_S = 4.5
 class SmallWindowConfig:
     """Small-window (left status panel) refresh configuration.
 
-    When ``enabled``, the daemon takes over the small window with a large
-    clock on top. CPU / memory percentages are optional via
-    ``show_metrics`` — and it *replaces* the plain heartbeat loop,
-    because the heartbeat already uses ``SET_SMALL_WINDOW_DATA`` under
-    the hood and would otherwise overwrite real stats with zeros.
+    When ``enabled``, the daemon takes over the small window. On the real
+    D200 firmware observed on this host, ``show_metrics`` behaves as a mode
+    switch between a clock layout and a stats layout rather than a combined
+    overlay. Clock mode therefore sends the time plus zeroed metric slots,
+    while stats mode sends the live CPU / memory payload that the firmware
+    expects for that layout.
     """
 
     enabled: bool = False
