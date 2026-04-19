@@ -15,6 +15,7 @@ small_window:                   # optional block
   interval_s: 2.0
   time_format: "%d/%m %H:%M"
   show_metrics: true            # true = stats layout, false = plain clock
+  rotate_every_s: 5.0           # optional: alternate clock/stats every 5s
 pages:                          # multi-page schema (preferred)
   <page-name>:
     buttons:
@@ -53,7 +54,9 @@ for status info. When `enabled: true`, the daemon owns that panel and
 refreshes it every `interval_s` seconds. On the real firmware validated
 for this project, `show_metrics` acts as a layout switch, not as a
 combined overlay: `false` keeps the plain clock layout, while `true`
-switches the panel to CPU / memory stats. When disabled, a plain
+switches the panel to CPU / memory stats. `rotate_every_s` optionally
+alternates between the clock and stats layouts while the daemon keeps
+refreshing faster than the firmware watchdog. When disabled, a plain
 heartbeat loop runs in its place to keep the firmware watchdog happy.
 
 | Field | Type | Default | Constraints |
@@ -62,17 +65,21 @@ heartbeat loop runs in its place to keep the firmware watchdog happy.
 | `interval_s` | float | `2.0` | `0.05 ≤ x ≤ 4.5`. Below → busy-loop risk. Above → device falls back to standalone screensaver after the ~5 s firmware watchdog. |
 | `time_format` | string | `"%H:%M"` | Any `strftime` pattern. Keep it short — the firmware uses a larger clock layout when the string is compact. |
 | `show_metrics` | bool | `true` | `true` shows the stats layout, `false` keeps the plain clock layout. |
+| `rotate_every_s` | float or null | `null` | Optional. When set together with `show_metrics: true`, the daemon alternates clock and stats after this many seconds per mode while still refreshing under `interval_s`. |
 
 ```yaml
 small_window:
   enabled: true
   interval_s: 2.0
   time_format: "%H:%M"
-  show_metrics: false            # false = clock, true = stats layout
+  show_metrics: true
+  rotate_every_s: 5.0            # 5 s de relógio, 5 s de estatísticas
 ```
-
 When `show_metrics: false`, the daemon still sends a clock-safe payload
 to keep the device in clock mode. When `show_metrics: true`, it sends the
+live CPU / memory values the stats layout expects. When `rotate_every_s`
+is also configured, the daemon starts in clock mode, keeps that layout for
+the configured duration, then alternates to stats for the same duration.
 live CPU / memory values the stats layout expects.
 
 ### Why no GPU metric?

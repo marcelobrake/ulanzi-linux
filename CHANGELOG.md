@@ -7,6 +7,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-04-19
+
+### Added
+
+- Added optional `small_window.rotate_every_s` so the daemon can keep the
+  D200 small window on the clock layout for a configured duration and then
+  switch to the stats layout for the same duration, while still refreshing
+  often enough to satisfy the firmware watchdog.
+
+### Changed
+
+- The web editor now exposes the small-window alternation interval and
+  summarizes the alternating mode directly in the device preview.
+
 ## [0.4.1] — 2026-04-19
 
 ### Fixed

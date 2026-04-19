@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from pathlib import Path
+import time
 
 import structlog
 
@@ -65,6 +66,13 @@ def _action_log_fields(action: object) -> dict[str, object]:
     elif isinstance(action, SwitchPageAction):
         fields["target_page"] = action.page
     return fields
+
+
+def _rotates_small_window(sw_cfg: object) -> bool:
+    return bool(
+        getattr(sw_cfg, "show_metrics", False)
+        and getattr(sw_cfg, "rotate_every_s", None) is not None
+    )
 
 
 class DeckDaemon:
@@ -264,27 +272,68 @@ class DeckDaemon:
     async def _status_loop(self, stop_event: asyncio.Event) -> None:
         logger.info("status_loop_started")
         active_mode: SmallWindowMode | None = None
+        mode_started_at: float | None = None
         metrics_primed = False
+        strategy_key: tuple[bool, bool, float | None] | None = None
         try:
             while not stop_event.is_set():
                 try:
                     sw_cfg = self._config.small_window
+                    current_strategy = (
+                        sw_cfg.enabled,
+                        sw_cfg.show_metrics,
+                        sw_cfg.rotate_every_s,
+                    )
+                    if strategy_key != current_strategy:
+                        active_mode = None
+                        mode_started_at = None
+                        metrics_primed = False
+                        strategy_key = current_strategy
                     if sw_cfg.enabled:
-                        desired_mode = (
-                            SmallWindowMode.STATS
-                            if sw_cfg.show_metrics
-                            else SmallWindowMode.CLOCK
-                        )
+                        now = time.monotonic()
+                        next_mode_switch_in: float | None = None
+                        if sw_cfg.show_metrics:
+                            if _rotates_small_window(sw_cfg):
+                                if (
+                                    active_mode not in {
+                                        SmallWindowMode.CLOCK,
+                                        SmallWindowMode.STATS,
+                                    }
+                                    or mode_started_at is None
+                                ):
+                                    desired_mode = SmallWindowMode.CLOCK
+                                    next_mode_switch_in = sw_cfg.rotate_every_s
+                                else:
+                                    elapsed = now - mode_started_at
+                                    if elapsed >= sw_cfg.rotate_every_s:
+                                        desired_mode = (
+                                            SmallWindowMode.STATS
+                                            if active_mode == SmallWindowMode.CLOCK
+                                            else SmallWindowMode.CLOCK
+                                        )
+                                        next_mode_switch_in = sw_cfg.rotate_every_s
+                                    else:
+                                        desired_mode = active_mode
+                                        next_mode_switch_in = (
+                                            sw_cfg.rotate_every_s - elapsed
+                                        )
+                            else:
+                                desired_mode = SmallWindowMode.STATS
+                        else:
+                            desired_mode = SmallWindowMode.CLOCK
                         if active_mode != desired_mode:
                             await self._service._device.set_small_window_mode(
                                 desired_mode
                             )
                             active_mode = desired_mode
+                            mode_started_at = now
                             metrics_primed = False
+                            if _rotates_small_window(sw_cfg):
+                                next_mode_switch_in = sw_cfg.rotate_every_s
                         if sw_cfg.show_metrics and not metrics_primed:
                             self._metrics_reader.read_cpu_percent()
                             metrics_primed = True
-                        if sw_cfg.show_metrics:
+                        if active_mode == SmallWindowMode.STATS:
                             cpu: int | None = self._metrics_reader.read_cpu_percent()
                             mem: int | None = self._metrics_reader.read_memory_percent()
                             gpu: int | None = 0
@@ -304,12 +353,15 @@ class DeckDaemon:
                                 time_str=time_str,
                             )
                         timeout = sw_cfg.interval_s
+                        if next_mode_switch_in is not None:
+                            timeout = min(timeout, max(next_mode_switch_in, 0.01))
                     else:
                         if active_mode != SmallWindowMode.BACKGROUND:
                             await self._service._device.set_small_window_mode(
                                 SmallWindowMode.BACKGROUND
                             )
                             active_mode = SmallWindowMode.BACKGROUND
+                            mode_started_at = None
                             metrics_primed = False
                         await self._service._device.keep_alive()
                         timeout = self._heartbeat_interval_s

@@ -132,7 +132,11 @@ class FakeMetrics(SystemMetricsReader):
 
 
 def _cfg_with_small_window(
-    *, enabled: bool, interval_s: float = 0.05, show_metrics: bool = True
+    *,
+    enabled: bool,
+    interval_s: float = 0.05,
+    show_metrics: bool = True,
+    rotate_every_s: float | None = None,
 ) -> DeckConfig:
     return DeckConfig(
         pages={
@@ -147,6 +151,7 @@ def _cfg_with_small_window(
             interval_s=interval_s,
             time_format="%H:%M",
             show_metrics=show_metrics,
+            rotate_every_s=rotate_every_s,
         ),
     )
 
@@ -162,6 +167,7 @@ def test_small_window_defaults_disabled() -> None:
     )
     assert cfg.small_window.enabled is False
     assert cfg.small_window.time_format == "%H:%M"
+    assert cfg.small_window.rotate_every_s is None
 
 
 def test_small_window_payload_uses_clock_wire_format() -> None:
@@ -211,24 +217,31 @@ def test_small_window_rejects_interval_above_watchdog() -> None:
         SmallWindowConfig(enabled=True, interval_s=10.0)
 
 
+def test_small_window_rejects_rotate_below_floor() -> None:
+    with pytest.raises(ValueError, match="rotate_every_s"):
+        SmallWindowConfig(enabled=True, rotate_every_s=0.001)
+
+
 def test_loader_parses_small_window_block(tmp_path: Path) -> None:
-    yaml_text = """
-default_page: main
-small_window:
-  enabled: true
-  interval_s: 1.5
-  time_format: "%H:%M"
-pages:
-  main:
-    buttons:
-      - index: 0
-        label: A
-"""
+    yaml_text = (
+        "default_page: main\n"
+        "small_window:\n"
+        "  enabled: true\n"
+        "  interval_s: 1.5\n"
+        "  rotate_every_s: 5.0\n"
+        "  time_format: \"%H:%M\"\n"
+        "pages:\n"
+        "  main:\n"
+        "    buttons:\n"
+        "      - index: 0\n"
+        "        label: A\n"
+    )
     path = tmp_path / "deck.yaml"
     path.write_text(yaml_text)
     cfg = load_deck_config(path)
     assert cfg.small_window.enabled is True
     assert cfg.small_window.interval_s == 1.5
+    assert cfg.small_window.rotate_every_s == 5.0
     assert cfg.small_window.time_format == "%H:%M"
 
 
@@ -337,6 +350,36 @@ async def test_small_window_can_run_in_time_only_mode() -> None:
     assert last["time_str"] == "14:32:00"
     assert fake.keep_alive_calls == 0
     assert metrics.mem_reads == 0
+
+
+@pytest.mark.asyncio
+async def test_small_window_can_alternate_clock_and_stats() -> None:
+    fake = RecordingFakeDeck()
+    metrics = FakeMetrics(cpu_values=[0, 42, 42, 42], mem=61, time_str="14:32")
+    cfg = _cfg_with_small_window(
+        enabled=True,
+        interval_s=0.05,
+        show_metrics=True,
+        rotate_every_s=0.1,
+    )
+
+    async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
+        daemon = DeckDaemon(svc, cfg, metrics_reader=metrics)
+        stop = asyncio.Event()
+
+        async def _stop_after() -> None:
+            await asyncio.sleep(0.28)
+            stop.set()
+
+        await asyncio.gather(
+            daemon.run(stop_event=stop),
+            _stop_after(),
+        )
+
+    assert SmallWindowMode.CLOCK in fake.small_window_modes
+    assert SmallWindowMode.STATS in fake.small_window_modes
+    assert any(call["cpu"] == 0 and call["mem"] == 0 for call in fake.small_window_data_calls)
+    assert any(call["cpu"] == 42 and call["mem"] == 61 for call in fake.small_window_data_calls)
 
 
 @pytest.mark.asyncio
