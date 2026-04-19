@@ -38,6 +38,10 @@ image, the label is previewed centered in the tile and you can tweak
 background color, text color, weight, italic, underline, font family and
 font size directly from the inspector.
 
+New blank layouts created by the editor now start with the small-window
+panel enabled by default, so the wide status area is active from the
+first save even before the operator customizes anything else.
+
 The current UI also exposes a denser control-room layout: the simulator
 now sits immediately below the title block, uses larger deck tiles, and
 keeps the summary cards just below it. The inspector still shows
@@ -52,6 +56,19 @@ Image uploads are normalized immediately into 196×196 PNG assets, preserving
 their aspect ratio and keeping at least 5 px of margin on every edge. Each
 save also creates a timestamped sibling copy of `deck.yaml`, and the UI can
 optionally persist the generated ZIP payload next to the config file.
+
+Besides raw image uploads, the inspector now offers a modal icon picker with
+curated Font Awesome 5 and Material Design Icons entries. The selected SVG is
+converted in the browser into a local PNG asset and then saved through the same
+asset pipeline as uploaded images. The picker itself fetches those library SVGs
+at runtime, so it expects outbound network access when you browse the catalog.
+
+The action selector now also exposes `Comando pré-definido`, a catalog of 50
+common GNOME desktop actions such as mute, volume up/down, brightness up/down,
+keyboard layout switching, screenshots, workspace moves, and direct jumps into
+`gnome-control-center` sections. Shortcut actions also gained a dedicated modal
+builder for choosing combinations such as arrows, PgUp/PgDn, function keys and
+media keys instead of typing every key symbol manually.
 
 URL actions entered through the editor are normalized on save: if the
 operator pastes only a hostname like `claude.ai`, the saved action becomes
@@ -107,6 +124,7 @@ home directory.
 | `GET`  | `/api/health` | Version, config path, device count — used in the UI header. |
 | `GET`  | `/api/devices` | Enumerate D200 units currently attached. |
 | `GET`  | `/api/editor` | Read the structured visual-editor payload. |
+| `GET`  | `/api/catalog/predefined-commands` | Return the built-in GNOME command catalog used by the visual editor. |
 | `GET`  | `/api/small-window/preview` | Return live clock and CPU/MEM values for the simulator tile. |
 | `GET`  | `/api/config` | Read the YAML file as text + metadata. |
 | `POST` | `/api/config/validate` | Parse without saving — for live feedback. |

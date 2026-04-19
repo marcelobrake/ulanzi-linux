@@ -20,13 +20,17 @@
     --shadow: 0 28px 70px rgba(0, 0, 0, 0.34);
     --font-sans: "Alegreya Sans", "IBM Plex Sans", "DejaVu Sans", sans-serif;
     --font-mono: "IBM Plex Mono", "JetBrains Mono", "DejaVu Sans Mono", monospace;
-    --deck-slot-size: 114px;
-    --deck-icon-height: 62px;
+    --deck-slot-size: 138px;
+    --deck-icon-height: 86px;
     --deck-gap: 0.85rem;
 }
 
 * {
     box-sizing: border-box;
+}
+
+[x-cloak] {
+    display: none !important;
 }
 
 html,
@@ -56,6 +60,7 @@ body::before {
         linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
     background-size: 32px 32px;
+    -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.42), transparent 86%);
     mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.42), transparent 86%);
     opacity: 0.22;
 }
@@ -160,6 +165,16 @@ code {
     gap: 0.7rem;
     align-items: center;
     flex-wrap: wrap;
+}
+
+.field-group {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.secondary-action,
+.ghost-button {
+    width: fit-content;
 }
 
 .pill {
@@ -387,7 +402,7 @@ textarea {
     gap: 0.38rem;
     align-content: space-between;
     text-align: left;
-    padding: 0.6rem;
+    padding: 0.72rem;
     border-radius: 20px;
     border: 1px solid rgba(255, 255, 255, 0.10);
     background:
@@ -546,13 +561,13 @@ textarea {
 }
 
 .deck-copy strong {
-    font-size: 0.82rem;
+    font-size: 0.9rem;
     line-height: 1.1;
 }
 
 .deck-copy span {
     color: var(--muted);
-    font-size: 0.68rem;
+    font-size: 0.74rem;
     line-height: 1.1;
 }
 
@@ -647,7 +662,7 @@ textarea {
 
 .image-editor {
     display: grid;
-    grid-template-columns: 132px minmax(0, 1fr);
+    grid-template-columns: 148px minmax(0, 1fr);
     gap: 0.9rem;
 }
 
@@ -655,7 +670,7 @@ textarea {
     border-radius: var(--radius-sm);
     border: 1px dashed rgba(255, 255, 255, 0.12);
     background: rgba(255, 255, 255, 0.04);
-    min-height: 132px;
+    min-height: 148px;
     display: grid;
     place-items: center;
     overflow: hidden;
@@ -739,6 +754,180 @@ textarea {
     border-color: rgba(86, 194, 255, 0.38);
 }
 
+.catalog-preview-card {
+    display: grid;
+    gap: 0.38rem;
+    padding: 0.95rem 1rem;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(121, 221, 248, 0.16);
+}
+
+.catalog-preview-card strong {
+    font-size: 0.98rem;
+}
+
+.catalog-preview-card span,
+.catalog-preview-card p,
+.catalog-preview-card code {
+    margin: 0;
+}
+
+.catalog-preview-card span,
+.catalog-preview-card p {
+    color: var(--muted);
+}
+
+.catalog-preview-card code {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    padding: 0.38rem 0.55rem;
+    border-radius: 12px;
+    background: rgba(7, 16, 24, 0.7);
+    border: 1px solid rgba(121, 221, 248, 0.12);
+    overflow-wrap: anywhere;
+}
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(3, 8, 12, 0.72);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+
+.modal-card {
+    width: min(1120px, calc(100vw - 2rem));
+    max-height: min(88vh, 920px);
+    overflow: auto;
+    padding: 1.15rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-strong);
+    background:
+        linear-gradient(180deg, rgba(23, 40, 53, 0.98), rgba(12, 23, 31, 1));
+    box-shadow: var(--shadow);
+}
+
+.modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.modal-head h2,
+.shortcut-section h3 {
+    margin: 0;
+}
+
+.icon-picker-toolbar {
+    display: grid;
+    gap: 0.85rem;
+    margin: 1rem 0;
+}
+
+.library-tabs,
+.chip-grid {
+    display: flex;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+}
+
+.icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 0.85rem;
+}
+
+.icon-choice {
+    display: grid;
+    justify-items: center;
+    gap: 0.45rem;
+    padding: 0.9rem 0.7rem;
+    border-radius: 18px;
+    text-align: center;
+}
+
+.icon-choice strong,
+.icon-choice small {
+    line-height: 1.2;
+}
+
+.icon-choice small {
+    color: var(--muted);
+}
+
+.icon-choice-art {
+    width: 84px;
+    height: 84px;
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(121, 221, 248, 0.12);
+}
+
+.icon-choice-art img {
+    width: 58px;
+    height: 58px;
+    object-fit: contain;
+}
+
+.shortcut-preview-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(121, 221, 248, 0.14);
+}
+
+.shortcut-preview-line span {
+    color: var(--muted);
+}
+
+.shortcut-preview-line code {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0.3rem 0.65rem;
+    border-radius: 12px;
+    background: rgba(7, 16, 24, 0.8);
+    border: 1px solid rgba(121, 221, 248, 0.12);
+}
+
+.shortcut-builder-grid {
+    display: grid;
+    gap: 1rem;
+}
+
+.shortcut-section {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.shortcut-key-group {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.shortcut-key-group strong {
+    color: var(--muted);
+    font-size: 0.84rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
 .status-line {
     font-family: var(--font-mono);
     color: var(--muted);
@@ -808,6 +997,11 @@ textarea {
     .text-style-grid {
         grid-template-columns: 1fr;
     }
+
+    .shortcut-preview-line {
+        align-items: flex-start;
+        flex-direction: column;
+    }
 }
 
 @media (max-width: 720px) {
@@ -817,8 +1011,8 @@ textarea {
     }
 
     :root {
-        --deck-slot-size: 102px;
-        --deck-icon-height: 56px;
+        --deck-slot-size: 122px;
+        --deck-icon-height: 72px;
         --deck-gap: 0.7rem;
     }
 
@@ -833,5 +1027,15 @@ textarea {
     .action-hint {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .modal-card {
+        width: calc(100vw - 1rem);
+        max-height: calc(100vh - 1rem);
+        padding: 1rem;
+    }
+
+    .icon-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }

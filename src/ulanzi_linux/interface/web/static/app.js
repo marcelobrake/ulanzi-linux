@@ -16,6 +16,9 @@ const DECK_LAYOUT = Object.freeze([
 ]);
 
 const INFO_WINDOW_INDEX = 13;
+const ICON_RENDER_SIZE = 196;
+const ICON_RENDER_PADDING = 14;
+
 const FONT_OPTIONS = Object.freeze([
     "DejaVu Sans",
     "DejaVu Serif",
@@ -28,15 +31,190 @@ const ACTION_LABELS = Object.freeze({
     none: "Sem ação",
     shell: "Comando",
     shortcut: "Atalho",
+    predefined_command: "Comando pré-definido",
     url: "Link",
     switch_page: "Troca de página",
 });
+
+const PREDEFINED_CATEGORY_LABELS = Object.freeze({
+    audio: "Áudio",
+    display: "Tela",
+    input: "Entrada",
+    navigation: "Navegação",
+    window: "Janela",
+    workspace: "Workspaces",
+    settings: "Configurações",
+    system: "Sistema",
+    launchers: "Aplicativos",
+});
+
+const SHORTCUT_MODIFIERS = Object.freeze([
+    { value: "ctrl", label: "Ctrl" },
+    { value: "alt", label: "Alt" },
+    { value: "shift", label: "Shift" },
+    { value: "super", label: "Super" },
+]);
+
+const SHORTCUT_KEY_GROUPS = Object.freeze([
+    {
+        label: "Setas",
+        keys: [
+            { value: "Left", label: "←" },
+            { value: "Right", label: "→" },
+            { value: "Up", label: "↑" },
+            { value: "Down", label: "↓" },
+        ],
+    },
+    {
+        label: "Navegação",
+        keys: [
+            { value: "Home", label: "Home" },
+            { value: "End", label: "End" },
+            { value: "Page_Up", label: "PgUp" },
+            { value: "Page_Down", label: "PgDn" },
+            { value: "Tab", label: "Tab" },
+            { value: "Escape", label: "Esc" },
+            { value: "Insert", label: "Ins" },
+            { value: "Delete", label: "Del" },
+        ],
+    },
+    {
+        label: "Edição",
+        keys: [
+            { value: "Return", label: "Enter" },
+            { value: "space", label: "Espaço" },
+            { value: "BackSpace", label: "Backspace" },
+            { value: "slash", label: "/" },
+            { value: "period", label: "." },
+            { value: "comma", label: "," },
+        ],
+    },
+    {
+        label: "Funções",
+        keys: [
+            { value: "F1", label: "F1" },
+            { value: "F2", label: "F2" },
+            { value: "F3", label: "F3" },
+            { value: "F4", label: "F4" },
+            { value: "F5", label: "F5" },
+            { value: "F6", label: "F6" },
+            { value: "F7", label: "F7" },
+            { value: "F8", label: "F8" },
+            { value: "F9", label: "F9" },
+            { value: "F10", label: "F10" },
+            { value: "F11", label: "F11" },
+            { value: "F12", label: "F12" },
+        ],
+    },
+    {
+        label: "Mídia",
+        keys: [
+            { value: "XF86AudioMute", label: "Mute" },
+            { value: "XF86AudioRaiseVolume", label: "Vol+" },
+            { value: "XF86AudioLowerVolume", label: "Vol-" },
+            { value: "XF86AudioPlay", label: "Play/Pause" },
+            { value: "XF86AudioNext", label: "Próxima faixa" },
+            { value: "XF86AudioPrev", label: "Faixa anterior" },
+            { value: "XF86AudioMicMute", label: "Mic mute" },
+            { value: "XF86MonBrightnessUp", label: "Brilho+" },
+            { value: "XF86MonBrightnessDown", label: "Brilho-" },
+        ],
+    },
+]);
+
+const ICON_LIBRARY_OPTIONS = Object.freeze([
+    {
+        id: "fa-solid",
+        label: "Font Awesome 5",
+        icons: [
+            { iconify: "fa-solid:terminal", label: "Terminal", keywords: ["shell", "console"] },
+            { iconify: "fa-solid:folder-open", label: "Pasta", keywords: ["files", "nautilus"] },
+            { iconify: "fa-solid:play", label: "Play", keywords: ["media"] },
+            { iconify: "fa-solid:pause", label: "Pause", keywords: ["media"] },
+            { iconify: "fa-solid:stop", label: "Stop", keywords: ["media"] },
+            { iconify: "fa-solid:step-forward", label: "Próxima faixa", keywords: ["media", "next"] },
+            { iconify: "fa-solid:step-backward", label: "Faixa anterior", keywords: ["media", "prev"] },
+            { iconify: "fa-solid:volume-up", label: "Volume alto", keywords: ["audio", "speaker"] },
+            { iconify: "fa-solid:volume-down", label: "Volume baixo", keywords: ["audio", "speaker"] },
+            { iconify: "fa-solid:volume-mute", label: "Mudo", keywords: ["audio", "mute"] },
+            { iconify: "fa-solid:microphone", label: "Microfone", keywords: ["audio", "mic"] },
+            { iconify: "fa-solid:microphone-slash", label: "Microfone mudo", keywords: ["audio", "mic", "mute"] },
+            { iconify: "fa-solid:sun", label: "Sol", keywords: ["brightness", "light"] },
+            { iconify: "fa-solid:moon", label: "Lua", keywords: ["night", "dark"] },
+            { iconify: "fa-solid:keyboard", label: "Teclado", keywords: ["input", "layout"] },
+            { iconify: "fa-solid:globe", label: "Globo", keywords: ["web", "browser"] },
+            { iconify: "fa-solid:wifi", label: "Wi-Fi", keywords: ["network"] },
+            { iconify: "fa-solid:cog", label: "Configurações", keywords: ["settings"] },
+            { iconify: "fa-solid:power-off", label: "Energia", keywords: ["power", "shutdown"] },
+            { iconify: "fa-solid:lock", label: "Cadeado", keywords: ["lock"] },
+            { iconify: "fa-solid:search", label: "Busca", keywords: ["search"] },
+            { iconify: "fa-solid:bell", label: "Notificação", keywords: ["notification"] },
+            { iconify: "fa-solid:camera", label: "Câmera", keywords: ["photo", "capture"] },
+            { iconify: "fa-solid:image", label: "Imagem", keywords: ["picture"] },
+            { iconify: "fa-solid:video", label: "Vídeo", keywords: ["recording"] },
+            { iconify: "fa-solid:music", label: "Música", keywords: ["audio", "media"] },
+            { iconify: "fa-solid:code", label: "Código", keywords: ["dev", "programming"] },
+            { iconify: "fa-solid:bug", label: "Bug", keywords: ["debug"] },
+            { iconify: "fa-solid:rocket", label: "Foguete", keywords: ["launch"] },
+            { iconify: "fa-solid:save", label: "Salvar", keywords: ["disk"] },
+            { iconify: "fa-solid:trash", label: "Lixeira", keywords: ["delete"] },
+            { iconify: "fa-solid:cloud-upload-alt", label: "Upload", keywords: ["cloud"] },
+            { iconify: "fa-solid:cloud-download-alt", label: "Download", keywords: ["cloud"] },
+            { iconify: "fa-solid:home", label: "Home", keywords: ["house"] },
+            { iconify: "fa-solid:desktop", label: "Desktop", keywords: ["monitor", "workspace"] },
+            { iconify: "fa-solid:external-link-alt", label: "Abrir externo", keywords: ["link", "open"] },
+        ],
+    },
+    {
+        id: "mdi",
+        label: "Material Design Icons",
+        icons: [
+            { iconify: "mdi:console", label: "Console", keywords: ["terminal", "shell"] },
+            { iconify: "mdi:folder-open-outline", label: "Pasta", keywords: ["files", "nautilus"] },
+            { iconify: "mdi:play-circle-outline", label: "Play", keywords: ["media"] },
+            { iconify: "mdi:pause-circle-outline", label: "Pause", keywords: ["media"] },
+            { iconify: "mdi:stop-circle-outline", label: "Stop", keywords: ["media"] },
+            { iconify: "mdi:skip-next-circle-outline", label: "Próxima faixa", keywords: ["media", "next"] },
+            { iconify: "mdi:skip-previous-circle-outline", label: "Faixa anterior", keywords: ["media", "prev"] },
+            { iconify: "mdi:volume-high", label: "Volume alto", keywords: ["audio"] },
+            { iconify: "mdi:volume-medium", label: "Volume baixo", keywords: ["audio"] },
+            { iconify: "mdi:volume-off", label: "Mudo", keywords: ["audio", "mute"] },
+            { iconify: "mdi:microphone", label: "Microfone", keywords: ["audio", "mic"] },
+            { iconify: "mdi:microphone-off", label: "Microfone mudo", keywords: ["audio", "mic", "mute"] },
+            { iconify: "mdi:white-balance-sunny", label: "Sol", keywords: ["brightness", "light"] },
+            { iconify: "mdi:weather-night", label: "Lua", keywords: ["night", "dark"] },
+            { iconify: "mdi:keyboard-outline", label: "Teclado", keywords: ["input", "layout"] },
+            { iconify: "mdi:web", label: "Web", keywords: ["browser"] },
+            { iconify: "mdi:wifi", label: "Wi-Fi", keywords: ["network"] },
+            { iconify: "mdi:cog-outline", label: "Configurações", keywords: ["settings"] },
+            { iconify: "mdi:power", label: "Energia", keywords: ["power", "shutdown"] },
+            { iconify: "mdi:lock-outline", label: "Cadeado", keywords: ["lock"] },
+            { iconify: "mdi:magnify", label: "Busca", keywords: ["search"] },
+            { iconify: "mdi:bell-outline", label: "Notificação", keywords: ["notification"] },
+            { iconify: "mdi:camera-outline", label: "Câmera", keywords: ["photo", "capture"] },
+            { iconify: "mdi:image-outline", label: "Imagem", keywords: ["picture"] },
+            { iconify: "mdi:video-outline", label: "Vídeo", keywords: ["recording"] },
+            { iconify: "mdi:music-note", label: "Música", keywords: ["audio", "media"] },
+            { iconify: "mdi:code-tags", label: "Código", keywords: ["dev", "programming"] },
+            { iconify: "mdi:bug-outline", label: "Bug", keywords: ["debug"] },
+            { iconify: "mdi:rocket-launch-outline", label: "Foguete", keywords: ["launch"] },
+            { iconify: "mdi:content-save-outline", label: "Salvar", keywords: ["disk"] },
+            { iconify: "mdi:trash-can-outline", label: "Lixeira", keywords: ["delete"] },
+            { iconify: "mdi:cloud-upload-outline", label: "Upload", keywords: ["cloud"] },
+            { iconify: "mdi:cloud-download-outline", label: "Download", keywords: ["cloud"] },
+            { iconify: "mdi:home-outline", label: "Home", keywords: ["house"] },
+            { iconify: "mdi:monitor-dashboard", label: "Desktop", keywords: ["monitor", "workspace"] },
+            { iconify: "mdi:open-in-new", label: "Abrir externo", keywords: ["link", "open"] },
+        ],
+    },
+]);
 
 function emptyAction() {
     return {
         type: "none",
         cmd: "",
         keys: "",
+        command_id: "",
         url: "",
         page: "",
     };
@@ -51,6 +229,13 @@ function emptyTextStyle() {
         underline: false,
         font_family: "DejaVu Sans",
         font_size: 30,
+    };
+}
+
+function emptyShortcutDraft() {
+    return {
+        modifiers: [],
+        key: "",
     };
 }
 
@@ -85,6 +270,7 @@ window.editorApp = function editorApp() {
     return {
         health: { ok: false, version: "", config_path: "", devices_found: 0 },
         editor: null,
+        predefinedCommands: [],
         saveFirmwareBundle: false,
         smallWindowPreview: {
             time_text: "--:--",
@@ -101,13 +287,27 @@ window.editorApp = function editorApp() {
         selectedIndex: 0,
         buttonForm: null,
         newPageName: "",
+        predefinedCommandQuery: "",
+        iconModalOpen: false,
+        iconLibrary: ICON_LIBRARY_OPTIONS[0].id,
+        iconSearch: "",
+        shortcutModalOpen: false,
+        shortcutDraft: emptyShortcutDraft(),
         fontOptions: FONT_OPTIONS,
+        iconLibraryOptions: ICON_LIBRARY_OPTIONS,
+        shortcutModifiers: SHORTCUT_MODIFIERS,
+        shortcutKeyGroups: SHORTCUT_KEY_GROUPS,
 
         async init() {
-            await this.refreshHealth();
+            await Promise.all([
+                this.refreshHealth(),
+                this.loadPredefinedCommands(),
+            ]);
             await this.loadEditor();
             await this.refreshSmallWindowPreview();
-            setInterval(() => this.refreshHealth(), 5000);
+            setInterval(() => {
+                void this.refreshHealth();
+            }, 5000);
             setInterval(() => {
                 void this.refreshSmallWindowPreview();
             }, 1000);
@@ -127,6 +327,19 @@ window.editorApp = function editorApp() {
                     config_path: "",
                     devices_found: 0,
                 };
+            }
+        },
+
+        async loadPredefinedCommands() {
+            try {
+                const response = await fetch("/api/catalog/predefined-commands");
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.detail || payload.error || "Falha ao carregar comandos pré-definidos");
+                }
+                this.predefinedCommands = payload;
+            } catch (_error) {
+                this.predefinedCommands = [];
             }
         },
 
@@ -197,14 +410,16 @@ window.editorApp = function editorApp() {
             editor.fixed_buttons = (editor.fixed_buttons || [])
                 .map((button) => this.normalizeButton(button))
                 .filter((button) => this.isEditableSlot(button.index));
-            editor.small_window = editor.small_window || {
-                enabled: false,
+            editor.small_window = {
+                enabled: true,
                 interval_s: 2.0,
                 time_format: "%H:%M",
-                show_metrics: true,
+                show_metrics: false,
                 rotate_every_s: null,
+                ...(editor.small_window || {}),
             };
-            editor.small_window.show_metrics = editor.small_window.show_metrics !== false;
+            editor.small_window.enabled = editor.small_window.enabled !== false;
+            editor.small_window.show_metrics = editor.small_window.show_metrics === true;
             editor.small_window.rotate_every_s = this.parseOptionalNumber(editor.small_window.rotate_every_s);
             return editor;
         },
@@ -247,6 +462,14 @@ window.editorApp = function editorApp() {
             return path ? `/api/asset?path=${encodeURIComponent(path)}` : "";
         },
 
+        iconChoiceUrl(choice) {
+            return `https://api.iconify.design/${choice.iconify}.svg?color=%23F8FAFC`;
+        },
+
+        predefinedCategoryLabel(category) {
+            return PREDEFINED_CATEGORY_LABELS[category] || category;
+        },
+
         isInfoWindowSlot(index) {
             return index === INFO_WINDOW_INDEX;
         },
@@ -280,6 +503,7 @@ window.editorApp = function editorApp() {
             this.selectedIndex = index;
             this.buttonForm = this.formForIndex(index);
             this.validationError = "";
+            this.predefinedCommandQuery = "";
         },
 
         formForIndex(index) {
@@ -307,6 +531,12 @@ window.editorApp = function editorApp() {
                 return { ...emptyAction(), type: "shell", cmd: action.cmd || "" };
             case "shortcut":
                 return { ...emptyAction(), type: "shortcut", keys: action.keys || "" };
+            case "predefined_command":
+                return {
+                    ...emptyAction(),
+                    type: "predefined_command",
+                    command_id: action.command_id || "",
+                };
             case "url":
                 return { ...emptyAction(), type: "url", url: action.url || "" };
             case "switch_page":
@@ -380,6 +610,27 @@ window.editorApp = function editorApp() {
             this.syncSelectedButton();
         },
 
+        async sendAssetBlob(blob, filename) {
+            const form = new FormData();
+            form.append("file", blob, filename);
+            const response = await fetch("/api/assets", {
+                method: "POST",
+                body: form,
+            });
+            const payload = await response.json();
+            if (!response.ok) {
+                throw new Error(payload.detail || payload.error || "Falha no upload da imagem");
+            }
+            return payload;
+        },
+
+        applyAssetPayload(payload, statusText) {
+            this.buttonForm.icon_path = payload.path;
+            this.buttonForm.preview_url = payload.preview_url;
+            this.syncSelectedButton();
+            this.setStatus(statusText, "ok");
+        },
+
         async uploadIcon(event) {
             const file = event.target.files?.[0];
             if (!file) {
@@ -387,26 +638,155 @@ window.editorApp = function editorApp() {
             }
             this.busy = true;
             try {
-                const form = new FormData();
-                form.append("file", file);
-                const response = await fetch("/api/assets", {
-                    method: "POST",
-                    body: form,
-                });
-                const payload = await response.json();
-                if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || "Falha no upload da imagem");
-                }
-                this.buttonForm.icon_path = payload.path;
-                this.buttonForm.preview_url = payload.preview_url;
-                this.syncSelectedButton();
-                this.setStatus(`Imagem enviada: ${file.name}`, "ok");
+                const payload = await this.sendAssetBlob(file, file.name || "button-icon.png");
+                this.applyAssetPayload(payload, `Imagem enviada: ${file.name}`);
             } catch (error) {
                 this.setStatus(`Falha no upload: ${error.message}`, "err");
             } finally {
                 this.busy = false;
                 event.target.value = "";
             }
+        },
+
+        openIconModal() {
+            this.iconModalOpen = true;
+            this.iconSearch = "";
+        },
+
+        closeIconModal() {
+            this.iconModalOpen = false;
+        },
+
+        async fetchIconSvg(choice) {
+            const response = await fetch(this.iconChoiceUrl(choice));
+            if (!response.ok) {
+                throw new Error("Não foi possível baixar o ícone selecionado");
+            }
+            const svgMarkup = await response.text();
+            return svgMarkup.includes("color=")
+                ? svgMarkup
+                : svgMarkup.replace("<svg", '<svg color="#F8FAFC"');
+        },
+
+        async renderSvgToPngBlob(svgMarkup) {
+            const svgBlob = new Blob([svgMarkup], { type: "image/svg+xml;charset=utf-8" });
+            const objectUrl = URL.createObjectURL(svgBlob);
+            try {
+                const image = await new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = () => reject(new Error("Falha ao rasterizar o ícone"));
+                    img.src = objectUrl;
+                });
+                const canvas = document.createElement("canvas");
+                canvas.width = ICON_RENDER_SIZE;
+                canvas.height = ICON_RENDER_SIZE;
+                const context = canvas.getContext("2d");
+                if (!context) {
+                    throw new Error("Canvas indisponível neste navegador");
+                }
+                const maxSize = ICON_RENDER_SIZE - (ICON_RENDER_PADDING * 2);
+                const width = image.naturalWidth || ICON_RENDER_SIZE;
+                const height = image.naturalHeight || ICON_RENDER_SIZE;
+                const scale = Math.min(maxSize / width, maxSize / height);
+                const drawWidth = Math.max(1, Math.round(width * scale));
+                const drawHeight = Math.max(1, Math.round(height * scale));
+                const x = Math.round((ICON_RENDER_SIZE - drawWidth) / 2);
+                const y = Math.round((ICON_RENDER_SIZE - drawHeight) / 2);
+                context.clearRect(0, 0, ICON_RENDER_SIZE, ICON_RENDER_SIZE);
+                context.drawImage(image, x, y, drawWidth, drawHeight);
+                return await new Promise((resolve, reject) => {
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            resolve(blob);
+                            return;
+                        }
+                        reject(new Error("Falha ao gerar PNG do ícone"));
+                    }, "image/png");
+                });
+            } finally {
+                URL.revokeObjectURL(objectUrl);
+            }
+        },
+
+        async chooseLibraryIcon(choice) {
+            this.busy = true;
+            try {
+                const svgMarkup = await this.fetchIconSvg(choice);
+                const pngBlob = await this.renderSvgToPngBlob(svgMarkup);
+                const filename = `${choice.iconify.replace(/[:/]/g, "-")}.png`;
+                const payload = await this.sendAssetBlob(pngBlob, filename);
+                this.applyAssetPayload(payload, `Ícone aplicado: ${choice.label}`);
+                this.closeIconModal();
+            } catch (error) {
+                this.setStatus(`Falha ao aplicar ícone: ${error.message}`, "err");
+            } finally {
+                this.busy = false;
+            }
+        },
+
+        normalizeShortcutDraft(keys) {
+            const modifierValues = new Set(SHORTCUT_MODIFIERS.map((modifier) => modifier.value));
+            const draft = emptyShortcutDraft();
+            const tokens = String(keys || "")
+                .split("+")
+                .map((token) => token.trim())
+                .filter(Boolean);
+            for (const token of tokens) {
+                const normalized = token.toLowerCase();
+                const mapped = normalized === "control"
+                    ? "ctrl"
+                    : normalized === "win"
+                    ? "super"
+                    : normalized;
+                if (modifierValues.has(mapped)) {
+                    if (!draft.modifiers.includes(mapped)) {
+                        draft.modifiers.push(mapped);
+                    }
+                    continue;
+                }
+                draft.key = token;
+            }
+            return draft;
+        },
+
+        toggleShortcutModifier(value) {
+            if (this.shortcutDraft.modifiers.includes(value)) {
+                this.shortcutDraft.modifiers = this.shortcutDraft.modifiers.filter((item) => item !== value);
+                return;
+            }
+            this.shortcutDraft.modifiers = [...this.shortcutDraft.modifiers, value];
+        },
+
+        setShortcutKey(value) {
+            this.shortcutDraft.key = value;
+        },
+
+        openShortcutModal() {
+            this.shortcutDraft = this.normalizeShortcutDraft(this.buttonForm?.action?.keys || "");
+            this.shortcutModalOpen = true;
+        },
+
+        closeShortcutModal() {
+            this.shortcutModalOpen = false;
+        },
+
+        composeShortcutKeys(draft = this.shortcutDraft) {
+            const modifierOrder = SHORTCUT_MODIFIERS.map((modifier) => modifier.value);
+            const orderedModifiers = modifierOrder.filter((value) => draft.modifiers.includes(value));
+            return [...orderedModifiers, draft.key].filter(Boolean).join("+");
+        },
+
+        applyShortcutSelection() {
+            const keys = this.composeShortcutKeys();
+            if (!keys) {
+                this.setStatus("Escolha uma tecla para montar o atalho", "err");
+                return;
+            }
+            this.buttonForm.action.keys = keys;
+            this.syncSelectedButton();
+            this.closeShortcutModal();
+            this.setStatus(`Atalho aplicado: ${keys}`, "ok");
         },
 
         serializeButton(button) {
@@ -459,7 +839,7 @@ window.editorApp = function editorApp() {
                     enabled: Boolean(this.editor.small_window.enabled),
                     interval_s: Number(this.editor.small_window.interval_s),
                     time_format: this.editor.small_window.time_format,
-                    show_metrics: this.editor.small_window.show_metrics !== false,
+                    show_metrics: this.editor.small_window.show_metrics === true,
                     rotate_every_s: this.parseOptionalNumber(this.editor.small_window.rotate_every_s),
                 },
                 save_firmware_bundle: Boolean(this.saveFirmwareBundle),
@@ -721,6 +1101,49 @@ window.editorApp = function editorApp() {
             return this.editor?.pages.map((page) => page.name) || [];
         },
 
+        get predefinedCommandOptions() {
+            const search = this.predefinedCommandQuery.trim().toLowerCase();
+            if (!search) {
+                return this.predefinedCommands;
+            }
+            return this.predefinedCommands.filter((command) => {
+                const haystack = [
+                    command.label,
+                    command.description,
+                    command.category,
+                    command.preview,
+                    ...(command.keywords || []),
+                ]
+                    .join(" ")
+                    .toLowerCase();
+                return haystack.includes(search);
+            });
+        },
+
+        get selectedPredefinedCommand() {
+            const commandId = this.buttonForm?.action?.command_id || "";
+            return this.predefinedCommands.find((command) => command.command_id === commandId) || null;
+        },
+
+        get currentIconLibrary() {
+            return this.iconLibraryOptions.find((library) => library.id === this.iconLibrary)
+                || this.iconLibraryOptions[0];
+        },
+
+        get filteredIconChoices() {
+            const search = this.iconSearch.trim().toLowerCase();
+            const icons = this.currentIconLibrary?.icons || [];
+            if (!search) {
+                return icons;
+            }
+            return icons.filter((choice) => {
+                const haystack = [choice.label, choice.iconify, ...(choice.keywords || [])]
+                    .join(" ")
+                    .toLowerCase();
+                return haystack.includes(search);
+            });
+        },
+
         get smallWindowSummary() {
             if (!this.editor?.small_window?.enabled) {
                 return "Desligado";
@@ -729,15 +1152,15 @@ window.editorApp = function editorApp() {
                 const seconds = this.formatSeconds(this.editor.small_window.rotate_every_s);
                 return `Relógio ${seconds}s / estatísticas ${seconds}s`;
             }
-            return this.editor.small_window.show_metrics === false
-                ? "Somente relógio"
-                : "Estatísticas";
+            return this.editor.small_window.show_metrics === true
+                ? "Estatísticas"
+                : "Somente relógio";
         },
 
         get smallWindowAlternates() {
             return Boolean(
                 this.editor?.small_window?.enabled
-                && this.editor.small_window.show_metrics !== false
+                && this.editor.small_window.show_metrics === true
                 && this.parseOptionalNumber(this.editor.small_window.rotate_every_s) !== null,
             );
         },
@@ -756,6 +1179,10 @@ window.editorApp = function editorApp() {
 
         get currentTextLabelStyle() {
             return this.textStyleFor(this.buttonForm?.text_style, 0.72);
+        },
+
+        get shortcutSelectionText() {
+            return this.composeShortcutKeys() || "Selecione uma combinação";
         },
     };
 };

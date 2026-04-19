@@ -35,6 +35,7 @@ from typing import Any
 import structlog
 import yaml
 
+from ulanzi_linux.application.predefined_commands import get_predefined_command
 from ulanzi_linux.domain.button_config import (
     DEFAULT_PAGE_NAME,
     DEFAULT_TEXT_BACKGROUND_COLOR,
@@ -46,6 +47,7 @@ from ulanzi_linux.domain.button_config import (
     ButtonConfig,
     DeckConfig,
     Page,
+    PredefinedCommandAction,
     ShellAction,
     ShortcutAction,
     SmallWindowConfig,
@@ -69,6 +71,13 @@ def _parse_action(raw: dict[str, Any] | None) -> Action | None:
         return ShellAction(type="shell", cmd=str(raw["cmd"]))
     if kind == "shortcut":
         return ShortcutAction(type="shortcut", keys=str(raw["keys"]))
+    if kind == "predefined_command":
+        command_id = str(raw["command_id"])
+        get_predefined_command(command_id)
+        return PredefinedCommandAction(
+            type="predefined_command",
+            command_id=command_id,
+        )
     if kind == "url":
         return UrlAction(type="url", url=str(raw["url"]))
     if kind == "switch_page":
