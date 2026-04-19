@@ -37,7 +37,14 @@ The fastest path is the helper script:
 The helper script resolves the actual `ulanzi-linux` executable from your
 current shell first. That matters on hosts that install the package via
 pyenv or a virtual environment, where the console script does not live in
-`~/.local/bin`.
+`~/.local/bin`. The same helper also installs a desktop autostart entry
+for the graphical-session bridge at `~/.config/autostart/ulanzi-linux-session-agent.desktop`.
+
+The daemon keeps running under the user systemd manager, but shell / URL /
+shortcut actions can now be delegated to a second process started by the
+desktop session itself. That bridge listens on a Unix socket inside
+`$XDG_RUNTIME_DIR` and runs commands from the already-initialized graphical
+environment.
 
 Manual install is only trivially equivalent when your entry point really
 lives at `~/.local/bin/ulanzi-linux`. Otherwise either use the helper
@@ -76,6 +83,16 @@ ulanzi-linux: small_window_started interval_s=2.0
 
 …and the D200 shows your configured layout instead of Ulanzi Studio's
 built-in screensaver.
+
+For the graphical-session bridge, a healthy manual start looks like:
+
+```bash
+ulanzi-linux --json-logs session-agent
+```
+
+```text
+session-agent running — socket='/run/user/1000/ulanzi-linux-session-agent.sock'
+```
 
 If the deck power-cycles while the unit is already running, the daemon now
 waits for the HID node to come back, reconnects automatically, and reapplies
@@ -126,6 +143,20 @@ unplugged while the daemon was starting.
 `journalctl --user -u ulanzi-linux.service | grep daemon_started` and
 look for `watch=on`. If it says `off`, somebody edited the unit to pass
 `--no-watch` — remove it.
+
+**Buttons still don't open GUI apps after upgrading** — confirm the
+session agent is running in the desktop session and that the socket exists:
+
+```bash
+ls -l "$XDG_RUNTIME_DIR/ulanzi-linux-session-agent.sock"
+pgrep -af "ulanzi-linux --json-logs session-agent"
+```
+
+If needed, start it manually in the current session:
+
+```bash
+ulanzi-linux --json-logs session-agent
+```
 
 **Logs are verbose** — structured JSON is the default in this unit to
 make log shipping (Loki, Elastic, CloudWatch) painless. For a friendlier
