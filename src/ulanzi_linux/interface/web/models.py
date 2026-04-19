@@ -11,7 +11,17 @@ We keep these separate from the domain dataclasses (``ButtonConfig``,
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+from ulanzi_linux.domain.button_config import (
+    DEFAULT_TEXT_BACKGROUND_COLOR,
+    DEFAULT_TEXT_COLOR,
+    DEFAULT_TEXT_FONT_FAMILY,
+    DEFAULT_TEXT_FONT_SIZE,
+    DEFAULT_TIME_FORMAT,
+)
 
 
 class ConfigGetResponse(BaseModel):
@@ -29,6 +39,10 @@ class ConfigPutRequest(BaseModel):
     """YAML payload the user wants to persist."""
 
     content: str = Field(..., description="Raw YAML text to write to disk.")
+    save_firmware_bundle: bool = Field(
+        False,
+        description="Also save the generated deck upload ZIP next to deck.yaml.",
+    )
 
 
 class ConfigValidateRequest(BaseModel):
@@ -54,6 +68,100 @@ class ValidationSummary(BaseModel):
     pages: list[PageSummary] = Field(default_factory=list)
     fixed_button_indices: list[int] = Field(default_factory=list)
     small_window_enabled: bool = False
+    versioned_config_path: str | None = None
+    saved_firmware_bundle_path: str | None = None
+
+
+class EditorActionModel(BaseModel):
+    """Structured action payload used by the visual editor."""
+
+    type: Literal["none", "shell", "shortcut", "url", "switch_page"] = "none"
+    cmd: str = ""
+    keys: str = ""
+    url: str = ""
+    page: str = ""
+
+
+class EditorTextStyleModel(BaseModel):
+    """Visual options for text-only buttons."""
+
+    background_color: str = DEFAULT_TEXT_BACKGROUND_COLOR
+    text_color: str = DEFAULT_TEXT_COLOR
+    bold: bool = False
+    italic: bool = False
+    underline: bool = False
+    font_family: str = DEFAULT_TEXT_FONT_FAMILY
+    font_size: int = DEFAULT_TEXT_FONT_SIZE
+
+
+class EditorButtonModel(BaseModel):
+    """Visual editor representation of a single button."""
+
+    index: int
+    label: str = ""
+    icon_path: str | None = None
+    preview_url: str | None = None
+    action: EditorActionModel = Field(default_factory=EditorActionModel)
+    text_style: EditorTextStyleModel = Field(default_factory=EditorTextStyleModel)
+
+
+class EditorPageModel(BaseModel):
+    """Named page used by the visual editor."""
+
+    name: str
+    buttons: list[EditorButtonModel] = Field(default_factory=list)
+
+
+class EditorSmallWindowModel(BaseModel):
+    """Small-window config surfaced in the visual editor."""
+
+    enabled: bool = False
+    interval_s: float = 2.0
+    time_format: str = DEFAULT_TIME_FORMAT
+    show_metrics: bool = True
+
+
+class EditorConfigResponse(BaseModel):
+    """Full structured config consumed by the visual editor."""
+
+    path: str
+    config_exists: bool
+    default_page: str
+    pages: list[EditorPageModel] = Field(default_factory=list)
+    fixed_buttons: list[EditorButtonModel] = Field(default_factory=list)
+    small_window: EditorSmallWindowModel = Field(
+        default_factory=EditorSmallWindowModel
+    )
+    versioned_config_path: str | None = None
+    saved_firmware_bundle_path: str | None = None
+
+
+class EditorConfigPutRequest(BaseModel):
+    """Structured config the visual editor wants to persist."""
+
+    default_page: str
+    pages: list[EditorPageModel] = Field(default_factory=list)
+    fixed_buttons: list[EditorButtonModel] = Field(default_factory=list)
+    small_window: EditorSmallWindowModel = Field(
+        default_factory=EditorSmallWindowModel
+    )
+    save_firmware_bundle: bool = False
+
+
+class AssetUploadResponse(BaseModel):
+    """Metadata for an uploaded icon asset."""
+
+    path: str
+    preview_url: str
+
+
+class SmallWindowPreviewResponse(BaseModel):
+    """Live preview payload for the small-window simulator."""
+
+    time_text: str
+    cpu_percent: int
+    mem_percent: int
+    gpu_percent: int = 0
 
 
 class DeviceSummary(BaseModel):
@@ -77,11 +185,20 @@ class HealthResponse(BaseModel):
 
 
 __all__ = [
+    "AssetUploadResponse",
     "ConfigGetResponse",
     "ConfigPutRequest",
     "ConfigValidateRequest",
     "DeviceSummary",
+    "EditorActionModel",
+    "EditorButtonModel",
+    "EditorConfigPutRequest",
+    "EditorConfigResponse",
+    "EditorPageModel",
+    "EditorSmallWindowModel",
+    "EditorTextStyleModel",
     "HealthResponse",
     "PageSummary",
+    "SmallWindowPreviewResponse",
     "ValidationSummary",
 ]

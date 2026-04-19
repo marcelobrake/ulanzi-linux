@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+import re
 
 
 # ---------------------------------------------------------------------- #
@@ -61,6 +62,55 @@ class SwitchPageAction:
 Action = ShellAction | ShortcutAction | UrlAction | SwitchPageAction
 
 
+_HEX_COLOR_RE = re.compile(r"^#?[0-9A-Fa-f]{6}$")
+
+DEFAULT_TEXT_BACKGROUND_COLOR = "#111827"
+DEFAULT_TEXT_COLOR = "#F8FAFC"
+DEFAULT_TEXT_FONT_FAMILY = "DejaVu Sans"
+DEFAULT_TEXT_FONT_SIZE = 30
+
+
+def _normalize_hex_color(value: str) -> str:
+    cleaned = value.strip()
+    if not _HEX_COLOR_RE.fullmatch(cleaned):
+        raise ValueError(
+            "text color values must be 6-digit hex strings like #112233"
+        )
+    return f"#{cleaned.lstrip('#').upper()}"
+
+
+@dataclass(frozen=True, slots=True)
+class TextStyle:
+    """Visual treatment for text-only buttons rendered into the icon tile."""
+
+    background_color: str = DEFAULT_TEXT_BACKGROUND_COLOR
+    text_color: str = DEFAULT_TEXT_COLOR
+    bold: bool = False
+    italic: bool = False
+    underline: bool = False
+    font_family: str = DEFAULT_TEXT_FONT_FAMILY
+    font_size: int = DEFAULT_TEXT_FONT_SIZE
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "background_color",
+            _normalize_hex_color(self.background_color),
+        )
+        object.__setattr__(
+            self,
+            "text_color",
+            _normalize_hex_color(self.text_color),
+        )
+        font_family = self.font_family.strip() or DEFAULT_TEXT_FONT_FAMILY
+        object.__setattr__(self, "font_family", font_family)
+        if not 12 <= self.font_size <= 96:
+            raise ValueError("text_style.font_size must be in 12..96")
+
+    def is_default(self) -> bool:
+        return self == TextStyle()
+
+
 # ---------------------------------------------------------------------- #
 # Buttons and pages                                                      #
 # ---------------------------------------------------------------------- #
@@ -74,6 +124,7 @@ class ButtonConfig:
     icon_path: Path | None = None
     label: str = ""
     action: Action | None = None
+    text_style: TextStyle = field(default_factory=TextStyle)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,9 +144,9 @@ class Page:
 DEFAULT_PAGE_NAME = "default"
 
 
-# Default date/time format: day/month hour:minute (pt-BR friendly, compact
-# enough to fit the D200 small-window area).
-DEFAULT_TIME_FORMAT = "%d/%m %H:%M"
+# Default time format kept intentionally short so the firmware renders the
+# large centered clock in the small-window header.
+DEFAULT_TIME_FORMAT = "%H:%M"
 
 # Max guardrail for the small-window refresh interval — the device
 # watchdog fires ~5s; anything slower risks falling back to standalone
@@ -109,15 +160,18 @@ SMALL_WINDOW_MAX_INTERVAL_S = 4.5
 class SmallWindowConfig:
     """Small-window (left status panel) refresh configuration.
 
-    When ``enabled``, the daemon takes over the small window with CPU,
-    memory and date/time — and *replaces* the plain heartbeat loop,
-    because the heartbeat already uses ``SET_SMALL_WINDOW_DATA`` under
-    the hood and would otherwise overwrite real stats with zeros.
+    When ``enabled``, the daemon takes over the small window. On the real
+    D200 firmware observed on this host, ``show_metrics`` behaves as a mode
+    switch between a clock layout and a stats layout rather than a combined
+    overlay. Clock mode therefore sends the time plus zeroed metric slots,
+    while stats mode sends the live CPU / memory payload that the firmware
+    expects for that layout.
     """
 
     enabled: bool = False
     interval_s: float = 2.0
     time_format: str = DEFAULT_TIME_FORMAT
+    show_metrics: bool = True
 
     def __post_init__(self) -> None:
         if not (
@@ -203,6 +257,10 @@ __all__ = [
     "Action",
     "ButtonConfig",
     "DEFAULT_PAGE_NAME",
+    "DEFAULT_TEXT_BACKGROUND_COLOR",
+    "DEFAULT_TEXT_COLOR",
+    "DEFAULT_TEXT_FONT_FAMILY",
+    "DEFAULT_TEXT_FONT_SIZE",
     "DEFAULT_TIME_FORMAT",
     "DeckConfig",
     "Page",
@@ -212,5 +270,6 @@ __all__ = [
     "SMALL_WINDOW_MIN_INTERVAL_S",
     "SmallWindowConfig",
     "SwitchPageAction",
+    "TextStyle",
     "UrlAction",
 ]

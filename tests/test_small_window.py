@@ -22,6 +22,7 @@ from ulanzi_linux.domain.commands import SmallWindowMode
 from ulanzi_linux.domain.device import DeckDevice, DeckSpec
 from ulanzi_linux.domain.events import ButtonEvent, DeviceInfoEvent
 from ulanzi_linux.infrastructure.system_metrics import SystemMetricsReader
+from ulanzi_linux.infrastructure.ulanzi_d200 import UlanziD200Device
 
 
 # ---------------------------------------------------------------------- #
@@ -66,7 +67,12 @@ class RecordingFakeDeck(DeckDevice):
         self.small_window_modes.append(mode)
 
     async def set_small_window_data(
-        self, *, cpu: int = 0, mem: int = 0, gpu: int = 0, time_str: str | None = None
+        self,
+        *,
+        cpu: int | None = 0,
+        mem: int | None = 0,
+        gpu: int | None = 0,
+        time_str: str | None = None,
     ) -> None:
         self.small_window_data_calls.append(
             {"cpu": cpu, "mem": mem, "gpu": gpu, "time_str": time_str}
@@ -91,7 +97,7 @@ class FakeMetrics(SystemMetricsReader):
         *,
         cpu_values: list[int] | None = None,
         mem: int = 42,
-        time_str: str = "18/04 14:32",
+        time_str: str = "14:32",
     ) -> None:
         self.cpu_values = cpu_values or [10, 25, 50]
         self.cpu_idx = 0
@@ -114,12 +120,19 @@ class FakeMetrics(SystemMetricsReader):
 
     def format_time(self, fmt: str) -> str:
         self.time_reads += 1
-        self.last_format_fmt = fmt
+        if fmt != "%S":
+            self.last_format_fmt = fmt
+        if fmt == "%S":
+            if len(self.time_str_const) == 8:
+                return self.time_str_const.split(":")[2]
+            return "00"
+        if fmt == "%H:%M:%S" and len(self.time_str_const) == 5:
+            return f"{self.time_str_const}:00"
         return self.time_str_const
 
 
 def _cfg_with_small_window(
-    *, enabled: bool, interval_s: float = 0.05
+    *, enabled: bool, interval_s: float = 0.05, show_metrics: bool = True
 ) -> DeckConfig:
     return DeckConfig(
         pages={
@@ -130,7 +143,10 @@ def _cfg_with_small_window(
         },
         default_page="main",
         small_window=SmallWindowConfig(
-            enabled=enabled, interval_s=interval_s, time_format="%d/%m %H:%M"
+            enabled=enabled,
+            interval_s=interval_s,
+            time_format="%H:%M",
+            show_metrics=show_metrics,
         ),
     )
 
@@ -145,7 +161,44 @@ def test_small_window_defaults_disabled() -> None:
         pages={"default": Page(name="default")}, default_page="default"
     )
     assert cfg.small_window.enabled is False
-    assert cfg.small_window.time_format == "%d/%m %H:%M"
+    assert cfg.small_window.time_format == "%H:%M"
+
+
+def test_small_window_payload_uses_clock_wire_format() -> None:
+    payload = UlanziD200Device._build_small_window_payload(
+        mode=SmallWindowMode.CLOCK,
+        cpu=17,
+        mem=63,
+        gpu=0,
+        time_str="14:32:00",
+    )
+    assert payload == b"1|17|63|14:32:00|0"
+
+
+def test_small_window_payload_supports_time_only_clock_updates() -> None:
+    payload = UlanziD200Device._build_small_window_payload(
+        mode=SmallWindowMode.CLOCK,
+        cpu=0,
+        mem=0,
+        gpu=0,
+        time_str="14:32:00",
+    )
+    assert payload == b"1|0|0|14:32:00|0"
+
+
+@pytest.mark.asyncio
+async def test_small_window_data_respects_cached_stats_mode_zero() -> None:
+    from tests.test_reconnect import FakeTransport, _raw_small_window_payloads
+
+    transport = FakeTransport()
+    device = UlanziD200Device(transport)
+
+    await device.set_small_window_mode(SmallWindowMode.STATS)
+    await device.set_small_window_data(cpu=17, mem=63, gpu=0, time_str="14:32:00")
+    await device.close()
+
+    assert b"\x00" in _raw_small_window_payloads(transport.writes)
+    assert b"0|17|63|14:32:00|0" in _raw_small_window_payloads(transport.writes)
 
 
 def test_small_window_rejects_interval_below_floor() -> None:
@@ -217,16 +270,15 @@ async def test_small_window_loop_pushes_cpu_mem_time() -> None:
             _stop_after_a_few_ticks(),
         )
 
-    # Mode was set to STATS at least once on start.
-    assert SmallWindowMode.STATS in fake.small_window_modes
+        assert SmallWindowMode.STATS in fake.small_window_modes
     # We pushed at least one real data packet with the mocked values.
     assert fake.small_window_data_calls, "expected at least one data push"
     last = fake.small_window_data_calls[-1]
     assert last["cpu"] == 42
     assert last["mem"] == 42
     assert last["gpu"] == 0
-    assert last["time_str"] == "18/04 14:32"
-    assert metrics.last_format_fmt == "%d/%m %H:%M"
+    assert last["time_str"] == "14:32:00"
+    assert metrics.last_format_fmt == "%H:%M"
     # Heartbeat must NOT have run — small_window subsumes it.
     assert fake.keep_alive_calls == 0
 
@@ -253,9 +305,38 @@ async def test_disabled_small_window_uses_heartbeat() -> None:
         )
 
     assert fake.keep_alive_calls >= 1
-    # No STATS mode flip and no data pushes when small_window is off.
-    assert fake.small_window_modes == []
+    assert SmallWindowMode.BACKGROUND in fake.small_window_modes
     assert fake.small_window_data_calls == []
+
+
+@pytest.mark.asyncio
+async def test_small_window_can_run_in_time_only_mode() -> None:
+    fake = RecordingFakeDeck()
+    metrics = FakeMetrics(cpu_values=[0, 42, 42], mem=61, time_str="14:32")
+    cfg = _cfg_with_small_window(enabled=True, interval_s=0.05, show_metrics=False)
+
+    async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
+        daemon = DeckDaemon(svc, cfg, metrics_reader=metrics)
+        stop = asyncio.Event()
+
+        async def _stop_after() -> None:
+            await asyncio.sleep(0.15)
+            stop.set()
+
+        await asyncio.gather(
+            daemon.run(stop_event=stop),
+            _stop_after(),
+        )
+
+    assert fake.small_window_data_calls
+    assert SmallWindowMode.CLOCK in fake.small_window_modes
+    last = fake.small_window_data_calls[-1]
+    assert last["cpu"] == 0
+    assert last["mem"] == 0
+    assert last["gpu"] == 0
+    assert last["time_str"] == "14:32:00"
+    assert fake.keep_alive_calls == 0
+    assert metrics.mem_reads == 0
 
 
 @pytest.mark.asyncio

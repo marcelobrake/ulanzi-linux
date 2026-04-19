@@ -71,7 +71,7 @@ class DeckService:
         await self._device.set_small_window_mode(mode)
 
     async def push_small_window_stats(
-        self, *, cpu: int, mem: int, gpu: int = 0
+        self, *, cpu: int | None, mem: int | None, gpu: int | None = 0
     ) -> None:
         await self._device.set_small_window_data(cpu=cpu, mem=mem, gpu=gpu)
 
