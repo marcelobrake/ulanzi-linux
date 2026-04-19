@@ -193,6 +193,40 @@ class ActionRunner:
                     phase="before_open",
                 )
         logger.info("action_url", url=action.url, normalized_url=normalized_url)
+        browser_candidate = self._default_browser_url_candidate(
+            normalized_url,
+            browser_target=browser_target,
+        )
+        if browser_candidate is not None:
+            candidate_target, argv = browser_candidate
+            exit_code = await self._try_exec(argv)
+            if exit_code == 0:
+                logger.info(
+                    "action_url_opened",
+                    url=action.url,
+                    normalized_url=normalized_url,
+                    opener="default_browser_exec",
+                    desktop_id=candidate_target.desktop_id,
+                )
+                window_id = await self._focus_desktop_target(candidate_target)
+                if window_id is not None:
+                    logger.info(
+                        "action_url_focused",
+                        url=action.url,
+                        normalized_url=normalized_url,
+                        desktop_id=candidate_target.desktop_id,
+                        window_id=window_id,
+                        phase="after_open",
+                    )
+                return
+            logger.warning(
+                "action_url_opener_failed",
+                url=action.url,
+                normalized_url=normalized_url,
+                opener="default_browser_exec",
+                desktop_id=candidate_target.desktop_id,
+                exit_code=exit_code,
+            )
         for argv in self._url_open_candidates(normalized_url):
             exit_code = await self._try_exec(argv)
             if exit_code == 0:
@@ -585,6 +619,32 @@ class ActionRunner:
                 return Path(stripped).name
         return None
 
+    def _argv_from_desktop_entry(
+        self,
+        exec_line: str,
+        *,
+        url: str | None = None,
+    ) -> list[str] | None:
+        with contextlib.suppress(ValueError):
+            argv: list[str] = []
+            url_consumed = False
+            for token in shlex.split(exec_line, posix=True):
+                stripped = token.strip()
+                if not stripped:
+                    continue
+                if stripped in {"%u", "%U", "%f", "%F"}:
+                    if url is not None:
+                        argv.append(url)
+                        url_consumed = True
+                    continue
+                if stripped.startswith("%"):
+                    continue
+                argv.append(stripped)
+            if url is not None and not url_consumed:
+                argv.append(url)
+            return argv or None
+        return None
+
     def _desktop_launch_candidates(
         self,
         target: DesktopLaunchTarget,
@@ -605,6 +665,23 @@ class ActionRunner:
             if target.desktop_id.lower() == normalized:
                 return target
         return None
+
+    def _default_browser_url_candidate(
+        self,
+        url: str,
+        *,
+        browser_target: DesktopLaunchTarget | None = None,
+    ) -> tuple[DesktopLaunchTarget, list[str]] | None:
+        target = browser_target or self._default_browser_target()
+        if target is None:
+            return None
+        exec_line = self._desktop_entry_metadata(target.desktop_file).get("Exec")
+        if exec_line is None:
+            return None
+        argv = self._argv_from_desktop_entry(exec_line, url=url)
+        if argv is None:
+            return None
+        return target, argv
 
     def _default_browser_desktop_id(self) -> str | None:
         for argv in (

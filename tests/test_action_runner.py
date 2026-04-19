@@ -52,6 +52,48 @@ async def test_url_action_prefers_gio_open(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 @pytest.mark.asyncio
+async def test_url_action_prefers_default_browser_exec_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _disable_login_shell_path(monkeypatch)
+    runner = ActionRunner()
+    calls: list[list[str]] = []
+    focus_calls: list[object] = []
+    fake_target = type(
+        "FakeBrowserTarget",
+        (),
+        {
+            "desktop_id": "google-chrome.desktop",
+            "window_tokens": ("google-chrome",),
+        },
+    )()
+
+    monkeypatch.setattr(
+        runner,
+        "_default_browser_url_candidate",
+        lambda url, browser_target=None: (fake_target, ["/usr/bin/google-chrome-stable", url]),
+    )
+    monkeypatch.setattr(runner, "_default_browser_target", lambda: fake_target)
+    monkeypatch.setattr(runner, "_focus_existing_desktop_target", lambda _target: asyncio.sleep(0, result=None))
+
+    async def fake_try_exec(argv: list[str]) -> int:
+        calls.append(argv)
+        return 0
+
+    async def fake_focus_desktop_target(target: object) -> str:
+        focus_calls.append(target)
+        return "0x028001fe"
+
+    monkeypatch.setattr(runner, "_try_exec", fake_try_exec)
+    monkeypatch.setattr(runner, "_focus_desktop_target", fake_focus_desktop_target)
+
+    await runner.run(UrlAction(type="url", url="https://example.com"))
+
+    assert calls == [["/usr/bin/google-chrome-stable", "https://example.com"]]
+    assert focus_calls == [fake_target]
+
+
+@pytest.mark.asyncio
 async def test_url_action_falls_back_to_webbrowser(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -351,6 +393,7 @@ async def test_url_action_focuses_default_browser_after_open(
 
     monkeypatch.setattr(runner, "_try_exec", fake_try_exec)
     monkeypatch.setattr(runner, "_default_browser_target", lambda: fake_target)
+    monkeypatch.setattr(runner, "_default_browser_url_candidate", lambda url, browser_target=None: None)
     monkeypatch.setattr(runner, "_focus_existing_desktop_target", lambda _target: asyncio.sleep(0, result=None))
     monkeypatch.setattr(runner, "_focus_desktop_target", fake_focus_desktop_target)
 

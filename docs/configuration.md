@@ -211,12 +211,16 @@ Relies on the daemon running inside a session where `$DISPLAY` /
 
 Open a URL with the desktop opener. The daemon prefers `gio open` first,
 then falls back to `xdg-open`, `sensible-browser`, and finally the stdlib
-browser registry. In a normal desktop session this tends to reuse the
-current browser window or session when one is already running; otherwise
-it opens the configured default browser. If you omit the scheme,
-`https://` is added automatically so entries like `claude.ai` still open
-correctly. On X11 hosts with `wmctrl` available, the daemon also tries to
-activate the default browser window after the URL is handed off.
+browser registry. When the default browser desktop entry exposes a real
+`Exec=` command, the daemon tries that browser executable first so the URL
+is handed directly to the current default browser process before the more
+generic XDG fallbacks are used. In a normal desktop session this tends to
+reuse the current browser window or session when one is already running;
+otherwise it opens the configured default browser. If you omit the
+scheme, `https://` is added automatically so entries like `claude.ai`
+still open correctly. On X11 hosts with `wmctrl` available, the daemon
+also tries to activate the default browser window after the URL is handed
+off.
 
 ```yaml
 action: { type: url, url: "https://claude.ai" }
