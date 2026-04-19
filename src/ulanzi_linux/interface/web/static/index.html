@@ -85,6 +85,8 @@
           <button class="deck-button"
                   :class="buttonClasses(slot)"
                   :style="slotStyle(slot)"
+                  :title="slotTooltip(slot)"
+                  :aria-label="slotTooltip(slot)"
                   @click="selectSlot(slot.index)">
             <span class="deck-chip" x-show="slot.fixed">fixo</span>
 
@@ -139,9 +141,9 @@
               </template>
             </div>
 
-            <div class="deck-copy">
-              <strong x-text="slot.label || slot.placeholder"></strong>
-              <span x-text="slot.actionLabel"></span>
+            <div class="deck-hover-card" aria-hidden="true">
+              <strong x-text="slot.tooltipLabel"></strong>
+              <span x-text="slot.tooltipAction"></span>
             </div>
           </button>
         </template>

@@ -399,8 +399,8 @@ textarea {
 .deck-button {
     position: relative;
     display: grid;
-    gap: 0.38rem;
-    align-content: space-between;
+    gap: 0;
+    align-content: stretch;
     text-align: left;
     padding: 0.72rem;
     border-radius: 20px;
@@ -410,6 +410,7 @@ textarea {
         linear-gradient(180deg, #33475e, #203142);
     min-height: var(--deck-slot-size);
     height: var(--deck-slot-size);
+    overflow: hidden;
 }
 
 .deck-button.empty {
@@ -442,20 +443,30 @@ textarea {
     background: rgba(255, 201, 107, 0.16);
     color: var(--warn);
     font-size: 0.65rem;
+    z-index: 3;
 }
 
 .deck-icon-frame {
     width: 100%;
-    height: var(--deck-icon-height);
+    height: 100%;
     border-radius: 14px;
     overflow: hidden;
     background: rgba(0, 0, 0, 0.18);
     display: grid;
     place-items: center;
+    transition:
+        filter 140ms ease,
+        transform 140ms ease;
 }
 
 .deck-button.wide .deck-icon-frame {
-    height: var(--deck-icon-height);
+    height: 100%;
+}
+
+.deck-button:hover .deck-icon-frame,
+.deck-button:focus-visible .deck-icon-frame {
+    filter: brightness(0.72);
+    transform: scale(0.985);
 }
 
 .deck-icon {
@@ -555,19 +566,43 @@ textarea {
     letter-spacing: 0.12em;
 }
 
-.deck-copy {
+.deck-hover-card {
+    position: absolute;
+    left: 0.72rem;
+    right: 0.72rem;
+    bottom: 0.72rem;
     display: grid;
-    gap: 0.12rem;
+    gap: 0.22rem;
+    padding: 0.68rem 0.78rem;
+    border-radius: 16px;
+    background:
+        linear-gradient(180deg, rgba(7, 16, 24, 0.94), rgba(12, 23, 31, 0.98)),
+        rgba(7, 16, 24, 0.92);
+    border: 1px solid rgba(121, 221, 248, 0.22);
+    box-shadow: 0 18px 28px rgba(0, 0, 0, 0.32);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(10px);
+    transition:
+        opacity 160ms ease,
+        transform 160ms ease;
+    z-index: 2;
 }
 
-.deck-copy strong {
-    font-size: 0.9rem;
+.deck-button:hover .deck-hover-card,
+.deck-button:focus-visible .deck-hover-card {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.deck-hover-card strong {
+    font-size: 0.88rem;
     line-height: 1.1;
 }
 
-.deck-copy span {
+.deck-hover-card span {
     color: var(--muted);
-    font-size: 0.74rem;
+    font-size: 0.72rem;
     line-height: 1.1;
 }
 

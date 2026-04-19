@@ -7,6 +7,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] — 2026-04-19
+
+### Changed
+
+- The visual deck preview now shows only the actual button content inside each keycap.
+  Labels and action names were removed from the permanent button chrome and moved to
+  a hover/focus tooltip so the editor looks cleaner while still exposing the same
+  information on demand.
+
 ## [0.6.1] — 2026-04-19
 
 ### Fixed

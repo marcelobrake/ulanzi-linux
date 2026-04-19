@@ -494,6 +494,12 @@ window.editorApp = function editorApp() {
             return ACTION_LABELS[type] || ACTION_LABELS.none;
         },
 
+        slotTooltip(slot) {
+            const label = String(slot?.tooltipLabel || "").trim();
+            const action = String(slot?.tooltipAction || "").trim();
+            return [label, action].filter(Boolean).join(" · ");
+        },
+
         selectPage(name) {
             this.selectedPage = name;
             this.selectSlot(this.selectedIndex);
@@ -1028,6 +1034,10 @@ window.editorApp = function editorApp() {
                 const pageButton = this.findButton(pageButtons, slot.index);
                 const button = fixedButton || pageButton;
                 if (this.isInfoWindowSlot(slot.index)) {
+                    const tooltipLabel = "Small window";
+                    const tooltipAction = button
+                        ? this.actionLabel(button?.action?.type || "none")
+                        : this.smallWindowSummary;
                     return {
                         ...slot,
                         fixed: Boolean(fixedButton),
@@ -1039,9 +1049,14 @@ window.editorApp = function editorApp() {
                         actionLabel: button
                             ? this.actionLabel(button?.action?.type || "none")
                             : this.smallWindowSummary,
+                        tooltipLabel,
+                        tooltipAction,
                         placeholder: "Info window",
                     };
                 }
+                const placeholder = slot.span === 2
+                    ? `Botão ${slot.index + 1} · 2x1`
+                    : `Botão ${slot.index + 1}`;
                 return {
                     ...slot,
                     fixed: Boolean(fixedButton),
@@ -1051,9 +1066,9 @@ window.editorApp = function editorApp() {
                     textOnly: this.hasTextOnlyPreview(button),
                     text_style: this.normalizeTextStyle(button?.text_style),
                     actionLabel: this.actionLabel(button?.action?.type || "none"),
-                    placeholder: slot.span === 2
-                        ? `Botão ${slot.index + 1} · 2x1`
-                        : `Botão ${slot.index + 1}`,
+                    tooltipLabel: (button?.label || "").trim() || `Botão ${slot.index + 1}`,
+                    tooltipAction: this.actionLabel(button?.action?.type || "none"),
+                    placeholder,
                 };
             });
         },
