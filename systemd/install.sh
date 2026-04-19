@@ -16,7 +16,9 @@ SRC_UNIT="${SRC_DIR}/${UNIT_NAME}"
 DST_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
 DST_UNIT="${DST_DIR}/${UNIT_NAME}"
 DECK_YAML="${HOME}/.config/ulanzi/deck.yaml"
-ULANZI_BIN="${HOME}/.local/bin/ulanzi-linux"
+DEFAULT_ULANZI_BIN="${HOME}/.local/bin/ulanzi-linux"
+ULANZI_BIN=""
+TMP_UNIT=""
 
 # --- helpers ---------------------------------------------------------------
 
@@ -51,6 +53,45 @@ run_ok() {
     else
         "$@" || true
     fi
+}
+
+cleanup() {
+    if [[ -n "${TMP_UNIT}" && -f "${TMP_UNIT}" ]]; then
+        rm -f "${TMP_UNIT}"
+    fi
+}
+
+trap cleanup EXIT
+
+resolve_ulanzi_bin() {
+    local candidate=""
+    if command -v ulanzi-linux >/dev/null 2>&1; then
+        candidate="$(command -v ulanzi-linux)"
+        if [[ "${candidate}" == "${HOME}/.pyenv/shims/"* ]] && command -v pyenv >/dev/null 2>&1; then
+            local pyenv_candidate=""
+            pyenv_candidate="$(pyenv which ulanzi-linux 2>/dev/null || true)"
+            if [[ -n "${pyenv_candidate}" && -x "${pyenv_candidate}" ]]; then
+                candidate="${pyenv_candidate}"
+            fi
+        fi
+        if [[ -x "${candidate}" ]]; then
+            printf '%s\n' "${candidate}"
+            return 0
+        fi
+    fi
+    if [[ -x "${DEFAULT_ULANZI_BIN}" ]]; then
+        printf '%s\n' "${DEFAULT_ULANZI_BIN}"
+        return 0
+    fi
+    return 1
+}
+
+build_unit_with_binary() {
+    local bin_path="$1"
+    TMP_UNIT="$(mktemp)"
+    sed "s|^ExecStart=.*$|ExecStart=${bin_path} --json-logs daemon %h/.config/ulanzi/deck.yaml|" \
+        "${SRC_UNIT}" > "${TMP_UNIT}"
+    printf '%s\n' "${TMP_UNIT}"
 }
 
 # --- args ------------------------------------------------------------------
@@ -96,9 +137,13 @@ if [[ ! -f "${SRC_UNIT}" ]]; then
     exit 1
 fi
 
-if [[ ! -x "${ULANZI_BIN}" ]]; then
-    warn "entry point not found at ${ULANZI_BIN}"
-    warn "install first:  pip install --user ."
+ULANZI_BIN="$(resolve_ulanzi_bin || true)"
+
+if [[ -z "${ULANZI_BIN}" ]]; then
+    warn "entry point not found in the active shell or at ${DEFAULT_ULANZI_BIN}"
+    warn "install first, then re-run this script from the same Python environment"
+else
+    log "resolved ulanzi-linux -> ${ULANZI_BIN}"
 fi
 
 if [[ ! -f "${DECK_YAML}" ]]; then
@@ -108,7 +153,12 @@ fi
 
 log "copying ${UNIT_NAME} -> ${DST_UNIT}"
 run mkdir -p "${DST_DIR}"
-run install -m 0644 "${SRC_UNIT}" "${DST_UNIT}"
+if [[ -n "${ULANZI_BIN}" ]]; then
+    TMP_UNIT="$(build_unit_with_binary "${ULANZI_BIN}")"
+    run install -m 0644 "${TMP_UNIT}" "${DST_UNIT}"
+else
+    run install -m 0644 "${SRC_UNIT}" "${DST_UNIT}"
+fi
 
 log "reloading user systemd"
 run systemctl --user daemon-reload

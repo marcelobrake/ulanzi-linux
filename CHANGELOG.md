@@ -7,6 +7,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] — 2026-04-19
+
+### Fixed
+
+- The user-systemd installer now resolves the real `ulanzi-linux`
+  executable from the active shell before writing `ExecStart=`, which
+  prevents `status=203/EXEC` on hosts that install the package via pyenv
+  or a virtual environment instead of `~/.local/bin`.
+
+## [0.3.7] — 2026-04-19
+
+### Fixed
+
+- Simple GUI shell actions now try to focus an already-open matching
+  window before launching a new instance, which makes app buttons behave
+  correctly when the application is already running in the background.
+- If a desktop launcher returns success but no matching window appears,
+  the daemon now falls back to the raw shell command instead of assuming
+  the app opened visibly.
+
 ## [0.3.6] — 2026-04-19
 
 ### Fixed

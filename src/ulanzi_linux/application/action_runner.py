@@ -77,7 +77,7 @@ SHELL_CONTROL_TOKENS = frozenset(
     }
 )
 DESKTOP_ENTRY_SUFFIX = ".desktop"
-WINDOW_FOCUS_RETRIES = 6
+WINDOW_FOCUS_RETRIES = 20
 WINDOW_FOCUS_DELAY_S = 0.25
 
 
@@ -180,11 +180,22 @@ class ActionRunner:
 
     async def _run_url(self, action: UrlAction) -> None:
         normalized_url = self._normalize_url(action.url)
+        browser_target = self._default_browser_target()
+        if browser_target is not None:
+            window_id = await self._focus_existing_desktop_target(browser_target)
+            if window_id is not None:
+                logger.info(
+                    "action_url_focused",
+                    url=action.url,
+                    normalized_url=normalized_url,
+                    desktop_id=browser_target.desktop_id,
+                    window_id=window_id,
+                    phase="before_open",
+                )
         logger.info("action_url", url=action.url, normalized_url=normalized_url)
         for argv in self._url_open_candidates(normalized_url):
             exit_code = await self._try_exec(argv)
             if exit_code == 0:
-                browser_target = self._default_browser_target()
                 logger.info(
                     "action_url_opened",
                     url=action.url,
@@ -200,6 +211,7 @@ class ActionRunner:
                             normalized_url=normalized_url,
                             desktop_id=browser_target.desktop_id,
                             window_id=window_id,
+                            phase="after_open",
                         )
                 return
             logger.warning(
@@ -218,7 +230,6 @@ class ActionRunner:
             normalized_url,
         )
         if opened:
-            browser_target = self._default_browser_target()
             logger.info(
                 "action_url_opened",
                 url=action.url,
@@ -234,6 +245,7 @@ class ActionRunner:
                         normalized_url=normalized_url,
                         desktop_id=browser_target.desktop_id,
                         window_id=window_id,
+                        phase="after_open",
                     )
             return
         logger.error(
@@ -286,24 +298,43 @@ class ActionRunner:
         target = self._desktop_launch_target(command)
         if target is None:
             return False
+        existing_window_id = await self._focus_existing_desktop_target(target)
+        if existing_window_id is not None:
+            logger.info(
+                "action_shell_focused",
+                cmd=command,
+                desktop_id=target.desktop_id,
+                window_id=existing_window_id,
+                phase="before_launch",
+            )
+            return True
         for argv in self._desktop_launch_candidates(target):
             exit_code = await self._try_exec(argv)
             if exit_code == 0:
-                window_id = await self._focus_desktop_target(target)
                 logger.info(
                     "action_shell_opened",
                     cmd=command,
                     opener=argv[0],
                     desktop_id=target.desktop_id,
                 )
+                window_id = await self._focus_desktop_target(target)
                 if window_id is not None:
                     logger.info(
                         "action_shell_focused",
                         cmd=command,
                         desktop_id=target.desktop_id,
                         window_id=window_id,
+                        phase="after_launch",
                     )
-                return True
+                    return True
+                logger.warning(
+                    "action_shell_window_not_found",
+                    cmd=command,
+                    opener=argv[0],
+                    desktop_id=target.desktop_id,
+                    window_tokens=target.window_tokens,
+                )
+                continue
             logger.warning(
                 "action_shell_opener_failed",
                 cmd=command,
@@ -603,21 +634,37 @@ class ActionRunner:
         self,
         target: DesktopLaunchTarget,
     ) -> str | None:
+        return await self._focus_desktop_target_with_retries(
+            target,
+            retries=WINDOW_FOCUS_RETRIES,
+        )
+
+    async def _focus_existing_desktop_target(
+        self,
+        target: DesktopLaunchTarget,
+    ) -> str | None:
+        return await self._focus_desktop_target_with_retries(target, retries=1)
+
+    async def _focus_desktop_target_with_retries(
+        self,
+        target: DesktopLaunchTarget,
+        *,
+        retries: int,
+    ) -> str | None:
         if self._which("wmctrl") is None:
             return None
-        for attempt in range(WINDOW_FOCUS_RETRIES):
-            window_id = await asyncio.to_thread(self._window_id_for_target, target)
-            if window_id is not None:
+        for attempt in range(retries):
+            for window_id in await asyncio.to_thread(self._window_ids_for_target, target):
                 activated = await asyncio.to_thread(self._activate_window_id, window_id)
                 if activated:
                     return window_id
-            if attempt + 1 < WINDOW_FOCUS_RETRIES:
+            if attempt + 1 < retries:
                 await asyncio.sleep(WINDOW_FOCUS_DELAY_S)
         return None
 
-    def _window_id_for_target(self, target: DesktopLaunchTarget) -> str | None:
+    def _window_ids_for_target(self, target: DesktopLaunchTarget) -> list[str]:
         if self._which("wmctrl") is None:
-            return None
+            return []
         try:
             result = subprocess.run(
                 ["wmctrl", "-lx"],
@@ -628,9 +675,10 @@ class ActionRunner:
                 cwd=self._subprocess_cwd(),
             )
         except OSError:
-            return None
+            return []
         if result.returncode != 0:
-            return None
+            return []
+        window_ids: list[str] = []
         for raw_line in result.stdout.splitlines():
             parts = raw_line.split(None, 4)
             if len(parts) < 4:
@@ -640,8 +688,9 @@ class ActionRunner:
             title = parts[4].lower() if len(parts) > 4 else ""
             for token in target.window_tokens:
                 if token in wm_class or token in title:
-                    return window_id
-        return None
+                    window_ids.append(window_id)
+                    break
+        return window_ids
 
     def _activate_window_id(self, window_id: str) -> bool:
         if self._which("wmctrl") is not None:

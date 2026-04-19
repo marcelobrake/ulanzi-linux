@@ -181,7 +181,10 @@ desktop supports it, otherwise start the default app instance. More
 complex commands with arguments, pipes, or shell syntax still use the raw
 shell path below. On X11 hosts with `wmctrl` available, the daemon also
 tries to bring the matching application window to the foreground after a
-successful launch request.
+successful launch request. If a matching window is already open, it is
+focused before any new launch is attempted; if the desktop launcher does
+not yield a visible window, the daemon falls back to the raw shell
+command.
 
 ```yaml
 action: { type: shell, cmd: "gnome-terminal -- bash -lc 'docker ps; exec bash'" }
