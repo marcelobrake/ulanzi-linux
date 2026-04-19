@@ -14,10 +14,12 @@ import asyncio
 import contextlib
 import os
 import pwd
+import shlex
 import shutil
 import subprocess
 import webbrowser
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 import structlog
@@ -57,6 +59,34 @@ NO_SLASH_URL_SCHEMES = frozenset(
     }
 )
 LOGIN_PATH_SENTINEL = "__ULANZI_PATH__="
+SHELL_CONTROL_TOKENS = frozenset(
+    {
+        "|",
+        "||",
+        "&",
+        "&&",
+        ";",
+        "(",
+        ")",
+        "<",
+        ">",
+        ">>",
+        "2>",
+        "2>>",
+        "2>&1",
+    }
+)
+DESKTOP_ENTRY_SUFFIX = ".desktop"
+WINDOW_FOCUS_RETRIES = 6
+WINDOW_FOCUS_DELAY_S = 0.25
+
+
+@dataclass(frozen=True)
+class DesktopLaunchTarget:
+    desktop_id: str
+    desktop_file: Path
+    aliases: tuple[str, ...]
+    window_tokens: tuple[str, ...]
 
 
 def _split_path_entries(path_value: str | None) -> list[str]:
@@ -86,6 +116,7 @@ class ActionRunner:
     def __init__(self) -> None:
         self._env = self._build_subprocess_env()
         self._background_tasks: set[asyncio.Task[int]] = set()
+        self._desktop_targets: tuple[DesktopLaunchTarget, ...] | None = None
 
     async def run(self, action: Action) -> None:
         if isinstance(action, ShellAction):
@@ -99,15 +130,25 @@ class ActionRunner:
 
     async def _run_shell(self, action: ShellAction) -> None:
         logger.info("action_shell", cmd=action.cmd)
+        if await self._try_launch_desktop_app(action.cmd):
+            return
         proc = await asyncio.create_subprocess_shell(
             action.cmd,
             env=self._env,
+            cwd=self._subprocess_cwd(),
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        logger.info(
+            "action_shell_spawned",
+            cmd=action.cmd,
+            pid=proc.pid,
         )
         # Fire-and-forget: don't block the event loop on long-running cmds.
         wait_task = asyncio.create_task(
-            proc.wait(),
+            self._monitor_shell_proc(proc, action.cmd),
             name=f"action_shell_{id(proc)}",
         )
         self._background_tasks.add(wait_task)
@@ -116,12 +157,26 @@ class ActionRunner:
     async def _run_shortcut(self, action: ShortcutAction) -> None:
         logger.info("action_shortcut", keys=action.keys)
         if self._which("xdotool"):
-            await self._exec(["xdotool", "key", action.keys])
+            await self._exec(
+                ["xdotool", "key", action.keys],
+                action_type="shortcut",
+                keys=action.keys,
+                tool="xdotool",
+            )
         elif self._which("wtype"):
             # wtype uses different syntax; best-effort approximation.
-            await self._exec(["wtype", "-M", action.keys])
+            await self._exec(
+                ["wtype", "-M", action.keys],
+                action_type="shortcut",
+                keys=action.keys,
+                tool="wtype",
+            )
         else:
-            logger.error("no_shortcut_tool", hint="install xdotool (X11) or wtype (Wayland)")
+            logger.error(
+                "no_shortcut_tool",
+                hint="install xdotool (X11) or wtype (Wayland)",
+                path=self._env.get("PATH"),
+            )
 
     async def _run_url(self, action: UrlAction) -> None:
         normalized_url = self._normalize_url(action.url)
@@ -129,12 +184,23 @@ class ActionRunner:
         for argv in self._url_open_candidates(normalized_url):
             exit_code = await self._try_exec(argv)
             if exit_code == 0:
+                browser_target = self._default_browser_target()
                 logger.info(
                     "action_url_opened",
                     url=action.url,
                     normalized_url=normalized_url,
                     opener=argv[0],
                 )
+                if browser_target is not None:
+                    window_id = await self._focus_desktop_target(browser_target)
+                    if window_id is not None:
+                        logger.info(
+                            "action_url_focused",
+                            url=action.url,
+                            normalized_url=normalized_url,
+                            desktop_id=browser_target.desktop_id,
+                            window_id=window_id,
+                        )
                 return
             logger.warning(
                 "action_url_opener_failed",
@@ -152,12 +218,23 @@ class ActionRunner:
             normalized_url,
         )
         if opened:
+            browser_target = self._default_browser_target()
             logger.info(
                 "action_url_opened",
                 url=action.url,
                 normalized_url=normalized_url,
                 opener="webbrowser",
             )
+            if browser_target is not None:
+                window_id = await self._focus_desktop_target(browser_target)
+                if window_id is not None:
+                    logger.info(
+                        "action_url_focused",
+                        url=action.url,
+                        normalized_url=normalized_url,
+                        desktop_id=browser_target.desktop_id,
+                        window_id=window_id,
+                    )
             return
         logger.error(
             "action_url_failed",
@@ -169,34 +246,100 @@ class ActionRunner:
     def _url_open_candidates(self, url: str) -> list[list[str]]:
         candidates: list[list[str]] = []
         for argv in (
-            ["xdg-open", url],
             ["gio", "open", url],
+            ["xdg-open", url],
             ["sensible-browser", url],
         ):
             if self._which(argv[0]):
                 candidates.append(argv)
         return candidates
 
-    async def _exec(self, argv: list[str]) -> None:
+    async def _exec(self, argv: list[str], **fields: object) -> None:
         exit_code = await self._try_exec(argv)
-        if exit_code != 0:
+        if exit_code == 0:
+            logger.info(
+                "action_exec_succeeded",
+                argv=argv,
+                **fields,
+            )
+        else:
             logger.warning(
                 "action_exec_failed",
                 argv=argv,
                 exit_code=exit_code,
+                **fields,
             )
 
     async def _try_exec(self, argv: list[str]) -> int:
         proc = await asyncio.create_subprocess_exec(
             *argv,
             env=self._env,
+            cwd=self._subprocess_cwd(),
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
+            start_new_session=True,
         )
         return await proc.wait()
 
+    async def _try_launch_desktop_app(self, command: str) -> bool:
+        target = self._desktop_launch_target(command)
+        if target is None:
+            return False
+        for argv in self._desktop_launch_candidates(target):
+            exit_code = await self._try_exec(argv)
+            if exit_code == 0:
+                window_id = await self._focus_desktop_target(target)
+                logger.info(
+                    "action_shell_opened",
+                    cmd=command,
+                    opener=argv[0],
+                    desktop_id=target.desktop_id,
+                )
+                if window_id is not None:
+                    logger.info(
+                        "action_shell_focused",
+                        cmd=command,
+                        desktop_id=target.desktop_id,
+                        window_id=window_id,
+                    )
+                return True
+            logger.warning(
+                "action_shell_opener_failed",
+                cmd=command,
+                opener=argv[0],
+                desktop_id=target.desktop_id,
+                exit_code=exit_code,
+            )
+        return False
+
+    async def _monitor_shell_proc(
+        self,
+        proc: asyncio.subprocess.Process,
+        cmd: str,
+    ) -> int:
+        exit_code = await proc.wait()
+        if exit_code == 0:
+            logger.info(
+                "action_shell_completed",
+                cmd=cmd,
+                pid=proc.pid,
+                exit_code=exit_code,
+            )
+        else:
+            logger.warning(
+                "action_shell_failed",
+                cmd=cmd,
+                pid=proc.pid,
+                exit_code=exit_code,
+            )
+        return exit_code
+
     def _which(self, executable: str) -> str | None:
         return shutil.which(executable, path=self._env.get("PATH"))
+
+    def _subprocess_cwd(self) -> str:
+        return self._env.get("HOME", str(Path.home()))
 
     def _build_subprocess_env(self) -> dict[str, str]:
         env = dict(os.environ)
@@ -258,6 +401,287 @@ class ActionRunner:
     def _user_specific_path_entries(self) -> list[str]:
         home = Path.home()
         return [str(home / suffix) for suffix in USER_PATH_SUFFIXES]
+
+    def _desktop_launch_target(self, command: str) -> DesktopLaunchTarget | None:
+        argv = self._simple_command_argv(command)
+        if argv is None or len(argv) != 1:
+            return None
+        executable = Path(argv[0]).name.lower()
+        if not executable:
+            return None
+        exact_matches: list[DesktopLaunchTarget] = []
+        partial_matches: list[DesktopLaunchTarget] = []
+        for target in self._desktop_targets_for_session():
+            if executable in target.aliases:
+                exact_matches.append(target)
+                continue
+            if any(executable in alias for alias in target.aliases):
+                partial_matches.append(target)
+        if exact_matches:
+            return exact_matches[0]
+        if partial_matches:
+            return partial_matches[0]
+        return None
+
+    def _desktop_targets_for_session(self) -> tuple[DesktopLaunchTarget, ...]:
+        if self._desktop_targets is not None:
+            return self._desktop_targets
+
+        targets: list[DesktopLaunchTarget] = []
+        seen_ids: set[str] = set()
+        for directory in self._desktop_entry_dirs():
+            if not directory.is_dir():
+                continue
+            for desktop_file in sorted(directory.glob(f"*{DESKTOP_ENTRY_SUFFIX}")):
+                desktop_id = desktop_file.name
+                if desktop_id in seen_ids:
+                    continue
+                seen_ids.add(desktop_id)
+                targets.append(
+                    DesktopLaunchTarget(
+                        desktop_id=desktop_id,
+                        desktop_file=desktop_file,
+                        aliases=self._desktop_aliases(desktop_file),
+                        window_tokens=self._desktop_window_tokens(desktop_file),
+                    )
+                )
+
+        self._desktop_targets = tuple(targets)
+        return self._desktop_targets
+
+    def _desktop_entry_dirs(self) -> list[Path]:
+        candidates = [
+            Path(self._env.get("XDG_DATA_HOME", str(Path.home() / ".local/share")))
+            / "applications",
+            Path.home() / ".local/share/applications",
+            Path.home() / ".local/share/flatpak/exports/share/applications",
+            Path("/var/lib/flatpak/exports/share/applications"),
+            Path("/var/lib/snapd/desktop/applications"),
+        ]
+        for base in _split_path_entries(self._env.get("XDG_DATA_DIRS")):
+            candidates.append(Path(base) / "applications")
+        candidates.extend(
+            [
+                Path("/usr/local/share/applications"),
+                Path("/usr/share/applications"),
+            ]
+        )
+
+        unique: list[Path] = []
+        seen: set[str] = set()
+        for path in candidates:
+            normalized = str(path.expanduser())
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            unique.append(path)
+        return unique
+
+    def _desktop_aliases(self, desktop_file: Path) -> tuple[str, ...]:
+        aliases: list[str] = [desktop_file.stem.lower(), desktop_file.name.lower()]
+        aliases.extend(
+            part.lower() for part in desktop_file.stem.split("_") if part.strip()
+        )
+        exec_name = self._desktop_exec_name(desktop_file)
+        if exec_name:
+            aliases.append(exec_name.lower())
+
+        merged: list[str] = []
+        seen: set[str] = set()
+        for alias in aliases:
+            if not alias or alias in seen:
+                continue
+            seen.add(alias)
+            merged.append(alias)
+        return tuple(merged)
+
+    def _desktop_window_tokens(self, desktop_file: Path) -> tuple[str, ...]:
+        tokens: list[str] = []
+        metadata = self._desktop_entry_metadata(desktop_file)
+        startup_wm_class = metadata.get("StartupWMClass")
+        if startup_wm_class:
+            tokens.append(startup_wm_class.lower())
+        name = metadata.get("Name")
+        if name:
+            tokens.append(name.lower())
+        exec_name = self._desktop_exec_name(desktop_file)
+        if exec_name:
+            tokens.append(exec_name.lower())
+        tokens.append(desktop_file.stem.lower())
+        tokens.extend(part.lower() for part in desktop_file.stem.split("_") if part.strip())
+
+        merged: list[str] = []
+        seen: set[str] = set()
+        for token in tokens:
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            merged.append(token)
+        return tuple(merged)
+
+    def _desktop_entry_metadata(self, desktop_file: Path) -> dict[str, str]:
+        metadata: dict[str, str] = {}
+        try:
+            for raw_line in desktop_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                if key in {"Exec", "StartupWMClass", "Name"} and key not in metadata:
+                    metadata[key] = value.strip()
+        except OSError:
+            return {}
+        return metadata
+
+    def _desktop_exec_name(self, desktop_file: Path) -> str | None:
+        exec_line = self._desktop_entry_metadata(desktop_file).get("Exec")
+        if exec_line is None:
+            return None
+        return self._exec_name_from_desktop_entry(exec_line)
+
+    def _exec_name_from_desktop_entry(self, exec_line: str) -> str | None:
+        with contextlib.suppress(ValueError):
+            for token in shlex.split(exec_line, posix=True):
+                stripped = token.strip()
+                if not stripped or stripped == "env" or stripped.startswith("%"):
+                    continue
+                if (
+                    "=" in stripped
+                    and not stripped.startswith("/")
+                    and stripped.split("=", 1)[0].replace("_", "").isalnum()
+                ):
+                    continue
+                return Path(stripped).name
+        return None
+
+    def _desktop_launch_candidates(
+        self,
+        target: DesktopLaunchTarget,
+    ) -> list[list[str]]:
+        candidates: list[list[str]] = []
+        if self._which("gtk-launch"):
+            candidates.append(["gtk-launch", target.desktop_id])
+        if self._which("gio"):
+            candidates.append(["gio", "launch", str(target.desktop_file)])
+        return candidates
+
+    def _default_browser_target(self) -> DesktopLaunchTarget | None:
+        desktop_id = self._default_browser_desktop_id()
+        if not desktop_id:
+            return None
+        normalized = desktop_id.strip().lower()
+        for target in self._desktop_targets_for_session():
+            if target.desktop_id.lower() == normalized:
+                return target
+        return None
+
+    def _default_browser_desktop_id(self) -> str | None:
+        for argv in (
+            ["xdg-settings", "get", "default-web-browser"],
+            ["xdg-mime", "query", "default", "x-scheme-handler/https"],
+        ):
+            if self._which(argv[0]) is None:
+                continue
+            try:
+                result = subprocess.run(
+                    argv,
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                    env=self._env,
+                    cwd=self._subprocess_cwd(),
+                )
+            except OSError:
+                continue
+            if result.returncode == 0:
+                value = result.stdout.strip()
+                if value:
+                    return value
+        return None
+
+    async def _focus_desktop_target(
+        self,
+        target: DesktopLaunchTarget,
+    ) -> str | None:
+        if self._which("wmctrl") is None:
+            return None
+        for attempt in range(WINDOW_FOCUS_RETRIES):
+            window_id = await asyncio.to_thread(self._window_id_for_target, target)
+            if window_id is not None:
+                activated = await asyncio.to_thread(self._activate_window_id, window_id)
+                if activated:
+                    return window_id
+            if attempt + 1 < WINDOW_FOCUS_RETRIES:
+                await asyncio.sleep(WINDOW_FOCUS_DELAY_S)
+        return None
+
+    def _window_id_for_target(self, target: DesktopLaunchTarget) -> str | None:
+        if self._which("wmctrl") is None:
+            return None
+        try:
+            result = subprocess.run(
+                ["wmctrl", "-lx"],
+                capture_output=True,
+                check=False,
+                text=True,
+                env=self._env,
+                cwd=self._subprocess_cwd(),
+            )
+        except OSError:
+            return None
+        if result.returncode != 0:
+            return None
+        for raw_line in result.stdout.splitlines():
+            parts = raw_line.split(None, 4)
+            if len(parts) < 4:
+                continue
+            window_id = parts[0]
+            wm_class = parts[3].lower()
+            title = parts[4].lower() if len(parts) > 4 else ""
+            for token in target.window_tokens:
+                if token in wm_class or token in title:
+                    return window_id
+        return None
+
+    def _activate_window_id(self, window_id: str) -> bool:
+        if self._which("wmctrl") is not None:
+            try:
+                result = subprocess.run(
+                    ["wmctrl", "-i", "-a", window_id],
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                    env=self._env,
+                    cwd=self._subprocess_cwd(),
+                )
+            except OSError:
+                result = None
+            if result is not None and result.returncode == 0:
+                return True
+        if self._which("xdotool") is not None:
+            try:
+                decimal_window_id = str(int(window_id, 16))
+                result = subprocess.run(
+                    ["xdotool", "windowactivate", decimal_window_id],
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                    env=self._env,
+                    cwd=self._subprocess_cwd(),
+                )
+            except (OSError, ValueError):
+                return False
+            return result.returncode == 0
+        return False
+
+    def _simple_command_argv(self, command: str) -> list[str] | None:
+        if any(marker in command for marker in ("\n", "\r", "`", "$(")):
+            return None
+        with contextlib.suppress(ValueError):
+            argv = shlex.split(command, posix=True)
+            if argv and not any(token in SHELL_CONTROL_TOKENS for token in argv):
+                return argv
+        return None
 
     def _normalize_url(self, raw_url: str) -> str:
         url = raw_url.strip()

@@ -126,7 +126,10 @@ ulanzi-linux push-config <CONFIG_PATH> [--partial] [--save-firmware]
 
 By default logs are pretty-printed (`level=INFO`). Add `--verbose` for
 `DEBUG`, add `--json-logs` to output one JSON object per line (this is
-what the systemd unit uses so `journalctl -o json` works).
+what the systemd unit uses so `journalctl -o json` works). On POSIX hosts
+the same structured events are also mirrored to syslog by default, so
+operators can inspect them with tools such as `tail -f /var/log/syslog`
+when that path exists on the distro.
 
 Key events to watch for:
 

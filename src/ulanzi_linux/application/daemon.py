@@ -18,6 +18,7 @@ Runs up to four concurrent concerns:
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from pathlib import Path
 
 import structlog
@@ -28,7 +29,10 @@ from ulanzi_linux.application.config_watcher import ConfigWatcher
 from ulanzi_linux.application.deck_service import DeckService
 from ulanzi_linux.domain.button_config import (
     DeckConfig,
+    ShellAction,
+    ShortcutAction,
     SwitchPageAction,
+    UrlAction,
 )
 from ulanzi_linux.domain.commands import SmallWindowMode
 from ulanzi_linux.domain.events import ButtonEvent
@@ -46,6 +50,21 @@ DEFAULT_HEARTBEAT_INTERVAL_S: float = 2.0
 
 def _looks_like_hhmm(value: str) -> bool:
     return len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit()
+
+
+def _action_log_fields(action: object) -> dict[str, object]:
+    fields: dict[str, object] = {
+        "action_type": getattr(action, "type", type(action).__name__),
+    }
+    if isinstance(action, ShellAction):
+        fields["cmd"] = action.cmd
+    elif isinstance(action, ShortcutAction):
+        fields["keys"] = action.keys
+    elif isinstance(action, UrlAction):
+        fields["url"] = action.url
+    elif isinstance(action, SwitchPageAction):
+        fields["target_page"] = action.page
+    return fields
 
 
 class DeckDaemon:
@@ -128,7 +147,7 @@ class DeckDaemon:
         """
         try:
             new_config = load_deck_config(path)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.error(
                 "config_reload_parse_failed",
                 path=str(path),
@@ -207,7 +226,7 @@ class DeckDaemon:
                     await task
                 except asyncio.CancelledError:
                     pass
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.error(
                         "daemon_task_error",
                         task=task.get_name(),
@@ -226,7 +245,7 @@ class DeckDaemon:
             for button in buttons
             if button.index < self._service.spec.button_count
         )
-        await self._service._device.set_buttons(visible_buttons)  # noqa: SLF001
+        await self._service._device.set_buttons(visible_buttons)
         logger.info(
             "layout_synced",
             page=page_name,
@@ -257,7 +276,7 @@ class DeckDaemon:
                             else SmallWindowMode.CLOCK
                         )
                         if active_mode != desired_mode:
-                            await self._service._device.set_small_window_mode(  # noqa: SLF001
+                            await self._service._device.set_small_window_mode(
                                 desired_mode
                             )
                             active_mode = desired_mode
@@ -270,7 +289,7 @@ class DeckDaemon:
                             mem: int | None = self._metrics_reader.read_memory_percent()
                             gpu: int | None = 0
                             time_str = self._wire_time_string(sw_cfg.time_format)
-                            await self._service._device.set_small_window_data(  # noqa: SLF001
+                            await self._service._device.set_small_window_data(
                                 cpu=cpu,
                                 mem=mem,
                                 gpu=gpu,
@@ -278,7 +297,7 @@ class DeckDaemon:
                             )
                         else:
                             time_str = self._wire_time_string(sw_cfg.time_format)
-                            await self._service._device.set_small_window_data(  # noqa: SLF001
+                            await self._service._device.set_small_window_data(
                                 cpu=0,
                                 mem=0,
                                 gpu=0,
@@ -287,20 +306,18 @@ class DeckDaemon:
                         timeout = sw_cfg.interval_s
                     else:
                         if active_mode != SmallWindowMode.BACKGROUND:
-                            await self._service._device.set_small_window_mode(  # noqa: SLF001
+                            await self._service._device.set_small_window_mode(
                                 SmallWindowMode.BACKGROUND
                             )
                             active_mode = SmallWindowMode.BACKGROUND
                             metrics_primed = False
-                        await self._service._device.keep_alive()  # noqa: SLF001
+                        await self._service._device.keep_alive()
                         timeout = self._heartbeat_interval_s
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.warning("status_loop_tick_failed", error=str(exc))
                     timeout = self._heartbeat_interval_s
-                try:
+                with suppress(TimeoutError):
                     await asyncio.wait_for(stop_event.wait(), timeout=timeout)
-                except asyncio.TimeoutError:
-                    pass  # normal tick
         finally:
             logger.info("status_loop_stopped")
 
@@ -310,6 +327,13 @@ class DeckDaemon:
                 break
             if not isinstance(event, ButtonEvent):
                 continue
+            logger.info(
+                "button_event_received",
+                index=event.index,
+                pressed=event.pressed,
+                state=event.state,
+                page=self._current_page,
+            )
             if not event.pressed:
                 continue  # react on press only; could be made configurable
             button = self._config.button_at(self._current_page, event.index)
@@ -320,22 +344,42 @@ class DeckDaemon:
                     page=self._current_page,
                 )
                 continue
+            action_fields = _action_log_fields(button.action)
+            logger.info(
+                "button_action_dispatch",
+                index=event.index,
+                page=self._current_page,
+                **action_fields,
+            )
             # Paging is handled by the daemon, not the runner — keeps the
             # runner ignorant of deck-internal state and prevents a
             # subprocess from being spawned for a page switch.
             if isinstance(button.action, SwitchPageAction):
                 await self.switch_to(button.action.page)
+                logger.info(
+                    "button_action_completed",
+                    index=event.index,
+                    page=self._current_page,
+                    result="page_switched",
+                    **action_fields,
+                )
                 continue
             try:
                 await self._runner.run(button.action)
-            except Exception as exc:  # noqa: BLE001
+                logger.info(
+                    "button_action_accepted",
+                    index=event.index,
+                    page=self._current_page,
+                    **action_fields,
+                )
+            except Exception as exc:
                 logger.error(
                     "action_failed",
                     index=event.index,
                     page=self._current_page,
+                    **action_fields,
                     action=repr(button.action),
                     error=str(exc),
                 )
 
-
-__all__ = ["DeckDaemon", "DEFAULT_HEARTBEAT_INTERVAL_S"]
+__all__ = ["DEFAULT_HEARTBEAT_INTERVAL_S", "DeckDaemon"]
