@@ -39,7 +39,7 @@ from urllib.parse import quote
 import structlog
 import yaml
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -99,6 +99,7 @@ HOME_DIR = Path.home()
 SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 UPLOADED_ICON_MARGIN_PX = 5
 UPLOAD_FILE_FIELD = File(...)
+ASSET_VERSION_TOKEN = "__ULANZI_ASSET_VERSION__"
 
 
 # ---------------------------------------------------------------------- #
@@ -433,6 +434,11 @@ def _validate_yaml_text(text: str) -> ValidationSummary:
 
     summary = _summarise(cfg)
     return ValidationSummary(ok=True, **summary)
+
+
+def _render_index_html() -> str:
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    return html.replace(ASSET_VERSION_TOKEN, __version__)
 
 
 def _cleanup_paths(*paths: Path | None) -> None:
@@ -828,8 +834,14 @@ def create_app(config_path: Path) -> FastAPI:
     # ------------------------------------------------------------------ #
 
     @app.get("/")
-    def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
+    def index() -> HTMLResponse:
+        return HTMLResponse(
+            content=_render_index_html(),
+            headers={
+                "Cache-Control": "no-store, max-age=0",
+                "Pragma": "no-cache",
+            },
+        )
 
     app.mount(
         "/static",
