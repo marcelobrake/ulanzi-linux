@@ -151,6 +151,7 @@ def test_get_editor_returns_structured_config(
     assert body["default_page"] == "main"
     assert body["pages"][0]["name"] == "main"
     assert body["small_window"]["show_metrics"] is True
+    assert body["small_window"]["rotate_every_s"] is None
     assert body["pages"][0]["buttons"][0]["text_style"]["background_color"] == "#111827"
     assert body["versioned_config_path"] is None
     assert body["saved_firmware_bundle_path"] is None
@@ -299,6 +300,19 @@ def test_put_editor_can_also_save_firmware_bundle(
         assert "manifest.json" in names
         assert "dummy.txt" in names
         assert "sentinel.txt" in names
+
+
+def test_put_editor_persists_small_window_rotation(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, path = client
+    payload = c.get("/api/editor").json()
+    payload["small_window"]["rotate_every_s"] = 5.0
+
+    r = c.put("/api/editor", json=payload)
+    assert r.status_code == 200
+    saved = path.read_text()
+    assert "rotate_every_s: 5.0" in saved
 
 
 def test_put_config_persists_valid_yaml(

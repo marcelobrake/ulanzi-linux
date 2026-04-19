@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Ulanzi Linux Session Agent
+Comment=Bridge graphical-session launches for the Ulanzi D200 daemon
+Exec=ulanzi-linux --json-logs session-agent
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

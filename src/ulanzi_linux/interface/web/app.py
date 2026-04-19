@@ -197,6 +197,7 @@ def _config_to_editor_response(
             interval_s=cfg.small_window.interval_s,
             time_format=cfg.small_window.time_format,
             show_metrics=cfg.small_window.show_metrics,
+            rotate_every_s=cfg.small_window.rotate_every_s,
         ),
         versioned_config_path=versioned_config_path,
         saved_firmware_bundle_path=saved_firmware_bundle_path,
@@ -322,6 +323,8 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
         },
         "pages": pages_doc,
     }
+    if req.small_window.rotate_every_s is not None:
+        doc["small_window"]["rotate_every_s"] = req.small_window.rotate_every_s
     if req.fixed_buttons:
         doc["fixed_buttons"] = [
             _editor_button_to_doc(button)

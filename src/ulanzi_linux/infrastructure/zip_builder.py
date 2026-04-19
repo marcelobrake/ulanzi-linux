@@ -9,8 +9,9 @@ Schema (ground truth extracted from redphx/strmdck):
     dummy.txt          stored padding file written before icons so retries can
                        shift subsequent ZIP entry offsets safely.
     icons/<name>.png   196x196 PNG assets. Real icons keep their source
-                       basename, while generated text tiles use the numeric
-                       button index.
+                       basename, while generated text tiles use a stable
+                       content hash so page switches cannot reuse stale
+                       cached assets for the same physical index.
     sentinel.txt       empty final file so the firmware can discard the last
                        central-directory entry without losing a real icon.
 
@@ -28,6 +29,7 @@ from __future__ import annotations
 
 import io
 import json
+import hashlib
 import zipfile
 from collections.abc import Iterable
 from pathlib import Path
@@ -312,7 +314,24 @@ def _archive_icon_name(cfg: ButtonConfig) -> str:
     path = _real_icon_path(cfg)
     if path is not None:
         return f"icons/{path.name}"
-    return f"icons/{int(cfg.index)}.png"
+    style = cfg.text_style
+    payload = json.dumps(
+        {
+            "index": int(cfg.index),
+            "label": cfg.label,
+            "background_color": style.background_color,
+            "text_color": style.text_color,
+            "bold": style.bold,
+            "italic": style.italic,
+            "underline": style.underline,
+            "font_family": style.font_family,
+            "font_size": style.font_size,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+    return f"icons/{int(cfg.index)}-{digest}.png"
 
 
 def _build_manifest(configs: list[ButtonConfig]) -> dict:

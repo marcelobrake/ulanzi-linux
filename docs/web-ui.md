@@ -1,8 +1,9 @@
 # Web editor for `deck.yaml`
 
-A tiny localhost web app that lets you edit the deck config with syntax
-highlighting and live validation, without learning the YAML schema by
-heart. It is **optional** — the CLI and daemon work fine without it.
+A localhost visual editor for the deck config. It is **optional** — the
+CLI and daemon work fine without it — but it makes page layout, icon
+uploads, small-window tuning and action review much faster than editing
+the YAML by hand.
 
 ## Install
 
@@ -37,6 +38,11 @@ image, the label is previewed centered in the tile and you can tweak
 background color, text color, weight, italic, underline, font family and
 font size directly from the inspector.
 
+The current UI also exposes a denser control-room layout: the simulator
+now sits immediately below the title block, uses larger deck tiles, and
+keeps the summary cards just below it. The inspector still shows
+action-specific help and a direct "test link" affordance for URL actions.
+
 The simulator uses fixed 96×96 button tiles and the wide bottom-right slot
 now renders a live small-window preview. When `show_metrics` is off it shows
 the current clock; when it is on it shows live CPU and memory values from the
@@ -47,24 +53,24 @@ their aspect ratio and keeping at least 5 px of margin on every edge. Each
 save also creates a timestamped sibling copy of `deck.yaml`, and the UI can
 optionally persist the generated ZIP payload next to the config file.
 
+URL actions entered through the editor are normalized on save: if the
+operator pastes only a hostname like `claude.ai`, the saved action becomes
+`https://claude.ai`.
+
 ## Design
 
 The UI is three small files under
 `src/ulanzi_linux/interface/web/static/`:
 
 * `index.html` — layout and Alpine bindings.
-* `app.js` — Alpine bootstrap, API glue, and CodeMirror upgrade.
-* `app.css` — dark theme.
+* `app.js` — Alpine bootstrap, API glue, editor state, and slot helpers.
+* `app.css` — the local dashboard styling for the simulator and inspector.
 
 External deps are loaded from `jsdelivr` in the browser at runtime:
 
-* **CodeMirror 6** (`@codemirror/lang-yaml`, `theme-one-dark`) — syntax
-  highlighting and editor when the CDN is reachable.
 * **Alpine.js 3** — reactive state without a bundler.
 
 No npm / webpack / vite step. `pip install` is the only install command.
-If the CodeMirror CDN is unavailable, the UI falls back to a plain
-`textarea` so the editor still loads, shows the current YAML, and can save.
 
 ## Safety
 

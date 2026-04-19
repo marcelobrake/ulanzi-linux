@@ -7,6 +7,169 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-04-19
+
+### Added
+
+- Added optional `small_window.rotate_every_s` so the daemon can keep the
+  D200 small window on the clock layout for a configured duration and then
+  switch to the stats layout for the same duration, while still refreshing
+  often enough to satisfy the firmware watchdog.
+
+### Changed
+
+- The web editor now exposes the small-window alternation interval and
+  summarizes the alternating mode directly in the device preview.
+
+## [0.4.1] — 2026-04-19
+
+### Fixed
+
+- `systemd/install.sh` now forces a real `systemctl --user restart`
+  after installation so an already-running daemon reloads the current
+  package code instead of keeping the previous Python module set in
+  memory.
+
+## [0.4.0] — 2026-04-19
+
+### Added
+
+- Added a graphical-session agent launched from desktop autostart that
+  listens on a per-user Unix socket and executes shell, URL and shortcut
+  actions from the active graphical login instead of relying exclusively
+  on the systemd daemon process environment.
+
+### Changed
+
+- The daemon ActionRunner now attempts to delegate GUI-relevant actions
+  to the session agent first and only falls back to the previous local
+  execution strategy when the agent socket is unavailable.
+
+### Fixed
+
+- The systemd installer now also installs a desktop autostart entry for
+  the graphical-session agent, so daemon-managed button actions can still
+  open applications reliably after login on hosts where systemd's user
+  environment is not enough by itself.
+
+## [0.3.10] — 2026-04-19
+
+### Fixed
+
+- GUI shell commands that include extra flags now still recognize the
+  underlying desktop app for window reuse, and if the raw command exits
+  quickly without surfacing a window the daemon now tries the matching
+  desktop launcher as an asynchronous fallback instead of stopping at the
+  shell failure.
+- Generated text-only button tiles now use content-specific icon names in
+  the ZIP payload, which prevents stale labels from being reused by the
+  firmware cache when two pages assign different text to the same button
+  index.
+
+## [0.3.9] — 2026-04-19
+
+### Fixed
+
+- URL actions now try the concrete `Exec=` command from the default
+  browser desktop entry before falling back to generic desktop openers,
+  which improves reliability on hosts where `gio open` does not surface a
+  visible tab or window change.
+
+## [0.3.8] — 2026-04-19
+
+### Fixed
+
+- The user-systemd installer now resolves the real `ulanzi-linux`
+  executable from the active shell before writing `ExecStart=`, which
+  prevents `status=203/EXEC` on hosts that install the package via pyenv
+  or a virtual environment instead of `~/.local/bin`.
+
+## [0.3.7] — 2026-04-19
+
+### Fixed
+
+- Simple GUI shell actions now try to focus an already-open matching
+  window before launching a new instance, which makes app buttons behave
+  correctly when the application is already running in the background.
+- If a desktop launcher returns success but no matching window appears,
+  the daemon now falls back to the raw shell command instead of assuming
+  the app opened visibly.
+
+## [0.3.6] — 2026-04-19
+
+### Fixed
+
+- After a successful GUI app launch through a desktop entry, the daemon
+  now tries to activate the matching application window on X11 hosts that
+  provide `wmctrl`, so buttons behave more like bringing an already-open
+  app to the foreground.
+- After handing a URL to the desktop opener, the daemon now also tries to
+  focus the default browser window on X11 hosts with `wmctrl`, reducing
+  the cases where the tab opens in the background with no visible change.
+
+## [0.3.5] — 2026-04-19
+
+### Fixed
+
+- URL actions now prefer the desktop session opener path (`gio open`
+  before the older fallbacks), which improves opening links in the active
+  browser session and falls back to the default browser when needed.
+- Simple GUI shell actions such as `code`, `claude-desktop`, and
+  `chatgpt-desktop` now try the matching `.desktop` launcher
+  (`gtk-launch` / `gio launch`) before spawning the raw binary, making
+  app buttons behave more like clicking an application icon from the
+  desktop environment.
+
+## [0.3.4] — 2026-04-19
+
+### Added
+
+- Structured logs are now mirrored to the host syslog facility by default on
+  POSIX systems, so daemon activity can be inspected outside the journal when
+  operators prefer syslog-based troubleshooting.
+
+### Changed
+
+- Button handling now logs a fuller action lifecycle: physical button event,
+  resolved action payload, dispatch acceptance, and per-action completion or
+  failure details for shell, shortcut and URL actions.
+
+## [0.3.3] — 2026-04-19
+
+### Fixed
+
+- Shell actions now log non-zero exit codes instead of failing silently in the
+  background, which makes bad commands in `deck.yaml` diagnosable from daemon
+  logs.
+
+## [0.3.2] — 2026-04-19
+
+### Changed
+
+- Enlarged the visual deck simulator tiles in the localhost editor so the
+  button grid is easier to inspect and click during layout work.
+- Moved the simulator block to the top of the left column, immediately below
+  the title area and above the summary cards, so the deck itself is visible
+  first when opening the editor.
+
+## [0.3.1] — 2026-04-19
+
+### Changed
+
+- Refreshed the localhost editor with a denser control-room layout: top summary
+  cards, clearer helper panels, action-specific guidance, and a direct "test
+  link" affordance for URL actions in the inspector.
+
+### Fixed
+
+- Shell and direct-exec actions now inherit a richer user-oriented environment:
+  the daemon augments `$PATH` with the login-shell path when available plus the
+  common Snap and Flatpak export directories, so apps installed outside the base
+  distro path resolve more reliably.
+- URL actions now normalize schemeless entries such as `claude.ai` to
+  `https://claude.ai` before opening, and the editor applies the same
+  normalization on blur/save so saved actions match runtime behavior.
+
 ## [0.3.0] — 2026-04-18
 
 ### Added

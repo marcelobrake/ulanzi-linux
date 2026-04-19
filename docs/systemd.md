@@ -9,7 +9,7 @@ programs and needs the session D-Bus / `$DISPLAY`, which root doesn't have.
 
 | What | Why | How |
 | --- | --- | --- |
-| Python package installed | Provides `~/.local/bin/ulanzi-linux` | `pip install --user .` from the repo root |
+| Python package installed | Provides the `ulanzi-linux` entry point used by the user unit | `pip install --user .` or install it in your active pyenv / virtualenv |
 | udev rule installed | Grants hidraw access without sudo | `sudo cp udev/99-ulanzi-d200.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules && sudo udevadm trigger` |
 | User in `plugdev` group | Required by the udev rule | `sudo usermod -aG plugdev $USER` (then log out / in) |
 | Deck YAML in place | The daemon refuses to start without one | `mkdir -p ~/.config/ulanzi && cp examples/deck.multipage.yaml ~/.config/ulanzi/deck.yaml` |
@@ -34,7 +34,30 @@ The fastest path is the helper script:
 ./systemd/install.sh --uninstall
 ```
 
-Manual install is trivially equivalent:
+The helper script resolves the actual `ulanzi-linux` executable from your
+current shell first. That matters on hosts that install the package via
+pyenv or a virtual environment, where the console script does not live in
+`~/.local/bin`. The same helper also installs a desktop autostart entry
+for the graphical-session bridge at `~/.config/autostart/ulanzi-linux-session-agent.desktop`.
+
+The daemon keeps running under the user systemd manager, but shell / URL /
+shortcut actions can now be delegated to a second process started by the
+desktop session itself. That bridge listens on a Unix socket inside
+`$XDG_RUNTIME_DIR` and runs commands from the already-initialized graphical
+environment.
+
+Manual install is only trivially equivalent when your entry point really
+lives at `~/.local/bin/ulanzi-linux`. Otherwise either use the helper
+script or edit `ExecStart=` to the resolved executable path.
+
+Typical paths:
+
+```bash
+command -v ulanzi-linux
+pyenv which ulanzi-linux     # when using pyenv
+```
+
+Manual install:
 
 ```bash
 mkdir -p ~/.config/systemd/user
@@ -61,6 +84,16 @@ ulanzi-linux: small_window_started interval_s=2.0
 …and the D200 shows your configured layout instead of Ulanzi Studio's
 built-in screensaver.
 
+For the graphical-session bridge, a healthy manual start looks like:
+
+```bash
+ulanzi-linux --json-logs session-agent
+```
+
+```text
+session-agent running — socket='/run/user/1000/ulanzi-linux-session-agent.sock'
+```
+
 If the deck power-cycles while the unit is already running, the daemon now
 waits for the HID node to come back, reconnects automatically, and reapplies
 the last known layout / brightness / small-window state without needing a
@@ -84,10 +117,12 @@ systemctl --user disable --now ulanzi-linux.service
 
 ## 5. Troubleshooting
 
-**`status=203/EXEC`** — systemd couldn't find `~/.local/bin/ulanzi-linux`.
-Re-install the package with `pip install --user .` or adjust `ExecStart=`
-in the unit to point at wherever your entry point lives
-(e.g. inside a virtualenv).
+**`status=203/EXEC`** — systemd couldn't execute the configured
+`ExecStart=` path. Most often the package was installed via pyenv or a
+virtualenv, but the unit still points at `~/.local/bin/ulanzi-linux`.
+Re-run `./systemd/install.sh` from the environment where `ulanzi-linux`
+works, or adjust `ExecStart=` to the resolved path from `command -v
+ulanzi-linux` / `pyenv which ulanzi-linux`.
 
 **`DeviceOpenError: permission denied`** — udev rule not loaded or user
 not in `plugdev`. Re-run the udev install commands from §1 and **replug**
@@ -108,6 +143,20 @@ unplugged while the daemon was starting.
 `journalctl --user -u ulanzi-linux.service | grep daemon_started` and
 look for `watch=on`. If it says `off`, somebody edited the unit to pass
 `--no-watch` — remove it.
+
+**Buttons still don't open GUI apps after upgrading** — confirm the
+session agent is running in the desktop session and that the socket exists:
+
+```bash
+ls -l "$XDG_RUNTIME_DIR/ulanzi-linux-session-agent.sock"
+pgrep -af "ulanzi-linux --json-logs session-agent"
+```
+
+If needed, start it manually in the current session:
+
+```bash
+ulanzi-linux --json-logs session-agent
+```
 
 **Logs are verbose** — structured JSON is the default in this unit to
 make log shipping (Loki, Elastic, CloudWatch) painless. For a friendlier

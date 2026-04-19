@@ -18,7 +18,9 @@ Runs up to four concurrent concerns:
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from pathlib import Path
+import time
 
 import structlog
 
@@ -28,7 +30,10 @@ from ulanzi_linux.application.config_watcher import ConfigWatcher
 from ulanzi_linux.application.deck_service import DeckService
 from ulanzi_linux.domain.button_config import (
     DeckConfig,
+    ShellAction,
+    ShortcutAction,
     SwitchPageAction,
+    UrlAction,
 )
 from ulanzi_linux.domain.commands import SmallWindowMode
 from ulanzi_linux.domain.events import ButtonEvent
@@ -46,6 +51,28 @@ DEFAULT_HEARTBEAT_INTERVAL_S: float = 2.0
 
 def _looks_like_hhmm(value: str) -> bool:
     return len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit()
+
+
+def _action_log_fields(action: object) -> dict[str, object]:
+    fields: dict[str, object] = {
+        "action_type": getattr(action, "type", type(action).__name__),
+    }
+    if isinstance(action, ShellAction):
+        fields["cmd"] = action.cmd
+    elif isinstance(action, ShortcutAction):
+        fields["keys"] = action.keys
+    elif isinstance(action, UrlAction):
+        fields["url"] = action.url
+    elif isinstance(action, SwitchPageAction):
+        fields["target_page"] = action.page
+    return fields
+
+
+def _rotates_small_window(sw_cfg: object) -> bool:
+    return bool(
+        getattr(sw_cfg, "show_metrics", False)
+        and getattr(sw_cfg, "rotate_every_s", None) is not None
+    )
 
 
 class DeckDaemon:
@@ -128,7 +155,7 @@ class DeckDaemon:
         """
         try:
             new_config = load_deck_config(path)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.error(
                 "config_reload_parse_failed",
                 path=str(path),
@@ -207,7 +234,7 @@ class DeckDaemon:
                     await task
                 except asyncio.CancelledError:
                     pass
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.error(
                         "daemon_task_error",
                         task=task.get_name(),
@@ -226,7 +253,7 @@ class DeckDaemon:
             for button in buttons
             if button.index < self._service.spec.button_count
         )
-        await self._service._device.set_buttons(visible_buttons)  # noqa: SLF001
+        await self._service._device.set_buttons(visible_buttons)
         logger.info(
             "layout_synced",
             page=page_name,
@@ -245,32 +272,73 @@ class DeckDaemon:
     async def _status_loop(self, stop_event: asyncio.Event) -> None:
         logger.info("status_loop_started")
         active_mode: SmallWindowMode | None = None
+        mode_started_at: float | None = None
         metrics_primed = False
+        strategy_key: tuple[bool, bool, float | None] | None = None
         try:
             while not stop_event.is_set():
                 try:
                     sw_cfg = self._config.small_window
+                    current_strategy = (
+                        sw_cfg.enabled,
+                        sw_cfg.show_metrics,
+                        sw_cfg.rotate_every_s,
+                    )
+                    if strategy_key != current_strategy:
+                        active_mode = None
+                        mode_started_at = None
+                        metrics_primed = False
+                        strategy_key = current_strategy
                     if sw_cfg.enabled:
-                        desired_mode = (
-                            SmallWindowMode.STATS
-                            if sw_cfg.show_metrics
-                            else SmallWindowMode.CLOCK
-                        )
+                        now = time.monotonic()
+                        next_mode_switch_in: float | None = None
+                        if sw_cfg.show_metrics:
+                            if _rotates_small_window(sw_cfg):
+                                if (
+                                    active_mode not in {
+                                        SmallWindowMode.CLOCK,
+                                        SmallWindowMode.STATS,
+                                    }
+                                    or mode_started_at is None
+                                ):
+                                    desired_mode = SmallWindowMode.CLOCK
+                                    next_mode_switch_in = sw_cfg.rotate_every_s
+                                else:
+                                    elapsed = now - mode_started_at
+                                    if elapsed >= sw_cfg.rotate_every_s:
+                                        desired_mode = (
+                                            SmallWindowMode.STATS
+                                            if active_mode == SmallWindowMode.CLOCK
+                                            else SmallWindowMode.CLOCK
+                                        )
+                                        next_mode_switch_in = sw_cfg.rotate_every_s
+                                    else:
+                                        desired_mode = active_mode
+                                        next_mode_switch_in = (
+                                            sw_cfg.rotate_every_s - elapsed
+                                        )
+                            else:
+                                desired_mode = SmallWindowMode.STATS
+                        else:
+                            desired_mode = SmallWindowMode.CLOCK
                         if active_mode != desired_mode:
-                            await self._service._device.set_small_window_mode(  # noqa: SLF001
+                            await self._service._device.set_small_window_mode(
                                 desired_mode
                             )
                             active_mode = desired_mode
+                            mode_started_at = now
                             metrics_primed = False
+                            if _rotates_small_window(sw_cfg):
+                                next_mode_switch_in = sw_cfg.rotate_every_s
                         if sw_cfg.show_metrics and not metrics_primed:
                             self._metrics_reader.read_cpu_percent()
                             metrics_primed = True
-                        if sw_cfg.show_metrics:
+                        if active_mode == SmallWindowMode.STATS:
                             cpu: int | None = self._metrics_reader.read_cpu_percent()
                             mem: int | None = self._metrics_reader.read_memory_percent()
                             gpu: int | None = 0
                             time_str = self._wire_time_string(sw_cfg.time_format)
-                            await self._service._device.set_small_window_data(  # noqa: SLF001
+                            await self._service._device.set_small_window_data(
                                 cpu=cpu,
                                 mem=mem,
                                 gpu=gpu,
@@ -278,29 +346,30 @@ class DeckDaemon:
                             )
                         else:
                             time_str = self._wire_time_string(sw_cfg.time_format)
-                            await self._service._device.set_small_window_data(  # noqa: SLF001
+                            await self._service._device.set_small_window_data(
                                 cpu=0,
                                 mem=0,
                                 gpu=0,
                                 time_str=time_str,
                             )
                         timeout = sw_cfg.interval_s
+                        if next_mode_switch_in is not None:
+                            timeout = min(timeout, max(next_mode_switch_in, 0.01))
                     else:
                         if active_mode != SmallWindowMode.BACKGROUND:
-                            await self._service._device.set_small_window_mode(  # noqa: SLF001
+                            await self._service._device.set_small_window_mode(
                                 SmallWindowMode.BACKGROUND
                             )
                             active_mode = SmallWindowMode.BACKGROUND
+                            mode_started_at = None
                             metrics_primed = False
-                        await self._service._device.keep_alive()  # noqa: SLF001
+                        await self._service._device.keep_alive()
                         timeout = self._heartbeat_interval_s
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.warning("status_loop_tick_failed", error=str(exc))
                     timeout = self._heartbeat_interval_s
-                try:
+                with suppress(TimeoutError):
                     await asyncio.wait_for(stop_event.wait(), timeout=timeout)
-                except asyncio.TimeoutError:
-                    pass  # normal tick
         finally:
             logger.info("status_loop_stopped")
 
@@ -310,6 +379,13 @@ class DeckDaemon:
                 break
             if not isinstance(event, ButtonEvent):
                 continue
+            logger.info(
+                "button_event_received",
+                index=event.index,
+                pressed=event.pressed,
+                state=event.state,
+                page=self._current_page,
+            )
             if not event.pressed:
                 continue  # react on press only; could be made configurable
             button = self._config.button_at(self._current_page, event.index)
@@ -320,22 +396,42 @@ class DeckDaemon:
                     page=self._current_page,
                 )
                 continue
+            action_fields = _action_log_fields(button.action)
+            logger.info(
+                "button_action_dispatch",
+                index=event.index,
+                page=self._current_page,
+                **action_fields,
+            )
             # Paging is handled by the daemon, not the runner — keeps the
             # runner ignorant of deck-internal state and prevents a
             # subprocess from being spawned for a page switch.
             if isinstance(button.action, SwitchPageAction):
                 await self.switch_to(button.action.page)
+                logger.info(
+                    "button_action_completed",
+                    index=event.index,
+                    page=self._current_page,
+                    result="page_switched",
+                    **action_fields,
+                )
                 continue
             try:
                 await self._runner.run(button.action)
-            except Exception as exc:  # noqa: BLE001
+                logger.info(
+                    "button_action_accepted",
+                    index=event.index,
+                    page=self._current_page,
+                    **action_fields,
+                )
+            except Exception as exc:
                 logger.error(
                     "action_failed",
                     index=event.index,
                     page=self._current_page,
+                    **action_fields,
                     action=repr(button.action),
                     error=str(exc),
                 )
 
-
-__all__ = ["DeckDaemon", "DEFAULT_HEARTBEAT_INTERVAL_S"]
+__all__ = ["DEFAULT_HEARTBEAT_INTERVAL_S", "DeckDaemon"]

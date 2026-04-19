@@ -160,11 +160,27 @@ def test_label_only_button_renders_text_tile_and_manifest_text() -> None:
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
         manifest = json.loads(zf.read("manifest.json"))
         names = zf.namelist()
-        img = Image.open(io.BytesIO(zf.read("icons/0.png")))
-    assert "icons/0.png" in names
-    assert manifest["0_0"]["ViewParam"][0]["Icon"] == "icons/0.png"
+        icon_name = manifest["0_0"]["ViewParam"][0]["Icon"]
+        img = Image.open(io.BytesIO(zf.read(icon_name)))
+    assert icon_name in names
+    assert icon_name.startswith("icons/0-")
     assert manifest["0_0"]["ViewParam"][0]["Text"] == "OpenAI"
     assert img.size == ICON_SIZE
+
+
+def test_label_only_button_changes_generated_icon_name_when_text_changes() -> None:
+    first_blob = build_buttons_zip([ButtonConfig(index=0, label="Main")])
+    second_blob = build_buttons_zip([ButtonConfig(index=0, label="Media")])
+
+    with zipfile.ZipFile(io.BytesIO(first_blob)) as first_zip:
+        first_manifest = json.loads(first_zip.read("manifest.json"))
+    with zipfile.ZipFile(io.BytesIO(second_blob)) as second_zip:
+        second_manifest = json.loads(second_zip.read("manifest.json"))
+
+    assert (
+        first_manifest["0_0"]["ViewParam"][0]["Icon"]
+        != second_manifest["0_0"]["ViewParam"][0]["Icon"]
+    )
 
 
 def test_real_icon_keeps_original_basename_in_manifest(fake_icon: Path) -> None:
@@ -209,7 +225,9 @@ def test_text_only_button_uses_configured_background_color() -> None:
         ]
     )
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
-        img = Image.open(io.BytesIO(zf.read("icons/0.png"))).convert("RGBA")
+        manifest = json.loads(zf.read("manifest.json"))
+        icon_name = manifest["0_0"]["ViewParam"][0]["Icon"]
+        img = Image.open(io.BytesIO(zf.read(icon_name))).convert("RGBA")
     assert img.getpixel((4, 4)) == (170, 17, 34, 255)
 
 
