@@ -11,8 +11,21 @@ the YAML by hand.
 pip install --user '.[web]'
 ```
 
-The `[web]` extra pulls in FastAPI and uvicorn. The core install stays
+The `[web]` extra pulls in FastAPI, uvicorn, Font Awesome Free and the emoji
+metadata package used by the built-in catalog. The core install stays
 dependency-light.
+
+For an installable desktop window on Ubuntu, use:
+
+```bash
+pip install --user '.[desktop]'
+ulanzi-linux desktop-install
+ulanzi-linux desktop ~/.config/ulanzi/deck.yaml
+```
+
+That writes a launcher into `~/.local/share/applications/ulanzi-linux.desktop`
+plus an SVG icon under `~/.local/share/icons/hicolor/scalable/apps/`, so the
+editor shows up in the desktop launcher as a normal application.
 
 ## Run
 
@@ -50,10 +63,12 @@ host, matching the D200 mode switch already validated on hardware. The small-
 window inspector also exposes a color picker for the strip background; when no
 color is saved, the daemon uses solid black.
 
-The image inspector also ships with a built-in icon catalog backed by Font
-Awesome Free. The editor can browse more than 2000 built-in icons, search by
-name or keyword, and import the selected asset directly into the user's local
-`icons/builtin/` directory so the deck can upload it like any other PNG.
+The image inspector also ships with a built-in asset catalog backed by Font
+Awesome Free plus Unicode emoji metadata rendered locally through Noto Color
+Emoji when the font is present on the host. The editor can browse application
+icons and emojis, search by name or keyword, and import the selected asset
+directly into the user's local `icons/builtin/` directory so the deck can
+upload it like any other PNG.
 
 Image uploads are normalized immediately into 196×196 PNG assets, preserving
 their aspect ratio and keeping at least 5 px of margin on every edge. Each
@@ -119,11 +134,11 @@ home directory.
 | `POST` | `/api/config/validate` | Parse without saving — for live feedback. |
 | `POST` | `/api/editor/validate` | Validate the structured editor payload before saving. |
 | `GET` | `/api/builtin-assets` | List the built-in icon catalog available in the editor. |
-| `GET` | `/api/builtin-asset` | Render a built-in icon preview as PNG. |
+| `GET` | `/api/builtin-asset` | Render a built-in icon or emoji preview as PNG. |
 | `PUT` | `/api/config` | Validate, snapshot and save the raw YAML atomically. |
 | `PUT` | `/api/editor` | Save the structured editor payload and optionally persist the ZIP bundle. |
 | `POST` | `/api/assets` | Upload and normalize an icon into the local `icons/` folder. |
-| `POST` | `/api/builtin-assets/import` | Import a built-in icon into `icons/builtin/` as PNG. |
+| `POST` | `/api/builtin-assets/import` | Import a built-in icon or emoji into `icons/builtin/` as PNG. |
 | `GET` | `/api/asset` | Serve a stored icon back to the browser for previews. |
 
 FastAPI auto-generates an OpenAPI spec at `/docs` while the server is

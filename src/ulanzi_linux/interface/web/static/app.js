@@ -36,6 +36,7 @@ const ACTION_LABELS = Object.freeze({
 const BUILTIN_ICON_STYLES = Object.freeze([
     { value: "all", label: "Todos" },
     { value: "brands", label: "Apps/brands" },
+    { value: "emoji", label: "Emojis" },
     { value: "regular", label: "Regular" },
     { value: "solid", label: "Solid" },
 ]);
@@ -765,7 +766,7 @@ window.editorApp = function editorApp() {
                     if (!query) {
                         return true;
                     }
-                    const haystack = [icon.name, icon.style, ...(icon.search_terms || [])]
+                    const haystack = [icon.name, icon.style, icon.family, ...(icon.search_terms || [])]
                         .join(" ")
                         .toLowerCase();
                     return haystack.includes(query);
@@ -776,7 +777,7 @@ window.editorApp = function editorApp() {
         get builtinIconSummary() {
             const total = (this.builtinIcons || []).length;
             const visible = this.filteredBuiltinIcons.length;
-            return `${visible} de ${total} ícones`;
+            return `${visible} de ${total} assets embutidos`;
         },
 
         get currentTextOnlyPreview() {

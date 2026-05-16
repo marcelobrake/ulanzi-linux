@@ -9,6 +9,7 @@ from PIL import Image
 pytest.importorskip("fontawesomefree")
 
 from ulanzi_linux.infrastructure.builtin_icons import (
+    _emoji_font_path,
     list_builtin_icons,
     materialize_builtin_icon,
     render_builtin_icon_png,
@@ -35,3 +36,26 @@ def test_materialize_builtin_icon_writes_png_file(tmp_path: Path) -> None:
 
     assert target.exists()
     assert target.suffix == ".png"
+
+
+def test_builtin_catalog_exposes_emoji_assets_when_font_is_available() -> None:
+    if _emoji_font_path() is None:
+        pytest.skip("emoji font not available")
+
+    icons = list_builtin_icons()
+    emoji_icon = next((icon for icon in icons if icon.family == "emoji"), None)
+
+    assert emoji_icon is not None
+    assert emoji_icon.style == "emoji"
+
+
+def test_emoji_asset_can_render_to_png_when_font_is_available() -> None:
+    if _emoji_font_path() is None:
+        pytest.skip("emoji font not available")
+
+    emoji_icon = next(icon for icon in list_builtin_icons() if icon.family == "emoji")
+    payload = render_builtin_icon_png(emoji_icon.asset_id)
+
+    with Image.open(io.BytesIO(payload)) as image:
+        assert image.size == (256, 256)
+        assert image.getchannel("A").getextrema()[1] > 0

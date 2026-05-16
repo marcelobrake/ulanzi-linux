@@ -809,6 +809,7 @@ def create_app(config_path: Path) -> FastAPI:
                 asset_id=icon.asset_id,
                 name=icon.name,
                 style=icon.style,
+                family=icon.family,
                 search_terms=list(icon.search_terms),
                 preview_url=_builtin_asset_preview_url(icon.asset_id),
             )
@@ -822,6 +823,8 @@ def create_app(config_path: Path) -> FastAPI:
             payload = render_builtin_icon_png(asset_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="builtin asset not found") from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return Response(content=payload, media_type="image/png")
 
     @app.post("/api/builtin-assets/import", response_model=AssetUploadResponse)
@@ -833,6 +836,8 @@ def create_app(config_path: Path) -> FastAPI:
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="builtin asset not found") from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
         compact = _compact_path(target)
         assert compact is not None
