@@ -278,6 +278,32 @@ def test_info_window_slot_builds_wide_background_asset() -> None:
             assert icon.getpixel((0, 0)) == (34, 68, 102, 255)
 
 
+def test_info_window_slot_renders_text_over_background() -> None:
+    blob = build_buttons_zip(
+        [
+            ButtonConfig(
+                index=13,
+                label="14:32:00",
+                text_style=TextStyle(
+                    background_color="#000000",
+                    text_color="#FFFFFF",
+                    font_family="DejaVu Sans Mono",
+                    font_size=42,
+                    bold=True,
+                ),
+            )
+        ]
+    )
+
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+        icon_name = manifest["3_2"]["ViewParam"][0]["Icon"]
+        with Image.open(io.BytesIO(zf.read(icon_name))) as icon:
+            assert icon.size == INFO_WINDOW_SIZE
+            pixels = list(icon.getdata())
+            assert any(pixel != (0, 0, 0, 255) for pixel in pixels)
+
+
 def test_rejects_index_outside_info_window_slot(fake_icon: Path) -> None:
     with pytest.raises(ValueError, match="supported D200 grid"):
         build_buttons_zip([ButtonConfig(index=14, icon_path=fake_icon, label="Wide")])
