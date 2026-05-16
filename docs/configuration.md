@@ -78,6 +78,7 @@ small_window:
   rotate_every_s: 5.0            # 5 s de relógio, 5 s de estatísticas
   background_color: "#000000"
 ```
+
 When `show_metrics: false`, the daemon still sends a clock-safe payload
 to keep the device in clock mode. When `show_metrics: true`, it sends the
 live CPU / memory values the stats layout expects. When `rotate_every_s`
@@ -119,7 +120,7 @@ pages:
 | --- | --- | --- | --- |
 | `index` | int | yes | Physical touch position (0-based). The D200 renders buttons only on indices 0–12. Index 13 is the wide info window: it can trigger an action on touch, but its visual content still comes from `small_window`. |
 | `label` | string | no | Text rendered on the button. Defaults to `""`. |
-| `icon` | string (path) | no | Local asset path. `~` is expanded. Any image Pillow can open is fitted into a 196×196 tile and re-encoded as PNG automatically. |
+| `icon` | string (path) | no | Local asset path. `~` is expanded. Any image Pillow can open is fitted into a 196×196 tile and re-encoded as PNG automatically. The web/desktop editor can also import built-in icons and emojis into `~/.config/ulanzi/icons/builtin/`, then store that normal path here. |
 | `text_style` | object | no | Used primarily for text-only buttons. For icon-backed buttons, only `background_color` still matters: it becomes the opaque matte under transparent parts of the icon. |
 | `action` | object | no | What to run on press. If absent, the button is visual-only. See §5. |
 
@@ -336,6 +337,9 @@ Icons can be any format Pillow opens (PNG, JPG, WebP). They are:
 Tips:
 
 - Keep icons in `~/.config/ulanzi/icons/` — the examples assume this.
+- The web/desktop editor's built-in catalog imports both Font Awesome icons
+  and local emoji renderings into `~/.config/ulanzi/icons/builtin/`; after
+  import they behave exactly like any other file-backed `icon` path.
 - Transparent PNGs work, but transparency is flattened onto the button's
   configured `text_style.background_color` before upload.
 - If you need a custom matte behind an icon, set `text_style.background_color`
@@ -345,6 +349,9 @@ Tips:
   to stop the firmware from preferring the text fallback over the PNG.
 - Missing paths fail **validation**, not runtime — the web editor's
   `POST /api/config/validate` catches them before save.
+- Emoji imports require a local `Noto Color Emoji` font on the host that runs
+  the editor. If the font is absent, the rest of the config schema still works;
+  only the built-in emoji previews/imports are unavailable.
 
 ## 9. Hot-reload semantics
 

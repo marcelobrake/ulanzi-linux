@@ -13,7 +13,7 @@ refer to the companion docs:
 
 ## 1. Runtime model at a glance
 
-```
+```text
 ┌────────────────┐     writes       ┌─────────────────┐
 │  Web editor    │ ───── deck.yaml ──▶│  ~/.config/ulanzi │
 │  (optional)    │                  │     /deck.yaml    │
@@ -47,7 +47,8 @@ contention, no stale protocol state.
 | `libhidapi` | 0.14+ | Install: `sudo apt install libhidapi-hidraw0` (Debian/Ubuntu). Fedora: `sudo dnf install hidapi`. |
 | udev | default | Needed to grant hidraw access without sudo — shipped in `udev/99-ulanzi-d200.rules`. |
 | Membership in `plugdev` | required | `sudo usermod -aG plugdev "$USER"` → log out / in. |
-| Free TCP port (GUI only) | `8765` | Change with `--port`. Bound to loopback by default. |
+| Free TCP port (editor only) | `8765` | Used by both `ulanzi-linux gui` and the desktop wrapper. Bound to loopback by default. |
+| `fonts-noto-color-emoji` | optional | Enables local emoji previews/imports in the built-in asset catalog. |
 
 The D200 enumerates as `2207:0019` (Rockchip vendor, Ulanzi product).
 `ulanzi-linux devices` is the fastest way to confirm the OS sees it.
@@ -55,13 +56,14 @@ The D200 enumerates as `2207:0019` (Rockchip vendor, Ulanzi product).
 ## 3. First-time install
 
 ```bash
-# 3.1 — Clone and install the package (editable + dev + web extras).
+# 3.1 — Clone and install the package.
 git clone https://github.com/marcelobrake/ulanzi-linux.git
 cd ulanzi-linux
 
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev,web]"
+pip install -e ".[dev,desktop]"   # full editor stack
+# or: pip install -e ".[dev,web]" # browser-only editor
 
 # 3.2 — Grant hidraw access to your user.
 sudo cp udev/99-ulanzi-d200.rules /etc/udev/rules.d/
@@ -95,6 +97,9 @@ pip install --user ".[web]"
 ```
 
 The systemd unit shipped in this repo assumes exactly this location.
+
+If you also want the installable desktop window and launcher integration,
+use `pip install --user ".[desktop]"` instead.
 
 ## 4. Running the daemon
 
@@ -141,7 +146,7 @@ Key events to watch for:
 | `small_window_pushed` | Status panel refresh tick. |
 | `action_failed` | A bound action raised — payload includes `action`, `error`, `exit_code`. |
 
-## 5. Running the web editor (optional)
+## 5. Running the editor (optional)
 
 ```bash
 pip install --user '.[web]'        # one-time
@@ -170,7 +175,27 @@ aspect-ratio preservation and a minimum 5 px margin. The preview slot for the
 small window is also live: clock mode shows the current time, and stats mode
 shows current CPU and memory readings from the host.
 
-For HTTP API details, CodeMirror setup, and atomic-write internals,
+The same editor can also run as a desktop app on Ubuntu:
+
+```bash
+pip install --user '.[desktop]'
+ulanzi-linux desktop-install
+ulanzi-linux desktop ~/.config/ulanzi/deck.yaml
+```
+
+`desktop-install` writes `~/.local/share/applications/ulanzi-linux.desktop`
+and the matching SVG icon under
+`~/.local/share/icons/hicolor/scalable/apps/ulanzi-linux.svg`, so the editor
+shows up in the Applications launcher like a normal desktop app. The desktop
+window still talks only to the local FastAPI backend; it does not bypass the
+same atomic-write and validation path used by the browser UI.
+
+Both modes share the same built-in asset browser. It can import Font Awesome
+application icons plus local Unicode emoji renderings into
+`~/.config/ulanzi/icons/builtin/` as regular PNG files, so deck uploads keep
+using the same existing image pipeline.
+
+For HTTP API details, desktop-launcher notes, and atomic-write internals,
 see [`web-ui.md`](web-ui.md).
 
 ## 6. Running as a systemd user service
@@ -197,27 +222,36 @@ Full rationale and troubleshooting in [`systemd.md`](systemd.md).
 ## 7. Upgrade procedure
 
 1. **Stop the service** (if installed):
-   ```bash
+
+  ```bash
    systemctl --user stop ulanzi-linux.service
    ```
-2. **Back up the config** — takes one second, saves your afternoon:
-   ```bash
+
+1. **Back up the config** — takes one second, saves your afternoon:
+
+  ```bash
    cp ~/.config/ulanzi/deck.yaml ~/.config/ulanzi/deck.yaml.$(date +%Y%m%d).bak
    ```
-3. **Pull + reinstall**:
-   ```bash
+
+1. **Pull + reinstall**:
+
+  ```bash
    cd ~/src/ulanzi-linux
    git pull
-   pip install -e ".[dev,web]"     # picks up new deps automatically
+  pip install -e ".[dev,desktop]" # or .[dev,web] if you only use the browser UI
    ```
-4. **Unit changed?** If the upgrade touched `systemd/ulanzi-linux.service`,
+
+1. **Unit changed?** If the upgrade touched `systemd/ulanzi-linux.service`,
    copy it back in:
-   ```bash
+
+  ```bash
    ./systemd/install.sh            # idempotent; safe to re-run
    systemctl --user daemon-reload
    ```
-5. **Restart**:
-   ```bash
+
+1. **Restart**:
+
+  ```bash
    systemctl --user restart ulanzi-linux.service
    journalctl --user -u ulanzi-linux.service -f
    ```
@@ -256,7 +290,7 @@ Structured logs via `structlog`:
 
 Suggested log shipping:
 
-```
+```bash
 journalctl -o json --user -u ulanzi-linux.service
   | vector / filebeat / fluentbit
   | Loki / Elastic / CloudWatch
@@ -319,14 +353,26 @@ The `[web]` extra isn't installed:
 pip install --user '.[web]'
 ```
 
-### 10.5 — Web editor loads blank
+### 10.5 — Desktop editor says `ModuleNotFoundError: webview` or Qt is missing
+
+The desktop wrapper needs the desktop extra:
+
+```bash
+pip install --user '.[desktop]'
+```
+
+On Linux that extra pulls in `pywebview`, `QtPy`, `PyQt5`, and
+`PyQtWebEngine`. If you only installed `.[web]`, the browser editor still
+works but `ulanzi-linux desktop` will not start.
+
+### 10.6 — Web editor loads blank
 
 The UI now falls back to a plain textarea if CodeMirror cannot be fetched
 from `cdn.jsdelivr.net`. If the page is still blank, the problem is no
 longer syntax highlighting — inspect the browser console and verify the
 backend is alive with `curl http://127.0.0.1:8765/api/health`.
 
-### 10.6 — Actions don't execute from a systemd-managed daemon
+### 10.7 — Actions don't execute from a systemd-managed daemon
 
 Typical when running headless. The user session bus may not be where
 the action expects it. The daemon now augments `$PATH` with the login
@@ -342,7 +388,7 @@ If those are empty, your desktop session hasn't injected them into the
 user manager. `systemctl --user import-environment DISPLAY DBUS_SESSION_BUS_ADDRESS WAYLAND_DISPLAY`
 in your shell profile fixes it for the next login.
 
-### 10.7 — Small window flickers or hangs
+### 10.8 — Small window flickers or hangs
 
 The firmware has a ~5 s watchdog. If `small_window.interval_s` is set
 above that (or the daemon is blocked), the D200 falls back to Ulanzi
