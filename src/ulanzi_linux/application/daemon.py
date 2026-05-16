@@ -29,11 +29,13 @@ from ulanzi_linux.application.config_loader import load_deck_config
 from ulanzi_linux.application.config_watcher import ConfigWatcher
 from ulanzi_linux.application.deck_service import DeckService
 from ulanzi_linux.domain.button_config import (
+    ButtonConfig,
     DeckConfig,
     PredefinedCommandAction,
     ShellAction,
     ShortcutAction,
     SwitchPageAction,
+    TextStyle,
     UrlAction,
 )
 from ulanzi_linux.domain.commands import SmallWindowMode
@@ -44,6 +46,8 @@ from ulanzi_linux.infrastructure.system_metrics import (
 )
 
 logger = structlog.get_logger(__name__)
+
+INFO_WINDOW_INDEX = 13
 
 # Firmware watchdog fires around the 5s mark; we ping well below that to
 # tolerate scheduling jitter and USB latency.
@@ -257,11 +261,23 @@ class DeckDaemon:
             if button.index < self._service.spec.button_count
         )
         await self._service._device.set_buttons(visible_buttons)
+        await self._service._device.set_buttons(
+            (
+                ButtonConfig(
+                    index=INFO_WINDOW_INDEX,
+                    text_style=TextStyle(
+                        background_color=self._config.small_window.background_color,
+                    ),
+                ),
+            ),
+            partial=True,
+        )
         logger.info(
             "layout_synced",
             page=page_name,
             buttons=len(visible_buttons),
             action_only_buttons=len(buttons) - len(visible_buttons),
+            small_window_background_color=self._config.small_window.background_color,
         )
 
     def _wire_time_string(self, configured_format: str) -> str:

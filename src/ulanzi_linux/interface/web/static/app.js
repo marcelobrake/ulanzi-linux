@@ -79,6 +79,7 @@ function makeResetEditor(defaultPage = "main") {
             time_format: "%H:%M",
             show_metrics: false,
             rotate_every_s: null,
+            background_color: "#000000",
         },
     };
 }
@@ -205,9 +206,11 @@ window.editorApp = function editorApp() {
                 time_format: "%H:%M",
                 show_metrics: true,
                 rotate_every_s: null,
+                background_color: "#000000",
             };
             editor.small_window.show_metrics = editor.small_window.show_metrics !== false;
             editor.small_window.rotate_every_s = this.parseOptionalNumber(editor.small_window.rotate_every_s);
+            editor.small_window.background_color = editor.small_window.background_color || "#000000";
             return editor;
         },
 
@@ -469,8 +472,15 @@ window.editorApp = function editorApp() {
                     time_format: this.editor.small_window.time_format,
                     show_metrics: this.editor.small_window.show_metrics !== false,
                     rotate_every_s: this.parseOptionalNumber(this.editor.small_window.rotate_every_s),
+                    background_color: this.editor.small_window.background_color || "#000000",
                 },
                 save_firmware_bundle: Boolean(this.saveFirmwareBundle),
+            };
+        },
+
+        smallWindowPreviewStyle() {
+            return {
+                background: this.editor?.small_window?.background_color || "#000000",
             };
         },
 

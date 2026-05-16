@@ -16,6 +16,7 @@ small_window:                   # optional block
   time_format: "%d/%m %H:%M"
   show_metrics: true            # true = stats layout, false = plain clock
   rotate_every_s: 5.0           # optional: alternate clock/stats every 5s
+  background_color: "#000000"  # optional: solid background for the strip
 pages:                          # multi-page schema (preferred)
   <page-name>:
     buttons:
@@ -66,6 +67,7 @@ heartbeat loop runs in its place to keep the firmware watchdog happy.
 | `time_format` | string | `"%H:%M"` | Any `strftime` pattern. Keep it short — the firmware uses a larger clock layout when the string is compact. |
 | `show_metrics` | bool | `true` | `true` shows the stats layout, `false` keeps the plain clock layout. |
 | `rotate_every_s` | float or null | `null` | Optional. When set together with `show_metrics: true`, the daemon alternates clock and stats after this many seconds per mode while still refreshing under `interval_s`. |
+| `background_color` | hex color | `"#000000"` | Optional. Uploaded as a solid background for the wide info strip so the firmware logo can be replaced with a chosen matte color. |
 
 ```yaml
 small_window:
@@ -74,13 +76,16 @@ small_window:
   time_format: "%H:%M"
   show_metrics: true
   rotate_every_s: 5.0            # 5 s de relógio, 5 s de estatísticas
+  background_color: "#000000"
 ```
 When `show_metrics: false`, the daemon still sends a clock-safe payload
 to keep the device in clock mode. When `show_metrics: true`, it sends the
 live CPU / memory values the stats layout expects. When `rotate_every_s`
 is also configured, the daemon starts in clock mode, keeps that layout for
 the configured duration, then alternates to stats for the same duration.
-live CPU / memory values the stats layout expects.
+Independently of the active mode, `background_color` is uploaded as a solid
+wide background for the small-window strip; if omitted, the daemon falls back
+to black.
 
 ### Why no GPU metric?
 

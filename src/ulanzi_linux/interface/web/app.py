@@ -51,6 +51,7 @@ from ulanzi_linux.application.artifacts import (
 )
 from ulanzi_linux.application.config_loader import load_deck_config
 from ulanzi_linux.domain.button_config import (
+    DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR,
     DEFAULT_TIME_FORMAT,
     ButtonConfig,
     DeckConfig,
@@ -204,6 +205,7 @@ def _config_to_editor_response(
             time_format=cfg.small_window.time_format,
             show_metrics=cfg.small_window.show_metrics,
             rotate_every_s=cfg.small_window.rotate_every_s,
+            background_color=cfg.small_window.background_color,
         ),
         versioned_config_path=versioned_config_path,
         saved_firmware_bundle_path=saved_firmware_bundle_path,
@@ -333,6 +335,10 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
             "interval_s": req.small_window.interval_s,
             "time_format": req.small_window.time_format,
             "show_metrics": req.small_window.show_metrics,
+            "background_color": (
+                req.small_window.background_color
+                or DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR
+            ),
         },
         "pages": pages_doc,
     }

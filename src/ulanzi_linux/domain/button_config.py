@@ -82,6 +82,7 @@ DEFAULT_TEXT_BACKGROUND_COLOR = "#111827"
 DEFAULT_TEXT_COLOR = "#F8FAFC"
 DEFAULT_TEXT_FONT_FAMILY = "DejaVu Sans"
 DEFAULT_TEXT_FONT_SIZE = 30
+DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR = "#000000"
 
 
 def _normalize_hex_color(value: str) -> str:
@@ -189,8 +190,14 @@ class SmallWindowConfig:
     time_format: str = DEFAULT_TIME_FORMAT
     show_metrics: bool = True
     rotate_every_s: float | None = None
+    background_color: str = DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "background_color",
+            _normalize_hex_color(self.background_color),
+        )
         if not (
             SMALL_WINDOW_MIN_INTERVAL_S
             <= self.interval_s
@@ -281,6 +288,7 @@ __all__ = [
     "Action",
     "ButtonConfig",
     "DEFAULT_PAGE_NAME",
+    "DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR",
     "DEFAULT_TEXT_BACKGROUND_COLOR",
     "DEFAULT_TEXT_COLOR",
     "DEFAULT_TEXT_FONT_FAMILY",

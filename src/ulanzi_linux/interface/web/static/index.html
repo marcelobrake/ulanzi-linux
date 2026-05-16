@@ -90,7 +90,9 @@
 
             <div class="deck-icon-frame" :class="slot.kind === 'info' ? 'small-window-frame' : ''">
               <template x-if="slot.kind === 'info'">
-                <div class="small-window-preview" :class="editor?.small_window?.enabled ? 'on' : 'off'">
+                <div class="small-window-preview"
+                     :class="editor?.small_window?.enabled ? 'on' : 'off'"
+                     :style="smallWindowPreviewStyle()">
                   <template x-if="editor?.small_window?.enabled && smallWindowAlternates">
                     <div class="small-window-clock">
                       <span class="small-window-badge">alternando</span>
@@ -431,6 +433,15 @@
                @input="dirty = true"
                :disabled="!editor.small_window.enabled || !editor.small_window.show_metrics"
                placeholder="vazio = estatísticas fixas" />
+      </label>
+
+      <label class="field">
+        <span>Cor de fundo</span>
+        <input type="color"
+               x-model="editor.small_window.background_color"
+               @input="dirty = true"
+               :disabled="!editor.small_window.enabled" />
+        <strong x-text="editor.small_window.background_color || '#000000'"></strong>
       </label>
     </div>
 
