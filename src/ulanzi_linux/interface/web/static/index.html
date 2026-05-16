@@ -215,6 +215,9 @@
           <div class="image-actions">
             <div class="inline-actions">
               <button @click="$refs.iconPicker.click()" :disabled="busy">Escolher imagem</button>
+              <button @click="toggleBuiltinIconBrowser()"
+                      :disabled="busy"
+                      x-text="showBuiltinIconBrowser ? 'Fechar catálogo' : 'Catálogo embutido'"></button>
               <button @click="clearIcon()" :disabled="busy || !buttonForm.icon_path">Remover</button>
             </div>
 
@@ -228,6 +231,33 @@
                    x-model="buttonForm.icon_path"
                    @input="handleIconPathInput()"
                    placeholder="~/.config/ulanzi/icons/meu-icone.png" />
+
+            <div class="builtin-browser" x-show="showBuiltinIconBrowser">
+              <div class="builtin-toolbar">
+                <input type="text"
+                       x-model="builtinIconQuery"
+                       placeholder="Buscar por nome, app ou termo" />
+                <select x-model="builtinIconStyle">
+                  <template x-for="style in builtinIconStyles" :key="style.value">
+                    <option :value="style.value" x-text="style.label"></option>
+                  </template>
+                </select>
+              </div>
+
+              <p class="muted compact-copy" x-text="builtinIconSummary"></p>
+
+              <div class="builtin-grid">
+                <template x-for="icon in filteredBuiltinIcons" :key="icon.asset_id">
+                  <button type="button" class="builtin-icon-card" @click="useBuiltinIcon(icon)">
+                    <span class="builtin-icon-frame">
+                      <img :src="icon.preview_url" :alt="icon.name" />
+                    </span>
+                    <strong x-text="icon.name"></strong>
+                    <small x-text="icon.style"></small>
+                  </button>
+                </template>
+              </div>
+            </div>
           </div>
         </div>
       </div>

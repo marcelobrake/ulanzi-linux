@@ -166,6 +166,29 @@ class AssetUploadResponse(BaseModel):
     preview_url: str
 
 
+class BuiltinAssetSummary(BaseModel):
+    """Built-in icon exposed by the editor catalog."""
+
+    asset_id: str
+    name: str
+    style: str
+    search_terms: list[str] = Field(default_factory=list)
+    preview_url: str
+
+
+class BuiltinAssetListResponse(BaseModel):
+    """List of built-in icons available to the editor."""
+
+    items: list[BuiltinAssetSummary] = Field(default_factory=list)
+    total: int
+
+
+class BuiltinAssetImportRequest(BaseModel):
+    """Import a built-in icon into the user's local icon directory."""
+
+    asset_id: str
+
+
 class SmallWindowPreviewResponse(BaseModel):
     """Live preview payload for the small-window simulator."""
 
@@ -197,6 +220,9 @@ class HealthResponse(BaseModel):
 
 __all__ = [
     "AssetUploadResponse",
+    "BuiltinAssetImportRequest",
+    "BuiltinAssetListResponse",
+    "BuiltinAssetSummary",
     "ConfigGetResponse",
     "ConfigPutRequest",
     "ConfigValidateRequest",

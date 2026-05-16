@@ -50,6 +50,11 @@ host, matching the D200 mode switch already validated on hardware. The small-
 window inspector also exposes a color picker for the strip background; when no
 color is saved, the daemon uses solid black.
 
+The image inspector also ships with a built-in icon catalog backed by Font
+Awesome Free. The editor can browse more than 2000 built-in icons, search by
+name or keyword, and import the selected asset directly into the user's local
+`icons/builtin/` directory so the deck can upload it like any other PNG.
+
 Image uploads are normalized immediately into 196×196 PNG assets, preserving
 their aspect ratio and keeping at least 5 px of margin on every edge. Each
 save also creates a timestamped sibling copy of `deck.yaml`, and the UI can

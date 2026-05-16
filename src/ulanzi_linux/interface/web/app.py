@@ -39,7 +39,7 @@ from urllib.parse import quote
 import structlog
 import yaml
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -63,11 +63,19 @@ from ulanzi_linux.domain.button_config import (
     UrlAction,
 )
 from ulanzi_linux.infrastructure.hid_transport import enumerate_hid_devices
+from ulanzi_linux.infrastructure.builtin_icons import (
+    list_builtin_icons,
+    materialize_builtin_icon,
+    render_builtin_icon_png,
+)
 from ulanzi_linux.infrastructure.system_metrics import ProcSystemMetrics
 from ulanzi_linux.infrastructure.ulanzi_d200 import D200_SPEC
 from ulanzi_linux.infrastructure.zip_builder import ICON_SIZE
 from ulanzi_linux.interface.web.models import (
     AssetUploadResponse,
+    BuiltinAssetImportRequest,
+    BuiltinAssetListResponse,
+    BuiltinAssetSummary,
     ConfigGetResponse,
     ConfigPutRequest,
     ConfigValidateRequest,
@@ -134,6 +142,10 @@ def _asset_preview_url(path: str | None) -> str | None:
     if not path:
         return None
     return f"/api/asset?path={quote(path)}"
+
+
+def _builtin_asset_preview_url(asset_id: str) -> str:
+    return f"/api/builtin-asset?asset_id={quote(asset_id)}"
 
 
 def _action_to_editor(action: object | None) -> EditorActionModel:
@@ -516,6 +528,7 @@ def create_app(config_path: Path) -> FastAPI:
         version=__version__,
     )
     metrics_reader = ProcSystemMetrics()
+    builtin_icons = list_builtin_icons()
 
     # ------------------------------------------------------------------ #
     # Meta                                                                #
@@ -783,6 +796,51 @@ def create_app(config_path: Path) -> FastAPI:
             filename=filename,
             bytes=target.stat().st_size,
             normalized_size=f"{ICON_SIZE[0]}x{ICON_SIZE[1]}",
+        )
+        return AssetUploadResponse(
+            path=compact,
+            preview_url=_asset_preview_url(compact) or "",
+        )
+
+    @app.get("/api/builtin-assets", response_model=BuiltinAssetListResponse)
+    def get_builtin_assets() -> BuiltinAssetListResponse:
+        items = [
+            BuiltinAssetSummary(
+                asset_id=icon.asset_id,
+                name=icon.name,
+                style=icon.style,
+                search_terms=list(icon.search_terms),
+                preview_url=_builtin_asset_preview_url(icon.asset_id),
+            )
+            for icon in builtin_icons
+        ]
+        return BuiltinAssetListResponse(items=items, total=len(items))
+
+    @app.get("/api/builtin-asset")
+    def get_builtin_asset(asset_id: str) -> Response:
+        try:
+            payload = render_builtin_icon_png(asset_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="builtin asset not found") from exc
+        return Response(content=payload, media_type="image/png")
+
+    @app.post("/api/builtin-assets/import", response_model=AssetUploadResponse)
+    def import_builtin_asset(req: BuiltinAssetImportRequest) -> AssetUploadResponse:
+        try:
+            target = materialize_builtin_icon(
+                req.asset_id,
+                config_path.parent / "icons" / "builtin",
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="builtin asset not found") from exc
+
+        compact = _compact_path(target)
+        assert compact is not None
+        logger.info(
+            "builtin_asset_imported",
+            asset_id=req.asset_id,
+            path=str(target),
+            bytes=target.stat().st_size,
         )
         return AssetUploadResponse(
             path=compact,
