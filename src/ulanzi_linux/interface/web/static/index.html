@@ -216,6 +216,7 @@
             <div class="inline-actions">
               <button @click="$refs.iconPicker.click()" :disabled="busy">Escolher imagem</button>
               <button @click="toggleBuiltinIconBrowser()"
+                      title="Abrir ou fechar o catálogo de ícones embutidos"
                       :disabled="busy"
                       x-text="showBuiltinIconBrowser ? 'Fechar catálogo' : 'Catálogo embutido'"></button>
               <button @click="clearIcon()" :disabled="busy || !buttonForm.icon_path">Remover</button>
@@ -237,7 +238,7 @@
                 <input type="text"
                        x-model="builtinIconQuery"
                        placeholder="Buscar por nome, app ou termo" />
-                <select x-model="builtinIconStyle">
+                <select x-model="builtinIconStyle" title="Filtrar catálogo por estilo">
                   <template x-for="style in builtinIconStyles" :key="style.value">
                     <option :value="style.value" x-text="style.label"></option>
                   </template>
