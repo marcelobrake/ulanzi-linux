@@ -172,6 +172,34 @@ def test_small_window_preview_returns_live_payload(
     assert body["gpu_percent"] == 0
 
 
+def test_builtin_assets_catalog_returns_many_icons(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    r = c.get("/api/builtin-assets")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] > 1000
+    assert body["items"]
+    assert body["items"][0]["preview_url"].startswith("/api/builtin-asset")
+
+
+def test_import_builtin_asset_materializes_local_png(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    catalog = c.get("/api/builtin-assets").json()
+    asset_id = catalog["items"][0]["asset_id"]
+
+    r = c.post("/api/builtin-assets/import", json={"asset_id": asset_id})
+    assert r.status_code == 200
+    body = r.json()
+    saved = Path(body["path"]).expanduser()
+    assert saved.exists()
+    assert saved.suffix == ".png"
+    assert body["preview_url"].startswith("/api/asset?path=")
+
+
 def test_get_config_returns_404_when_missing(tmp_path: Path) -> None:
     path = tmp_path / "does-not-exist.yaml"
     app = create_app(path)

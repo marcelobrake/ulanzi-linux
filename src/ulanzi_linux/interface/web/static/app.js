@@ -33,6 +33,13 @@ const ACTION_LABELS = Object.freeze({
     switch_page: "Troca de página",
 });
 
+const BUILTIN_ICON_STYLES = Object.freeze([
+    { value: "all", label: "Todos" },
+    { value: "brands", label: "Apps/brands" },
+    { value: "regular", label: "Regular" },
+    { value: "solid", label: "Solid" },
+]);
+
 function emptyAction() {
     return {
         type: "none",
@@ -105,9 +112,15 @@ window.editorApp = function editorApp() {
         buttonForm: null,
         newPageName: "",
         fontOptions: FONT_OPTIONS,
+        builtinIconStyles: BUILTIN_ICON_STYLES,
+        builtinIcons: [],
+        builtinIconQuery: "",
+        builtinIconStyle: "all",
+        showBuiltinIconBrowser: false,
 
         async init() {
             await this.refreshHealth();
+            await this.loadBuiltinIcons();
             await this.loadEditor();
             await this.refreshSmallWindowPreview();
             setInterval(() => this.refreshHealth(), 5000);
@@ -130,6 +143,20 @@ window.editorApp = function editorApp() {
                     config_path: "",
                     devices_found: 0,
                 };
+            }
+        },
+
+        async loadBuiltinIcons() {
+            try {
+                const response = await fetch("/api/builtin-assets");
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.detail || payload.error || "Falha ao carregar catálogo");
+                }
+                this.builtinIcons = payload.items || [];
+            } catch (error) {
+                this.builtinIcons = [];
+                this.setStatus(`Catálogo embutido indisponível: ${error.message}`, "warn");
             }
         },
 
@@ -285,6 +312,7 @@ window.editorApp = function editorApp() {
             this.selectedIndex = index;
             this.buttonForm = this.formForIndex(index);
             this.validationError = "";
+            this.showBuiltinIconBrowser = false;
         },
 
         formForIndex(index) {
@@ -391,6 +419,10 @@ window.editorApp = function editorApp() {
             this.syncSelectedButton();
         },
 
+        toggleBuiltinIconBrowser() {
+            this.showBuiltinIconBrowser = !this.showBuiltinIconBrowser;
+        },
+
         async uploadIcon(event) {
             const file = event.target.files?.[0];
             if (!file) {
@@ -417,6 +449,30 @@ window.editorApp = function editorApp() {
             } finally {
                 this.busy = false;
                 event.target.value = "";
+            }
+        },
+
+        async useBuiltinIcon(icon) {
+            this.busy = true;
+            try {
+                const response = await fetch("/api/builtin-assets/import", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ asset_id: icon.asset_id }),
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.detail || payload.error || "Falha ao importar ícone embutido");
+                }
+                this.buttonForm.icon_path = payload.path;
+                this.buttonForm.preview_url = payload.preview_url;
+                this.syncSelectedButton();
+                this.showBuiltinIconBrowser = false;
+                this.setStatus(`Ícone embutido aplicado: ${icon.name}`, "ok");
+            } catch (error) {
+                this.setStatus(`Falha ao importar catálogo: ${error.message}`, "err");
+            } finally {
+                this.busy = false;
             }
         },
 
@@ -698,6 +754,29 @@ window.editorApp = function editorApp() {
 
         get currentPreviewUrl() {
             return this.buttonForm?.preview_url || this.assetUrl(this.buttonForm?.icon_path);
+        },
+
+        get filteredBuiltinIcons() {
+            const query = (this.builtinIconQuery || "").trim().toLowerCase();
+            const style = this.builtinIconStyle || "all";
+            return (this.builtinIcons || [])
+                .filter((icon) => style === "all" || icon.style === style)
+                .filter((icon) => {
+                    if (!query) {
+                        return true;
+                    }
+                    const haystack = [icon.name, icon.style, ...(icon.search_terms || [])]
+                        .join(" ")
+                        .toLowerCase();
+                    return haystack.includes(query);
+                })
+                .slice(0, 120);
+        },
+
+        get builtinIconSummary() {
+            const total = (this.builtinIcons || []).length;
+            const visible = this.filteredBuiltinIcons.length;
+            return `${visible} de ${total} ícones`;
         },
 
         get currentTextOnlyPreview() {
