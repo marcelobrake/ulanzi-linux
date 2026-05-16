@@ -43,12 +43,15 @@ logger = structlog.get_logger(__name__)
 
 # Native icon resolution the D200 firmware expects.
 ICON_SIZE = (196, 196)
+INFO_WINDOW_SIZE = (ICON_SIZE[0] * 2, ICON_SIZE[1])
 
 # D200 grid geometry — 13 physical buttons on the 5x3 grid. The wide
 # bottom-right info window is controlled separately via small-window packets.
 # Kept local to the builder because the manifest schema is deck-specific.
 _D200_COLS = 5
 _D200_ACTIVE_BUTTON_COUNT = 13
+_D200_SUPPORTED_SLOT_COUNT = 14
+_INFO_WINDOW_INDEX = 13
 
 # Frame boundaries we must inspect for the firmware parser bug.
 _FRAME_SIZE = 1024
@@ -155,6 +158,13 @@ _FONT_FILE_CANDIDATES: dict[str, dict[tuple[bool, bool], tuple[str, ...]]] = {
 def _blank_icon() -> bytes:
     """Render a black tile used for unconfigured or cleared buttons."""
     img = Image.new("RGBA", ICON_SIZE, (0, 0, 0, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _render_info_window_background(background_color: str) -> bytes:
+    img = Image.new("RGBA", INFO_WINDOW_SIZE, _hex_to_rgba(background_color))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -280,6 +290,29 @@ def _render_text_icon(cfg: ButtonConfig) -> bytes:
 def _normalize_icon(cfg: ButtonConfig) -> bytes:
     """Load and resize a PNG — or render a black tile if absent."""
     path = _real_icon_path(cfg)
+    if int(cfg.index) == _INFO_WINDOW_INDEX:
+        if path is None:
+            return _render_info_window_background(cfg.text_style.background_color)
+        with Image.open(path) as img:
+            img = img.convert("RGBA")
+            fitted = ImageOps.contain(
+                img,
+                INFO_WINDOW_SIZE,
+                Image.Resampling.LANCZOS,
+            )
+            tile = Image.new(
+                "RGBA",
+                INFO_WINDOW_SIZE,
+                _hex_to_rgba(cfg.text_style.background_color),
+            )
+            origin = (
+                (INFO_WINDOW_SIZE[0] - fitted.width) // 2,
+                (INFO_WINDOW_SIZE[1] - fitted.height) // 2,
+            )
+            tile.alpha_composite(fitted, origin)
+            buf = io.BytesIO()
+            tile.save(buf, format="PNG")
+            return buf.getvalue()
     if path is None:
         if cfg.label:
             if cfg.icon_path is not None:
@@ -337,7 +370,13 @@ def _archive_icon_name(cfg: ButtonConfig) -> str:
         separators=(",", ":"),
     )
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+    if int(cfg.index) == _INFO_WINDOW_INDEX:
+        return f"icons/info-window-{digest}.png"
     return f"icons/{int(cfg.index)}-{digest}.png"
+
+
+def _needs_icon_asset(cfg: ButtonConfig) -> bool:
+    return int(cfg.index) == _INFO_WINDOW_INDEX or _has_real_icon(cfg)
 
 
 def _build_manifest(configs: list[ButtonConfig]) -> dict:
@@ -348,6 +387,13 @@ def _build_manifest(configs: list[ButtonConfig]) -> dict:
         row = idx // _D200_COLS
         col = idx % _D200_COLS
         view_param: dict = {}
+        if idx == _INFO_WINDOW_INDEX:
+            view_param["Icon"] = _archive_icon_name(cfg)
+            manifest[f"{col}_{row}"] = {
+                "State": 0,
+                "ViewParam": [view_param],
+            }
+            continue
         has_real_icon = _has_real_icon(cfg)
         if cfg.label and not has_real_icon:
             view_param["Text"] = cfg.label
@@ -363,10 +409,10 @@ def _build_manifest(configs: list[ButtonConfig]) -> dict:
 def _validate_indices(configs: list[ButtonConfig]) -> None:
     for cfg in configs:
         idx = int(cfg.index)
-        if not 0 <= idx < _D200_ACTIVE_BUTTON_COUNT:
+        if not 0 <= idx < _D200_SUPPORTED_SLOT_COUNT:
             raise ValueError(
                 "button index "
-                f"{idx} is outside the supported D200 grid (0..{_D200_ACTIVE_BUTTON_COUNT - 1})"
+                f"{idx} is outside the supported D200 grid (0..{_D200_SUPPORTED_SLOT_COUNT - 1})"
             )
 
 
@@ -437,7 +483,7 @@ def build_buttons_zip(
     # Cache rendered icons so the retry loop doesn't re-encode PNGs.
     icons: dict[str, bytes] = {}
     for cfg in configs_list:
-        if not _has_real_icon(cfg):
+        if not _needs_icon_asset(cfg):
             continue
         archive_name = _archive_icon_name(cfg)
         icons.setdefault(archive_name, _normalize_icon(cfg))
@@ -479,4 +525,4 @@ def build_buttons_zip(
     return blob
 
 
-__all__ = ["ICON_SIZE", "build_buttons_zip"]
+__all__ = ["ICON_SIZE", "INFO_WINDOW_SIZE", "build_buttons_zip"]

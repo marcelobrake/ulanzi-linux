@@ -37,6 +37,7 @@ import yaml
 
 from ulanzi_linux.domain.button_config import (
     DEFAULT_PAGE_NAME,
+    DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR,
     DEFAULT_TEXT_BACKGROUND_COLOR,
     DEFAULT_TEXT_COLOR,
     DEFAULT_TEXT_FONT_FAMILY,
@@ -166,6 +167,12 @@ def _parse_small_window(raw: dict[str, Any] | None) -> SmallWindowConfig:
             None
             if rotate_every_raw in (None, "")
             else float(rotate_every_raw)
+        ),
+        background_color=str(
+            raw.get(
+                "background_color",
+                DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR,
+            )
         ),
     )
 

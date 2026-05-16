@@ -17,6 +17,7 @@ from PIL import Image
 from ulanzi_linux.domain.button_config import ButtonConfig, TextStyle
 from ulanzi_linux.infrastructure.zip_builder import (
     ICON_SIZE,
+    INFO_WINDOW_SIZE,
     build_buttons_zip,
 )
 
@@ -264,6 +265,19 @@ def test_icon_button_omits_manifest_text_to_force_png_render(fake_icon: Path) ->
     assert manifest["0_2"]["ViewParam"][0] == {"Icon": "icons/icon.png"}
 
 
-def test_rejects_info_window_index_as_button(fake_icon: Path) -> None:
+def test_info_window_slot_builds_wide_background_asset() -> None:
+    blob = build_buttons_zip(
+        [ButtonConfig(index=13, text_style=TextStyle(background_color="#224466"))]
+    )
+
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+        icon_name = manifest["3_2"]["ViewParam"][0]["Icon"]
+        with Image.open(io.BytesIO(zf.read(icon_name))) as icon:
+            assert icon.size == INFO_WINDOW_SIZE
+            assert icon.getpixel((0, 0)) == (34, 68, 102, 255)
+
+
+def test_rejects_index_outside_info_window_slot(fake_icon: Path) -> None:
     with pytest.raises(ValueError, match="supported D200 grid"):
-        build_buttons_zip([ButtonConfig(index=13, icon_path=fake_icon, label="Wide")])
+        build_buttons_zip([ButtonConfig(index=14, icon_path=fake_icon, label="Wide")])

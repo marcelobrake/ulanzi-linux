@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from ulanzi_linux.domain.button_config import (
+    DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR,
     DEFAULT_TEXT_BACKGROUND_COLOR,
     DEFAULT_TEXT_COLOR,
     DEFAULT_TEXT_FONT_FAMILY,
@@ -128,6 +129,7 @@ class EditorSmallWindowModel(BaseModel):
     time_format: str = DEFAULT_TIME_FORMAT
     show_metrics: bool = True
     rotate_every_s: float | None = None
+    background_color: str = DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR
 
 
 class EditorConfigResponse(BaseModel):

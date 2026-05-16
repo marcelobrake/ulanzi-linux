@@ -46,7 +46,9 @@ action-specific help and a direct "test link" affordance for URL actions.
 The simulator uses fixed 96×96 button tiles and the wide bottom-right slot
 now renders a live small-window preview. When `show_metrics` is off it shows
 the current clock; when it is on it shows live CPU and memory values from the
-host, matching the D200 mode switch already validated on hardware.
+host, matching the D200 mode switch already validated on hardware. The small-
+window inspector also exposes a color picker for the strip background; when no
+color is saved, the daemon uses solid black.
 
 Image uploads are normalized immediately into 196×196 PNG assets, preserving
 their aspect ratio and keeping at least 5 px of margin on every edge. Each

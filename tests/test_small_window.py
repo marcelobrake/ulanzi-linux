@@ -230,6 +230,7 @@ def test_loader_parses_small_window_block(tmp_path: Path) -> None:
         "  interval_s: 1.5\n"
         "  rotate_every_s: 5.0\n"
         "  time_format: \"%H:%M\"\n"
+        "  background_color: \"#123456\"\n"
         "pages:\n"
         "  main:\n"
         "    buttons:\n"
@@ -243,6 +244,7 @@ def test_loader_parses_small_window_block(tmp_path: Path) -> None:
     assert cfg.small_window.interval_s == 1.5
     assert cfg.small_window.rotate_every_s == 5.0
     assert cfg.small_window.time_format == "%H:%M"
+    assert cfg.small_window.background_color == "#123456"
 
 
 def test_loader_small_window_block_on_legacy_schema(tmp_path: Path) -> None:
@@ -320,6 +322,34 @@ async def test_disabled_small_window_uses_heartbeat() -> None:
     assert fake.keep_alive_calls >= 1
     assert SmallWindowMode.BACKGROUND in fake.small_window_modes
     assert fake.small_window_data_calls == []
+
+
+@pytest.mark.asyncio
+async def test_sync_layout_pushes_small_window_background_slot() -> None:
+    fake = RecordingFakeDeck()
+    cfg = DeckConfig(
+        pages={
+            "main": Page(
+                name="main",
+                buttons=(ButtonConfig(index=0, label="A"),),
+            )
+        },
+        default_page="main",
+        small_window=SmallWindowConfig(
+            enabled=True,
+            interval_s=0.05,
+            background_color="#102030",
+        ),
+    )
+
+    async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
+        daemon = DeckDaemon(svc, cfg)
+        await daemon.sync_layout()
+
+    assert len(fake.button_uploads) == 2
+    assert [button.index for button in fake.button_uploads[0]] == [0]
+    assert [button.index for button in fake.button_uploads[1]] == [13]
+    assert fake.button_uploads[1][0].text_style.background_color == "#102030"
 
 
 @pytest.mark.asyncio

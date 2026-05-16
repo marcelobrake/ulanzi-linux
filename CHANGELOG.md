@@ -7,6 +7,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-05-16
+
+### Added
+
+- Added `small_window.background_color` with web-editor support so the daemon
+  uploads a solid wide background for the D200 small window, defaulting to
+  black when the field is omitted.
+
+### Changed
+
+- The daemon now reapplies the small-window background as a dedicated partial
+  update for the info strip, preserving the existing 13-button layout upload
+  path while still restoring the background after reconnects.
+
 ## [0.6.0] — 2026-05-16
 
 ### Added

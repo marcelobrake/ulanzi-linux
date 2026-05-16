@@ -559,7 +559,13 @@ class UlanziD200Device(DeckDevice):
             )
 
         buttons = self._buttons_for_restore()
-        if buttons:
+        grid_buttons = tuple(
+            cfg for cfg in buttons if int(cfg.index) < self._spec.button_count
+        )
+        extra_buttons = tuple(
+            cfg for cfg in buttons if int(cfg.index) >= self._spec.button_count
+        )
+        if grid_buttons:
             command = (
                 OutgoingCommand.SET_BUTTONS
                 if self._button_state_is_full
@@ -568,7 +574,16 @@ class UlanziD200Device(DeckDevice):
             await self._send_chunked_raw(
                 transport,
                 command,
-                build_buttons_zip(buttons, fill_missing=self._button_state_is_full),
+                build_buttons_zip(
+                    grid_buttons,
+                    fill_missing=self._button_state_is_full,
+                ),
+            )
+        if extra_buttons:
+            await self._send_chunked_raw(
+                transport,
+                OutgoingCommand.PARTIALLY_UPDATE_BUTTONS,
+                build_buttons_zip(extra_buttons, fill_missing=False),
             )
 
         if self._cached_small_window_mode == SmallWindowMode.BACKGROUND:
