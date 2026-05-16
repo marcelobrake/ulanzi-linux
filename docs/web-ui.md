@@ -27,6 +27,11 @@ That writes a launcher into `~/.local/share/applications/ulanzi-linux.desktop`
 plus an SVG icon under `~/.local/share/icons/hicolor/scalable/apps/`, so the
 editor shows up in the desktop launcher as a normal application.
 
+On GNOME Wayland, the desktop wrapper now selects the Qt Wayland backend
+automatically when `QT_QPA_PLATFORM` was not already defined by the user.
+If you need to force a different backend for debugging, export
+`QT_QPA_PLATFORM` explicitly before running `ulanzi-linux desktop`.
+
 ## Run
 
 ```bash

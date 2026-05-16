@@ -95,7 +95,7 @@ function makeResetEditor(defaultPage = "main") {
 window.editorApp = function editorApp() {
     return {
         health: { ok: false, version: "", config_path: "", devices_found: 0 },
-        editor: null,
+        editor: makeResetEditor(),
         saveFirmwareBundle: false,
         smallWindowPreview: {
             time_text: "--:--",
@@ -108,9 +108,9 @@ window.editorApp = function editorApp() {
         validationError: "",
         dirty: false,
         busy: false,
-        selectedPage: "",
+        selectedPage: "main",
         selectedIndex: 0,
-        buttonForm: null,
+        buttonForm: makeEmptyButton(0, false),
         newPageName: "",
         fontOptions: FONT_OPTIONS,
         builtinIconStyles: BUILTIN_ICON_STYLES,
