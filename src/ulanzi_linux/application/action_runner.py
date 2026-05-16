@@ -25,13 +25,18 @@ from pathlib import Path
 
 import structlog
 
+from ulanzi_linux.application.session_agent import GraphicalSessionAgentClient
+from ulanzi_linux.application.predefined_commands import (
+    canonical_command_id,
+    resolve_predefined_command,
+)
 from ulanzi_linux.domain.button_config import (
     Action,
+    PredefinedCommandAction,
     ShellAction,
     ShortcutAction,
     UrlAction,
 )
-from ulanzi_linux.application.session_agent import GraphicalSessionAgentClient
 
 logger = structlog.get_logger(__name__)
 
@@ -128,7 +133,9 @@ class ActionRunner:
     async def run(self, action: Action) -> None:
         if await self._delegate_to_session_agent(action):
             return
-        if isinstance(action, ShellAction):
+        if isinstance(action, PredefinedCommandAction):
+            await self._run_predefined_command(action)
+        elif isinstance(action, ShellAction):
             await self._run_shell(action)
         elif isinstance(action, ShortcutAction):
             await self._run_shortcut(action)
@@ -161,6 +168,19 @@ class ActionRunner:
             detail=result.detail,
         )
         return False
+
+    async def _run_predefined_command(
+        self,
+        action: PredefinedCommandAction,
+    ) -> None:
+        command = resolve_predefined_command(action.command_id)
+        logger.info(
+            "action_predefined_command",
+            command_id=canonical_command_id(action),
+            requested_command_id=action.command_id,
+            resolved_action_type=command.action.type,
+        )
+        await self.run(command.action)
 
     async def _run_shell(self, action: ShellAction) -> None:
         logger.info("action_shell", cmd=action.cmd)

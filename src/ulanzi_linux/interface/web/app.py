@@ -54,6 +54,7 @@ from ulanzi_linux.domain.button_config import (
     DEFAULT_TIME_FORMAT,
     ButtonConfig,
     DeckConfig,
+    PredefinedCommandAction,
     ShellAction,
     ShortcutAction,
     SwitchPageAction,
@@ -141,6 +142,11 @@ def _action_to_editor(action: object | None) -> EditorActionModel:
         return EditorActionModel(type="shell", cmd=action.cmd)
     if isinstance(action, ShortcutAction):
         return EditorActionModel(type="shortcut", keys=action.keys)
+    if isinstance(action, PredefinedCommandAction):
+        return EditorActionModel(
+            type="predefined_command",
+            command_id=action.command_id,
+        )
     if isinstance(action, UrlAction):
         return EditorActionModel(type="url", url=action.url)
     if isinstance(action, SwitchPageAction):
@@ -247,6 +253,13 @@ def _editor_action_to_doc(action: EditorActionModel) -> dict[str, str] | None:
         if not action.keys.strip():
             raise ValueError("shortcut action requires keys")
         return {"type": "shortcut", "keys": action.keys}
+    if action.type == "predefined_command":
+        if not action.command_id.strip():
+            raise ValueError("predefined_command action requires command_id")
+        return {
+            "type": "predefined_command",
+            "command_id": action.command_id,
+        }
     if action.type == "url":
         if not action.url.strip():
             raise ValueError("url action requires url")

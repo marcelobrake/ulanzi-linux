@@ -245,6 +245,26 @@ action: { type: switch_page, page: media }
 The target `page` must exist in `pages:` — otherwise the action is a
 no-op and a warning is logged.
 
+### 5.5 — `predefined_command`
+
+Compatibility-friendly shorthand for a small built-in catalog of common
+desktop actions. This is useful when reusing decks created from newer
+configs that already store a `command_id` instead of a raw shell command
+or shortcut.
+
+```yaml
+action: { type: predefined_command, command_id: media_play_pause }
+action: { type: predefined_command, command_id: audio_mic_mute }
+action: { type: predefined_command, command_id: display_screenshot_selection }
+```
+
+Supported canonical IDs currently include `audio_mic_mute`, `audio_mute`,
+`audio_volume_down`, `audio_volume_up`, `display_screenshot_selection`,
+`gnome_show_applications`, `gnome_terminal`, `media_next`,
+`media_play_pause`, and `media_previous`. A few older aliases such as
+`volume_mute`, `volume_down`, `volume_up`, `media_prev`, and
+`gnome_screenshot` are also accepted for backward compatibility.
+
 ## 6. `fixed_buttons`
 
 Buttons rendered on **every** page, in addition to the active page's

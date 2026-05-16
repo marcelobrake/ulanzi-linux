@@ -30,6 +30,7 @@ from ulanzi_linux.application.config_watcher import ConfigWatcher
 from ulanzi_linux.application.deck_service import DeckService
 from ulanzi_linux.domain.button_config import (
     DeckConfig,
+    PredefinedCommandAction,
     ShellAction,
     ShortcutAction,
     SwitchPageAction,
@@ -63,6 +64,8 @@ def _action_log_fields(action: object) -> dict[str, object]:
         fields["keys"] = action.keys
     elif isinstance(action, UrlAction):
         fields["url"] = action.url
+    elif isinstance(action, PredefinedCommandAction):
+        fields["command_id"] = action.command_id
     elif isinstance(action, SwitchPageAction):
         fields["target_page"] = action.page
     return fields
