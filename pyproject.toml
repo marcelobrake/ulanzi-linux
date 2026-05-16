@@ -62,7 +62,7 @@ desktop = [
     "PyQt5==5.15.11; sys_platform == 'linux'",
     "PyQtWebEngine==5.15.7; sys_platform == 'linux'",
     "pystray==0.19.5",
-    "Pillow==11.1.0",
+    "Pillow==12.2.0",
 ]
 
 [project.scripts]
