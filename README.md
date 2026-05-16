@@ -2,11 +2,12 @@
 
 Unofficial Linux client for the **Ulanzi Stream Controller D200**, built in
 Python through reverse engineering of the device's USB HID protocol. Ships a
-daemon, a CLI, a systemd user unit, and a localhost web editor for the YAML
-config.
+daemon, a CLI, a systemd user unit, a localhost web editor, and an
+installable desktop editor for the YAML config.
 
-> **Status:** Beta — end-to-end workflow works on real hardware. 71 tests
-> passing in CI.
+> **Status:** Beta — end-to-end workflow works on real hardware, including
+> daemon hot-reload, small-window sync, the built-in asset catalog, and the
+> web/desktop editor flows.
 
 ## Why this exists
 
@@ -26,15 +27,18 @@ HID, with no dependency on the proprietary app.
 | Daemon with action runner (shell / shortcut / url / switch_page) | ✅ | `ulanzi-linux daemon deck.yaml` |
 | YAML hot-reload (no restart) | ✅ | on by default in daemon |
 | Small-window panel (clock, CPU / mem stats, or alternating clock/stats) | ✅ | `small_window:` in YAML |
+| Configurable small-window background strip | ✅ | `small_window.background_color` |
 | Firmware watchdog keep-alive | ✅ | absorbed by small-window loop when enabled |
 | systemd **user** unit | ✅ | `systemd/ulanzi-linux.service` |
 | Localhost web editor | ✅ | `ulanzi-linux gui deck.yaml` |
+| Installable desktop editor | ✅ | `ulanzi-linux desktop deck.yaml` |
+| Built-in icon + emoji catalog | ✅ | web/desktop editor asset browser |
 
 ## Architecture
 
 Clean architecture, four layers, strict dependency direction (outer to inner):
 
-```
+```text
 interface/        -> CLI, web editor (FastAPI), static assets
 application/      -> Use cases: daemon, config loader, hot-reload watcher, action runner
 domain/           -> Pure rules: events, button/page/config, small-window config
@@ -51,13 +55,15 @@ depends on both. Interface depends on application.
 - Linux with a modern kernel (tested on 6.x)
 - The Ulanzi D200 physical device
 - `libhidapi` system library (Debian/Ubuntu: `sudo apt install libhidapi-hidraw0`)
+- Optional for local emoji previews/imports: `fonts-noto-color-emoji`
 
 ## Install
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev,web]"     # web extra enables the GUI
+pip install -e ".[dev,desktop]"   # full install: web editor + desktop window
+# or: pip install -e ".[dev,web]" # browser-only editor
 
 sudo cp udev/99-ulanzi-d200.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
@@ -86,14 +92,24 @@ ulanzi-linux daemon ~/.config/ulanzi/deck.yaml
 # 5. Edit the config in the browser.
 ulanzi-linux gui ~/.config/ulanzi/deck.yaml
 # open http://127.0.0.1:8765
+
+# 6. Optional: install and launch the desktop editor.
+ulanzi-linux desktop-install
+ulanzi-linux desktop ~/.config/ulanzi/deck.yaml
 ```
+
+The editor exposes the same config model in both browser and desktop modes.
+Its built-in asset browser can import more than 2000 Font Awesome icons plus
+Unicode emojis rendered locally when `Noto Color Emoji` is available on the
+host; imported assets are saved into `~/.config/ulanzi/icons/builtin/` and
+then uploaded to the deck through the normal PNG pipeline.
 
 ## Documentation
 
 - [Operations manual](docs/operations.md) — install, run, upgrade, back up, troubleshoot.
 - [Configuration reference](docs/configuration.md) — every YAML field explained.
 - [systemd user unit](docs/systemd.md) — service file, install, logs.
-- [Web editor](docs/web-ui.md) — GUI details, HTTP API, atomic write.
+- [Web and desktop editor](docs/web-ui.md) — GUI details, built-in asset catalog, desktop launcher, HTTP API.
 - [Architecture notes](docs/architecture.md) — layer boundaries and decisions.
 - [Protocol notes](docs/protocol.md) — HID packet format, commands, quirks.
 

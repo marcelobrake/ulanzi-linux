@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from click.testing import CliRunner
+
+from ulanzi_linux.interface.cli import cli
 from ulanzi_linux.interface.desktop.app import (
     desktop_entry_contents,
     install_desktop_launcher,
@@ -36,3 +39,20 @@ def test_install_desktop_launcher_writes_entry_and_icon(tmp_path: Path) -> None:
     assert icon_path.exists()
     assert entry_path.read_text(encoding="utf-8").startswith("[Desktop Entry]")
     assert "ulanzi-linux desktop" in entry_path.read_text(encoding="utf-8")
+
+
+def test_desktop_command_reports_missing_runtime_dependency(monkeypatch) -> None:
+    def _raise_missing_dependency(config_path: str) -> None:
+        del config_path
+        raise ModuleNotFoundError("No module named 'webview'", name="webview")
+
+    monkeypatch.setattr(
+        "ulanzi_linux.interface.desktop.app.launch_desktop_app",
+        _raise_missing_dependency,
+    )
+
+    result = CliRunner().invoke(cli, ["desktop", "deck.yaml"])
+
+    assert result.exit_code == 1
+    assert "pip install '.[desktop]'" in result.output
+    assert "missing module: webview" in result.output

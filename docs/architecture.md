@@ -2,16 +2,16 @@
 
 Clean-architecture layering, adapted to a small Python library / CLI.
 
-```
+```text
 ┌───────────────────────────────────────────────────────────────────────┐
 │  Interface layer  —  src/ulanzi_linux/interface                       │
-│    CLI (Click + Rich), future GUI / HTTP daemon                       │
+│    CLI (Click + Rich), FastAPI web editor, desktop wrapper            │
 └───────────────────────────────────────────────────────────────────────┘
                   │ calls
                   ▼
 ┌───────────────────────────────────────────────────────────────────────┐
 │  Application layer — src/ulanzi_linux/application                     │
-│    DeckService: orchestrates use cases, opens/closes devices          │
+│    DeckService, DeckDaemon, config loader/watcher, action runner      │
 └───────────────────────────────────────────────────────────────────────┘
                   │ uses abstractions
                   ▼
@@ -49,6 +49,9 @@ Clean-architecture layering, adapted to a small Python library / CLI.
   changes.
 - **Observability-first** — every command emits structured logs with the
   fields future-you will want in Grafana or Tempo.
+- **Shared editor contract** — the browser UI and the installable desktop
+  window both use the same FastAPI app and static frontend, so feature work
+  for the editor lands once and stays consistent across both entry points.
 
 ## Runtime model
 
@@ -68,4 +71,5 @@ Clean-architecture layering, adapted to a small Python library / CLI.
 - OpenTelemetry exporter wired into `observability/` for traces and
   metrics.
 - HTTP daemon (FastAPI) so other hosts on the LAN can drive the deck.
-- GUI editor (PySide6 or web-based) for profile authoring.
+- Richer desktop packaging (AppImage / Debian package) on top of the current
+  pywebview-based launcher.

@@ -19,6 +19,7 @@ from typing import NoReturn
 
 import click
 import structlog
+from rich.markup import escape
 from rich.console import Console
 from rich.table import Table
 
@@ -49,7 +50,7 @@ DEFAULT_EDITOR_CONFIG_PATH = Path.home() / ".config" / "ulanzi" / "deck.yaml"
 
 
 def _bail(message: str, *, code: int = 1) -> NoReturn:
-    console.print(f"[bold red]error:[/] {message}")
+    console.print(f"[bold red]error:[/] {escape(message)}")
     raise SystemExit(code)
 
 
@@ -400,7 +401,16 @@ def desktop_command(config_path: str | None) -> None:
             f"({exc})"
         )
 
-    launch_desktop_app(target)
+    try:
+        launch_desktop_app(target)
+    except ModuleNotFoundError as exc:
+        if exc.name and not exc.name.startswith("ulanzi_linux"):
+            _bail(
+                "desktop UI dependencies not installed or incomplete. Run:\n"
+                "  pip install '.[desktop]'\n"
+                f"(missing module: {exc.name})"
+            )
+        raise
 
 
 @cli.command("desktop-install")
