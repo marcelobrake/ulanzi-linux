@@ -7,6 +7,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-05-16
+
+### Added
+
+- Added a Linux desktop application wrapper for the local editor using
+  pywebview, with a user-scoped `desktop-install` command that writes the
+  launcher and SVG icon into the standard Ubuntu desktop directories.
+- Added built-in emoji assets to the editor catalog using local emoji
+  metadata plus Noto Color Emoji rendering, so the same catalog now serves
+  both application icons and emojis.
+
+### Changed
+
+- The built-in asset browser is now shared across web and desktop launches,
+  and imported assets continue to land in `icons/builtin/` as regular PNGs
+  for the existing deck upload pipeline.
+
 ## [0.8.0] — 2026-05-16
 
 ### Added

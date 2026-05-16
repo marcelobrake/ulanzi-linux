@@ -181,7 +181,23 @@ def test_builtin_assets_catalog_returns_many_icons(
     body = r.json()
     assert body["total"] > 1000
     assert body["items"]
+    assert "family" in body["items"][0]
     assert body["items"][0]["preview_url"].startswith("/api/builtin-asset")
+
+
+def test_builtin_assets_catalog_exposes_emoji_entries_when_available(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    body = c.get("/api/builtin-assets").json()
+    if not any(item["family"] == "emoji" for item in body["items"]):
+        pytest.skip("emoji assets not available on this host")
+
+    emoji_item = next(item for item in body["items"] if item["family"] == "emoji")
+    assert emoji_item["style"] == "emoji"
+    preview = c.get(emoji_item["preview_url"])
+    assert preview.status_code == 200
+    assert preview.headers["content-type"] == "image/png"
 
 
 def test_import_builtin_asset_materializes_local_png(

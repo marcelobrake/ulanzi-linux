@@ -254,7 +254,7 @@
                       <img :src="icon.preview_url" :alt="icon.name" />
                     </span>
                     <strong x-text="icon.name"></strong>
-                    <small x-text="icon.style"></small>
+                    <small x-text="`${icon.family} · ${icon.style}`"></small>
                   </button>
                 </template>
               </div>

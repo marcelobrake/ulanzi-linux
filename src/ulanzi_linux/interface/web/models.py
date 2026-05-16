@@ -172,6 +172,7 @@ class BuiltinAssetSummary(BaseModel):
     asset_id: str
     name: str
     style: str
+    family: str
     search_terms: list[str] = Field(default_factory=list)
     preview_url: str
 

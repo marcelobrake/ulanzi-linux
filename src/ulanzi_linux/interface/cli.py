@@ -45,6 +45,7 @@ from ulanzi_linux.observability import configure_logging
 
 console = Console()
 logger = structlog.get_logger(__name__)
+DEFAULT_EDITOR_CONFIG_PATH = Path.home() / ".config" / "ulanzi" / "deck.yaml"
 
 
 def _bail(message: str, *, code: int = 1) -> NoReturn:
@@ -383,6 +384,45 @@ def gui_command(config_path: str, host: str, port: int) -> None:
         )
 
     serve(config_path, host=host, port=port)
+
+
+@cli.command("desktop")
+@click.argument("config_path", required=False, type=click.Path(dir_okay=False))
+def desktop_command(config_path: str | None) -> None:
+    """Launch the local editor inside a desktop window."""
+    target = config_path or str(DEFAULT_EDITOR_CONFIG_PATH)
+    try:
+        from ulanzi_linux.interface.desktop.app import launch_desktop_app
+    except ImportError as exc:
+        _bail(
+            "desktop UI dependencies not installed. Run:\n"
+            "  pip install '.[desktop]'\n"
+            f"({exc})"
+        )
+
+    launch_desktop_app(target)
+
+
+@cli.command("desktop-install")
+@click.argument("config_path", required=False, type=click.Path(dir_okay=False))
+def desktop_install_command(config_path: str | None) -> None:
+    """Install a desktop launcher for the local editor under the current user."""
+    target = Path(config_path or DEFAULT_EDITOR_CONFIG_PATH).expanduser().resolve()
+    try:
+        from ulanzi_linux.interface.desktop.app import install_desktop_launcher
+    except ImportError as exc:
+        _bail(
+            "desktop launcher support not installed. Run:\n"
+            "  pip install '.[desktop]'\n"
+            f"({exc})"
+        )
+
+    entry_path, icon_path = install_desktop_launcher(target)
+    console.print(
+        "[green]desktop launcher installed[/]\n"
+        f"[cyan]entry[/] {entry_path}\n"
+        f"[cyan]icon[/] {icon_path}"
+    )
 
 
 if __name__ == "__main__":
