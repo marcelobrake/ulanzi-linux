@@ -62,6 +62,9 @@ _REAL_ICON_PADDING = 5
 _TEXT_TILE_PADDING = 16
 _TEXT_TILE_MAX_WIDTH = ICON_SIZE[0] - (_TEXT_TILE_PADDING * 2)
 _TEXT_TILE_MAX_HEIGHT = ICON_SIZE[1] - (_TEXT_TILE_PADDING * 2)
+_INFO_WINDOW_PADDING = 24
+_INFO_WINDOW_MAX_WIDTH = INFO_WINDOW_SIZE[0] - (_INFO_WINDOW_PADDING * 2)
+_INFO_WINDOW_MAX_HEIGHT = INFO_WINDOW_SIZE[1] - (_INFO_WINDOW_PADDING * 2)
 
 _FONT_FILE_CANDIDATES: dict[str, dict[tuple[bool, bool], tuple[str, ...]]] = {
     "DejaVu Sans": {
@@ -233,22 +236,26 @@ def _wrap_text(
 def _fit_text_layout(
     text: str,
     style: TextStyle,
+    *,
+    canvas_size: tuple[int, int] = ICON_SIZE,
+    max_width: int = _TEXT_TILE_MAX_WIDTH,
+    max_height: int = _TEXT_TILE_MAX_HEIGHT,
 ) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, list[str], int]:
-    scratch = Image.new("RGBA", ICON_SIZE, (0, 0, 0, 0))
+    scratch = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(scratch)
     for size in range(style.font_size, 11, -2):
         font = _load_font(style, size)
-        lines = _wrap_text(text, draw=draw, font=font, max_width=_TEXT_TILE_MAX_WIDTH)
+        lines = _wrap_text(text, draw=draw, font=font, max_width=max_width)
         boxes = [draw.textbbox((0, 0), line, font=font) for line in lines]
         widths = [box[2] - box[0] for box in boxes]
         line_heights = [box[3] - box[1] for box in boxes]
-        max_width = max(widths, default=0)
+        used_width = max(widths, default=0)
         spacing = max(6, size // 6)
         total_height = sum(line_heights) + spacing * max(0, len(lines) - 1)
-        if max_width <= _TEXT_TILE_MAX_WIDTH and total_height <= _TEXT_TILE_MAX_HEIGHT:
+        if used_width <= max_width and total_height <= max_height:
             return font, lines, spacing
     font = _load_font(style, 12)
-    lines = _wrap_text(text, draw=draw, font=font, max_width=_TEXT_TILE_MAX_WIDTH)
+    lines = _wrap_text(text, draw=draw, font=font, max_width=max_width)
     return font, lines, 4
 
 
@@ -287,11 +294,54 @@ def _render_text_icon(cfg: ButtonConfig) -> bytes:
     return buf.getvalue()
 
 
+def _render_info_window_text(cfg: ButtonConfig) -> bytes:
+    style = cfg.text_style
+    img = Image.new("RGBA", INFO_WINDOW_SIZE, _hex_to_rgba(style.background_color))
+    draw = ImageDraw.Draw(img)
+    font, lines, spacing = _fit_text_layout(
+        cfg.label,
+        style,
+        canvas_size=INFO_WINDOW_SIZE,
+        max_width=_INFO_WINDOW_MAX_WIDTH,
+        max_height=_INFO_WINDOW_MAX_HEIGHT,
+    )
+    boxes = [draw.textbbox((0, 0), line, font=font) for line in lines]
+    heights = [box[3] - box[1] for box in boxes]
+    total_height = sum(heights) + spacing * max(0, len(lines) - 1)
+    current_y = (INFO_WINDOW_SIZE[1] - total_height) / 2
+    fill = _hex_to_rgba(style.text_color)
+
+    for line, box, height in zip(lines, boxes, heights, strict=False):
+        width = box[2] - box[0]
+        x = (INFO_WINDOW_SIZE[0] - width) / 2
+        y = current_y - box[1]
+        draw.text((x, y), line, font=font, fill=fill)
+        if style.underline:
+            underline_y = current_y + height + 2
+            draw.line(
+                (
+                    x,
+                    underline_y,
+                    x + width,
+                    underline_y,
+                ),
+                fill=fill,
+                width=max(1, style.font_size // 18),
+            )
+        current_y += height + spacing
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def _normalize_icon(cfg: ButtonConfig) -> bytes:
     """Load and resize a PNG — or render a black tile if absent."""
     path = _real_icon_path(cfg)
     if int(cfg.index) == _INFO_WINDOW_INDEX:
         if path is None:
+            if cfg.label:
+                return _render_info_window_text(cfg)
             return _render_info_window_background(cfg.text_style.background_color)
         with Image.open(path) as img:
             img = img.convert("RGBA")
