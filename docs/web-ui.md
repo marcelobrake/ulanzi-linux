@@ -91,7 +91,7 @@ the existing file untouched.
 
 Saves use a same-directory temp file plus `os.replace`:
 
-```
+```text
 deck.yaml          <--- target
 .deck.yaml.XXXX.tmp --> fsync'd --> os.replace --> deck.yaml
 ```
@@ -111,17 +111,20 @@ home directory.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET`  | `/api/health` | Version, config path, device count — used in the UI header. |
-| `GET`  | `/api/devices` | Enumerate D200 units currently attached. |
-| `GET`  | `/api/editor` | Read the structured visual-editor payload. |
-| `GET`  | `/api/small-window/preview` | Return live clock and CPU/MEM values for the simulator tile. |
-| `GET`  | `/api/config` | Read the YAML file as text + metadata. |
+| `GET` | `/api/health` | Version, config path, device count — used in the UI header. |
+| `GET` | `/api/devices` | Enumerate D200 units currently attached. |
+| `GET` | `/api/editor` | Read the structured visual-editor payload. |
+| `GET` | `/api/small-window/preview` | Return live clock and CPU/MEM values for the simulator tile. |
+| `GET` | `/api/config` | Read the YAML file as text + metadata. |
 | `POST` | `/api/config/validate` | Parse without saving — for live feedback. |
 | `POST` | `/api/editor/validate` | Validate the structured editor payload before saving. |
-| `PUT`  | `/api/config` | Validate, snapshot and save the raw YAML atomically. |
-| `PUT`  | `/api/editor` | Save the structured editor payload and optionally persist the ZIP bundle. |
+| `GET` | `/api/builtin-assets` | List the built-in icon catalog available in the editor. |
+| `GET` | `/api/builtin-asset` | Render a built-in icon preview as PNG. |
+| `PUT` | `/api/config` | Validate, snapshot and save the raw YAML atomically. |
+| `PUT` | `/api/editor` | Save the structured editor payload and optionally persist the ZIP bundle. |
 | `POST` | `/api/assets` | Upload and normalize an icon into the local `icons/` folder. |
-| `GET`  | `/api/asset` | Serve a stored icon back to the browser for previews. |
+| `POST` | `/api/builtin-assets/import` | Import a built-in icon into `icons/builtin/` as PNG. |
+| `GET` | `/api/asset` | Serve a stored icon back to the browser for previews. |
 
 FastAPI auto-generates an OpenAPI spec at `/docs` while the server is
 running, handy for quickly curling against the API.

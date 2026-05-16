@@ -141,8 +141,6 @@ def render_builtin_icon_png(
     y = (size[1] - height) / 2 - box[1]
     draw.text((x, y), glyph, font=font, fill=_hex_to_rgba(foreground))
 
-    buffer = Path
-    del buffer
     from io import BytesIO
 
     out = BytesIO()
