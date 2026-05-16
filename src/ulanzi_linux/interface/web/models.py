@@ -75,9 +75,17 @@ class ValidationSummary(BaseModel):
 class EditorActionModel(BaseModel):
     """Structured action payload used by the visual editor."""
 
-    type: Literal["none", "shell", "shortcut", "url", "switch_page"] = "none"
+    type: Literal[
+        "none",
+        "shell",
+        "shortcut",
+        "predefined_command",
+        "url",
+        "switch_page",
+    ] = "none"
     cmd: str = ""
     keys: str = ""
+    command_id: str = ""
     url: str = ""
     page: str = ""
 

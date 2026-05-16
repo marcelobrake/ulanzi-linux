@@ -48,8 +48,15 @@ class HidApiTransport:
             DeviceNotFoundError: No matching device is connected.
             DeviceOpenError: The device was found but could not be opened.
         """
-        matches = list(
-            enumerate_hid_devices(vendor_id=vendor_id, product_id=product_id)
+        matches = sorted(
+            enumerate_hid_devices(vendor_id=vendor_id, product_id=product_id),
+            key=lambda entry: (
+                entry.get("interface_number") != 0,
+                entry.get("interface_number") is None,
+                entry.get("interface_number")
+                if isinstance(entry.get("interface_number"), int)
+                else 1_000_000,
+            ),
         )
         if not matches:
             raise DeviceNotFoundError(

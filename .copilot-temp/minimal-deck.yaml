@@ -1,0 +1,6 @@
+buttons:
+  - index: 0
+    label: Ping
+    action:
+      type: shell
+      cmd: "printf ping"

@@ -152,6 +152,7 @@ def test_get_editor_returns_structured_config(
     assert body["pages"][0]["name"] == "main"
     assert body["small_window"]["show_metrics"] is True
     assert body["small_window"]["rotate_every_s"] is None
+    assert body["pages"][0]["buttons"][0]["action"]["command_id"] == ""
     assert body["pages"][0]["buttons"][0]["text_style"]["background_color"] == "#111827"
     assert body["versioned_config_path"] is None
     assert body["saved_firmware_bundle_path"] is None
@@ -200,6 +201,26 @@ def test_validate_endpoint_returns_error_for_bad_yaml(
     body = r.json()
     assert body["ok"] is False
     assert "self_destruct" in body["error"]
+
+
+def test_validate_endpoint_accepts_predefined_command_yaml(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    yaml_text = (
+        "default_page: main\n"
+        "pages:\n"
+        "  main:\n"
+        "    buttons:\n"
+        "      - index: 5\n"
+        "        action:\n"
+        "          type: predefined_command\n"
+        "          command_id: media_play_pause\n"
+    )
+    r = c.post("/api/config/validate", json={"content": yaml_text})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
 
 
 def test_editor_validate_accepts_info_window_action_slot(
@@ -278,6 +299,27 @@ def test_put_editor_persists_text_style_for_text_only_button(
     assert "text_style:" in saved
     assert "background_color: '#112233'" in saved
     assert 'font_family: Liberation Serif' in saved
+
+
+def test_put_editor_persists_predefined_command_action(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, path = client
+    payload = c.get("/api/editor").json()
+    payload["pages"][0]["buttons"][0]["action"] = {
+        "type": "predefined_command",
+        "cmd": "",
+        "keys": "",
+        "command_id": "display_screenshot_selection",
+        "url": "",
+        "page": "",
+    }
+
+    r = c.put("/api/editor", json=payload)
+    assert r.status_code == 200
+    saved = path.read_text()
+    assert "type: predefined_command" in saved
+    assert "command_id: display_screenshot_selection" in saved
 
 
 def test_put_editor_can_also_save_firmware_bundle(
@@ -393,6 +435,7 @@ def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     assert "alpinejs" in r.text
     assert r.text.index("/static/app.js") < r.text.index("alpinejs")
     assert "Reset" in r.text
+    assert "Comando pré-definido" in r.text
     # Static mount exposes the CSS/JS files.
     r = c.get("/static/app.css")
     assert r.status_code == 200
@@ -402,4 +445,5 @@ def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     assert "window.editorApp = function editorApp()" in r.text
     assert "async resetDeck()" in r.text
     assert "Clique em Salvar no deck para aplicar." in r.text
+    assert "predefined_command" in r.text
     assert "await this.saveDeck();" not in r.text

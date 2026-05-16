@@ -59,7 +59,21 @@ class SwitchPageAction:
     page: str
 
 
-Action = ShellAction | ShortcutAction | UrlAction | SwitchPageAction
+@dataclass(frozen=True, slots=True)
+class PredefinedCommandAction:
+    """Run a named built-in action from the compatibility catalog."""
+
+    type: Literal["predefined_command"]
+    command_id: str
+
+
+Action = (
+    ShellAction
+    | ShortcutAction
+    | UrlAction
+    | SwitchPageAction
+    | PredefinedCommandAction
+)
 
 
 _HEX_COLOR_RE = re.compile(r"^#?[0-9A-Fa-f]{6}$")
@@ -274,6 +288,7 @@ __all__ = [
     "DEFAULT_TIME_FORMAT",
     "DeckConfig",
     "Page",
+    "PredefinedCommandAction",
     "ShellAction",
     "ShortcutAction",
     "SMALL_WINDOW_MAX_INTERVAL_S",

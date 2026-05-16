@@ -16,6 +16,7 @@ from ulanzi_linux.domain.button_config import (
     ButtonConfig,
     DeckConfig,
     Page,
+    PredefinedCommandAction,
     ShellAction,
     SwitchPageAction,
     TextStyle,
@@ -174,6 +175,26 @@ buttons:
     page = cfg.pages["default"]
     assert len(page.buttons) == 1
     assert isinstance(page.buttons[0].action, ShellAction)
+
+
+def test_loader_parses_predefined_command_action(tmp_path: Path) -> None:
+    yaml_text = (
+        "default_page: main\n"
+        "pages:\n"
+        "  main:\n"
+        "    buttons:\n"
+        "      - index: 5\n"
+        "        action:\n"
+        "          type: predefined_command\n"
+        "          command_id: audio_mic_mute\n"
+    )
+    path = tmp_path / "deck.yaml"
+    path.write_text(yaml_text)
+    cfg = load_deck_config(path)
+
+    action = cfg.pages["main"].buttons[0].action
+    assert isinstance(action, PredefinedCommandAction)
+    assert action.command_id == "audio_mic_mute"
 
 
 # ---------------------------------------------------------------------- #

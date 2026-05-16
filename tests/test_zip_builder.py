@@ -152,7 +152,7 @@ def test_full_upload_fills_missing_buttons_with_black_tiles(fake_icon: Path) -> 
     assert manifest["1_0"]["ViewParam"] == [{}]
 
 
-def test_label_only_button_renders_text_tile_and_manifest_text() -> None:
+def test_label_only_button_uses_manifest_text_without_generated_icon() -> None:
     blob = build_buttons_zip(
         [ButtonConfig(index=0, label="OpenAI")],
         fill_missing=True,
@@ -160,15 +160,11 @@ def test_label_only_button_renders_text_tile_and_manifest_text() -> None:
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
         manifest = json.loads(zf.read("manifest.json"))
         names = zf.namelist()
-        icon_name = manifest["0_0"]["ViewParam"][0]["Icon"]
-        img = Image.open(io.BytesIO(zf.read(icon_name)))
-    assert icon_name in names
-    assert icon_name.startswith("icons/0-")
-    assert manifest["0_0"]["ViewParam"][0]["Text"] == "OpenAI"
-    assert img.size == ICON_SIZE
+    assert manifest["0_0"]["ViewParam"][0] == {"Text": "OpenAI"}
+    assert all(not name.startswith("icons/0-") for name in names)
 
 
-def test_label_only_button_changes_generated_icon_name_when_text_changes() -> None:
+def test_label_only_button_text_changes_manifest_content() -> None:
     first_blob = build_buttons_zip([ButtonConfig(index=0, label="Main")])
     second_blob = build_buttons_zip([ButtonConfig(index=0, label="Media")])
 
@@ -177,10 +173,8 @@ def test_label_only_button_changes_generated_icon_name_when_text_changes() -> No
     with zipfile.ZipFile(io.BytesIO(second_blob)) as second_zip:
         second_manifest = json.loads(second_zip.read("manifest.json"))
 
-    assert (
-        first_manifest["0_0"]["ViewParam"][0]["Icon"]
-        != second_manifest["0_0"]["ViewParam"][0]["Icon"]
-    )
+    assert first_manifest["0_0"]["ViewParam"][0]["Text"] == "Main"
+    assert second_manifest["0_0"]["ViewParam"][0]["Text"] == "Media"
 
 
 def test_real_icon_keeps_original_basename_in_manifest(fake_icon: Path) -> None:
@@ -214,7 +208,7 @@ def test_real_icon_is_flattened_onto_opaque_button_background(tmp_path: Path) ->
     assert rendered.getpixel((4, 4)) == (17, 34, 51, 255)
 
 
-def test_text_only_button_uses_configured_background_color() -> None:
+def test_text_only_button_does_not_emit_generated_icon() -> None:
     blob = build_buttons_zip(
         [
             ButtonConfig(
@@ -226,9 +220,27 @@ def test_text_only_button_uses_configured_background_color() -> None:
     )
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
         manifest = json.loads(zf.read("manifest.json"))
-        icon_name = manifest["0_0"]["ViewParam"][0]["Icon"]
-        img = Image.open(io.BytesIO(zf.read(icon_name))).convert("RGBA")
-    assert img.getpixel((4, 4)) == (170, 17, 34, 255)
+        names = zf.namelist()
+    assert manifest["0_0"]["ViewParam"][0] == {"Text": "Hi"}
+    assert all(not name.startswith("icons/0-") for name in names)
+
+
+def test_missing_icon_with_label_falls_back_to_manifest_text() -> None:
+    blob = build_buttons_zip(
+        [
+            ButtonConfig(
+                index=0,
+                label="Term",
+                icon_path=Path("/definitely/missing/icon.png"),
+            )
+        ]
+    )
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+        names = zf.namelist()
+
+    assert manifest["0_0"]["ViewParam"][0] == {"Text": "Term"}
+    assert all(not name.startswith("icons/0-") for name in names)
 
 
 def test_full_upload_preserves_last_physical_button(fake_icon: Path) -> None:

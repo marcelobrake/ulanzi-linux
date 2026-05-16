@@ -281,7 +281,13 @@ def _normalize_icon(cfg: ButtonConfig) -> bytes:
     """Load and resize a PNG — or render a black tile if absent."""
     path = _real_icon_path(cfg)
     if path is None:
-        if cfg.label and cfg.icon_path is None:
+        if cfg.label:
+            if cfg.icon_path is not None:
+                logger.warning(
+                    "button_icon_missing_falling_back_to_text",
+                    index=int(cfg.index),
+                    icon_path=str(Path(cfg.icon_path).expanduser()),
+                )
             return _render_text_icon(cfg)
         return _blank_icon()
 
@@ -345,7 +351,7 @@ def _build_manifest(configs: list[ButtonConfig]) -> dict:
         has_real_icon = _has_real_icon(cfg)
         if cfg.label and not has_real_icon:
             view_param["Text"] = cfg.label
-        if cfg.icon_path is not None or cfg.label:
+        if has_real_icon:
             view_param["Icon"] = _archive_icon_name(cfg)
         manifest[f"{col}_{row}"] = {
             "State": 0,
@@ -431,7 +437,7 @@ def build_buttons_zip(
     # Cache rendered icons so the retry loop doesn't re-encode PNGs.
     icons: dict[str, bytes] = {}
     for cfg in configs_list:
-        if cfg.icon_path is None and not cfg.label:
+        if not _has_real_icon(cfg):
             continue
         archive_name = _archive_icon_name(cfg)
         icons.setdefault(archive_name, _normalize_icon(cfg))

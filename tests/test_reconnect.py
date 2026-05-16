@@ -118,7 +118,7 @@ async def test_write_failure_reconnects_and_replays_cached_state() -> None:
     assert int(OutgoingCommand.SET_SMALL_WINDOW_DATA) in codes
     payloads = _raw_small_window_payloads(second.writes)
     assert b"\x00" in payloads
-    assert b"0|11|22|18:42|0" in payloads
+    assert b"11,22,0,18:42" in payloads
 
 
 @pytest.mark.asyncio
@@ -153,7 +153,7 @@ async def test_write_failure_reconnects_and_replays_cached_clock_state() -> None
     assert first.closed is True
     payloads = _raw_small_window_payloads(second.writes)
     assert b"\x01" in payloads
-    assert b"1|0|0|18:42:00|0" in payloads
+    assert b"0,0,0,18:42:00" in payloads
 
 
 @pytest.mark.asyncio
@@ -171,7 +171,7 @@ async def test_first_button_upload_applies_default_label_style() -> None:
     ]
     payloads = _framed_payloads(transport.writes)
     label_style = json.loads(payloads[0].decode("utf-8"))
-    assert label_style["ShowTitle"] is False
+    assert label_style["ShowTitle"] is True
 
 
 @pytest.mark.asyncio

@@ -46,6 +46,7 @@ from ulanzi_linux.domain.button_config import (
     ButtonConfig,
     DeckConfig,
     Page,
+    PredefinedCommandAction,
     ShellAction,
     ShortcutAction,
     SmallWindowConfig,
@@ -73,6 +74,11 @@ def _parse_action(raw: dict[str, Any] | None) -> Action | None:
         return UrlAction(type="url", url=str(raw["url"]))
     if kind == "switch_page":
         return SwitchPageAction(type="switch_page", page=str(raw["page"]))
+    if kind == "predefined_command":
+        return PredefinedCommandAction(
+            type="predefined_command",
+            command_id=str(raw["command_id"]),
+        )
     raise ValueError(f"unknown action type: {kind!r}")
 
 

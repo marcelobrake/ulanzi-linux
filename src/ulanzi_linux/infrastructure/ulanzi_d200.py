@@ -57,7 +57,7 @@ DEFAULT_LABEL_STYLE: Final[dict[str, object]] = {
     "Align": "bottom",
     "Color": 0xFFFFFF,
     "FontName": "Roboto",
-    "ShowTitle": False,
+    "ShowTitle": True,
     "Size": 10,
     "Weight": 80,
 }
@@ -216,10 +216,6 @@ class UlanziD200Device(DeckDevice):
 
     async def set_small_window_mode(self, mode: SmallWindowMode) -> None:
         self._cached_small_window_mode = mode
-        if self._last_small_window_data is not None:
-            cpu, mem, gpu, time_str = self._last_small_window_data
-        else:
-            cpu, mem, gpu, time_str = None, None, None, None
         await self._send(
             OutgoingCommand.SET_SMALL_WINDOW_DATA,
             self._build_small_window_mode_payload(mode),
@@ -639,7 +635,7 @@ class UlanziD200Device(DeckDevice):
             self._label_style_payload(),
         )
         self._label_style_applied = True
-        logger.info("label_style_set", show_title=False, font_name="Roboto")
+        logger.info("label_style_set", show_title=True, font_name="Roboto")
 
     @staticmethod
     def _label_style_payload() -> bytes:
@@ -657,13 +653,13 @@ class UlanziD200Device(DeckDevice):
         gpu: int | None,
         time_str: str | None,
     ) -> bytes:
-        time_field = time_str or ""
-        cpu_field = "" if cpu is None else str(cpu)
-        mem_field = "" if mem is None else str(mem)
-        gpu_field = "" if gpu is None else str(gpu)
-        return (
-            f"{int(mode)}|{cpu_field}|{mem_field}|{time_field}|{gpu_field}"
-        ).encode("utf-8")
+        del mode
+        cpu_field = "0" if cpu is None else str(cpu)
+        mem_field = "0" if mem is None else str(mem)
+        gpu_field = "0" if gpu is None else str(gpu)
+        if time_str:
+            return f"{cpu_field},{mem_field},{gpu_field},{time_str}".encode("ascii")
+        return f"{cpu_field},{mem_field},{gpu_field}".encode("ascii")
 
     @staticmethod
     def _build_small_window_mode_payload(mode: SmallWindowMode) -> bytes:

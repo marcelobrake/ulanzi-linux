@@ -1,0 +1,9 @@
+default_page: main
+small_window:
+  enabled: true
+  interval_s: 2.0
+  time_format: '%H:%M'
+  show_metrics: false
+pages:
+  main:
+    buttons: []

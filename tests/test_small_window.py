@@ -178,7 +178,7 @@ def test_small_window_payload_uses_clock_wire_format() -> None:
         gpu=0,
         time_str="14:32:00",
     )
-    assert payload == b"1|17|63|14:32:00|0"
+    assert payload == b"17,63,0,14:32:00"
 
 
 def test_small_window_payload_supports_time_only_clock_updates() -> None:
@@ -189,7 +189,7 @@ def test_small_window_payload_supports_time_only_clock_updates() -> None:
         gpu=0,
         time_str="14:32:00",
     )
-    assert payload == b"1|0|0|14:32:00|0"
+    assert payload == b"0,0,0,14:32:00"
 
 
 @pytest.mark.asyncio
@@ -204,7 +204,7 @@ async def test_small_window_data_respects_cached_stats_mode_zero() -> None:
     await device.close()
 
     assert b"\x00" in _raw_small_window_payloads(transport.writes)
-    assert b"0|17|63|14:32:00|0" in _raw_small_window_payloads(transport.writes)
+    assert b"17,63,0,14:32:00" in _raw_small_window_payloads(transport.writes)
 
 
 def test_small_window_rejects_interval_below_floor() -> None:

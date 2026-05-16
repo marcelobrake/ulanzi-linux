@@ -28,6 +28,7 @@ const ACTION_LABELS = Object.freeze({
     none: "Sem ação",
     shell: "Comando",
     shortcut: "Atalho",
+    predefined_command: "Comando pré-definido",
     url: "Link",
     switch_page: "Troca de página",
 });
@@ -37,6 +38,7 @@ function emptyAction() {
         type: "none",
         cmd: "",
         keys: "",
+        command_id: "",
         url: "",
         page: "",
     };
@@ -307,6 +309,12 @@ window.editorApp = function editorApp() {
                 return { ...emptyAction(), type: "shell", cmd: action.cmd || "" };
             case "shortcut":
                 return { ...emptyAction(), type: "shortcut", keys: action.keys || "" };
+            case "predefined_command":
+                return {
+                    ...emptyAction(),
+                    type: "predefined_command",
+                    command_id: action.command_id || "",
+                };
             case "url":
                 return { ...emptyAction(), type: "url", url: action.url || "" };
             case "switch_page":

@@ -70,6 +70,39 @@ def test_open_tries_matching_paths_until_one_succeeds(
     assert handles == []
 
 
+def test_open_prefers_interface_zero_when_enumeration_order_flips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handle = FakeHandle()
+
+    monkeypatch.setattr(
+        "ulanzi_linux.infrastructure.hid_transport.hid.enumerate",
+        lambda: [
+            {
+                "vendor_id": 0x2207,
+                "product_id": 0x0019,
+                "interface_number": 1,
+                "path": b"iface1",
+            },
+            {
+                "vendor_id": 0x2207,
+                "product_id": 0x0019,
+                "interface_number": 0,
+                "path": b"iface0",
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        "ulanzi_linux.infrastructure.hid_transport.hid.device",
+        lambda: handle,
+    )
+
+    transport = HidApiTransport.open(0x2207, 0x0019)
+
+    assert isinstance(transport, HidApiTransport)
+    assert handle.opened_paths == [b"iface0"]
+
+
 def test_open_raises_when_no_device_matches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

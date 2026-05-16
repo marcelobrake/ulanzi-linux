@@ -236,6 +236,7 @@
           <option value="none">Sem ação</option>
           <option value="shell">Comando</option>
           <option value="shortcut">Atalho</option>
+          <option value="predefined_command">Comando pré-definido</option>
           <option value="url">Link</option>
           <option value="switch_page">Troca de página</option>
         </select>
@@ -257,6 +258,16 @@
                  x-model="buttonForm.action.keys"
                  @input="syncSelectedButton()"
                  placeholder="ctrl+alt+t" />
+        </label>
+      </template>
+
+      <template x-if="buttonForm.action.type === 'predefined_command'">
+        <label class="field">
+          <span>Command ID</span>
+          <input type="text"
+                 x-model="buttonForm.action.command_id"
+                 @input="syncSelectedButton()"
+                 placeholder="media_play_pause" />
         </label>
       </template>
 
