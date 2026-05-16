@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import socket
 import subprocess
@@ -20,6 +21,16 @@ DEFAULT_WINDOW_TITLE = "Ulanzi Linux"
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "ulanzi" / "deck.yaml"
 DEFAULT_APPLICATIONS_DIR = Path.home() / ".local" / "share" / "applications"
 DEFAULT_ICON_DIR = Path.home() / ".local" / "share" / "icons" / "hicolor" / "scalable" / "apps"
+
+
+def _configure_qt_platform() -> None:
+    if os.environ.get("QT_QPA_PLATFORM"):
+        return
+    if os.environ.get("XDG_SESSION_TYPE") != "wayland":
+        return
+    if not os.environ.get("WAYLAND_DISPLAY"):
+        return
+    os.environ["QT_QPA_PLATFORM"] = "wayland"
 
 
 def _asset_icon_path() -> Path:
@@ -201,6 +212,7 @@ def _start_tray(url: str, window_holder: dict[str, object | None]) -> object | N
 
 
 def launch_desktop_app(config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
+    _configure_qt_platform()
     import webview
 
     resolved_config = Path(config_path).expanduser().resolve()

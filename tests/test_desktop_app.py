@@ -6,6 +6,7 @@ from click.testing import CliRunner
 
 from ulanzi_linux.interface.cli import cli
 from ulanzi_linux.interface.desktop.app import (
+    _configure_qt_platform,
     desktop_entry_contents,
     install_desktop_launcher,
 )
@@ -56,3 +57,23 @@ def test_desktop_command_reports_missing_runtime_dependency(monkeypatch) -> None
     assert result.exit_code == 1
     assert "pip install '.[desktop]'" in result.output
     assert "missing module: webview" in result.output
+
+
+def test_configure_qt_platform_prefers_wayland_session(monkeypatch) -> None:
+    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+
+    _configure_qt_platform()
+
+    assert __import__("os").environ["QT_QPA_PLATFORM"] == "wayland"
+
+
+def test_configure_qt_platform_preserves_explicit_user_choice(monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+
+    _configure_qt_platform()
+
+    assert __import__("os").environ["QT_QPA_PLATFORM"] == "xcb"

@@ -7,6 +7,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] — 2026-05-16
+
+### Fixed
+
+- The desktop editor now auto-selects `QT_QPA_PLATFORM=wayland` on Wayland
+  sessions when the user has not set an explicit Qt platform, avoiding the
+  fatal Qt `xcb` plugin crash seen on GNOME Wayland.
+- The editor frontend now boots with a safe placeholder state, preventing the
+  startup-time Alpine expression errors that could appear inside the desktop
+  webview before the first `/api/editor` response arrived.
+
 ## [0.9.1] — 2026-05-16
 
 ### Fixed
