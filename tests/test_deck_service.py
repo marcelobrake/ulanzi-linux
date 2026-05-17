@@ -13,7 +13,6 @@ from typing import cast
 import pytest
 
 from ulanzi_linux.application.deck_service import DeckService
-from ulanzi_linux.domain.button_config import ButtonConfig
 from ulanzi_linux.domain.commands import SmallWindowMode
 from ulanzi_linux.domain.device import DeckDevice, DeckSpec
 from ulanzi_linux.domain.events import ButtonEvent, DeviceInfoEvent

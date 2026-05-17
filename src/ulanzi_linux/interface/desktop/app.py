@@ -320,7 +320,7 @@ def launch_desktop_app(config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
             "yes",
         }:
             tray_icon = _start_tray(server.url, window_holder)
-        webview.start(gui="qt", debug=False)
+        webview.start(gui="qt", debug=False, icon=str(_asset_icon_path()))
     finally:
         if tray_icon is not None:
             with suppress(Exception):
