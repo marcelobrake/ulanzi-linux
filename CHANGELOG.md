@@ -7,6 +7,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] — 2026-05-17
+
+### Fixed
+
+- Restored native `SET_SMALL_WINDOW_DATA` updates for the D200 small window, so
+  live clock and CPU/memory refreshes no longer sit on top of stale CPU/RAM/GPU
+  artifacts left behind by the previous screen.
+- Kept the configurable wide background strip upload in place while switching
+  the live overlay back to the firmware-supported small-window protocol, which
+  avoids the zeroed dynamic text layer that could appear after mode changes or
+  reconnects.
+
 ## [0.9.2] — 2026-05-16
 
 ### Fixed
