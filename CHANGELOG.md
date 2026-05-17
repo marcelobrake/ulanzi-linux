@@ -7,6 +7,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] — 2026-05-17
+
+### Fixed
+
+- Custom `small_window.metrics_items` mode now pre-clears the firmware-native
+  clock/stats cache with blank payloads before pinning the strip to
+  `BACKGROUND`. On devices that still resurrect the old native layer, that
+  fallback now returns blank instead of showing stale statistics underneath
+  the host-rendered pages.
+
 ## [0.10.2] — 2026-05-17
 
 ### Fixed

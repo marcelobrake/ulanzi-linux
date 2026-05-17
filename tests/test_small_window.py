@@ -467,9 +467,9 @@ async def test_small_window_custom_metrics_render_as_partial_info_window() -> No
         )
 
     assert SmallWindowMode.BACKGROUND in fake.small_window_modes
-    assert SmallWindowMode.CLOCK not in fake.small_window_modes
-    assert SmallWindowMode.STATS not in fake.small_window_modes
-    assert fake.small_window_data_calls == []
+    assert SmallWindowMode.CLOCK in fake.small_window_modes
+    assert SmallWindowMode.STATS in fake.small_window_modes
+    assert any(call["time_str"] == "" for call in fake.small_window_data_calls)
     assert any(
         upload
         and upload[0].index == 13
@@ -503,10 +503,11 @@ async def test_small_window_custom_metrics_rotation_stays_fully_host_rendered() 
             _stop_after(),
         )
 
-    assert fake.small_window_data_calls == []
-    assert fake.small_window_modes and set(fake.small_window_modes) == {
-        SmallWindowMode.BACKGROUND
-    }
+    assert fake.small_window_modes.count(SmallWindowMode.CLOCK) == 1
+    assert fake.small_window_modes.count(SmallWindowMode.STATS) == 1
+    assert SmallWindowMode.BACKGROUND in fake.small_window_modes
+    assert len(fake.small_window_data_calls) == 2
+    assert all(call["time_str"] == "" for call in fake.small_window_data_calls)
     assert sum(
         1
         for upload in fake.button_uploads
