@@ -104,7 +104,7 @@ at the transport boundary.
 - [x] `SET_SMALL_WINDOW_DATA` uses pipe-separated ASCII fields: `mode|cpu|mem|time|gpu`.
 - [x] `SET_SMALL_WINDOW_DATA` accepts a single-byte mode payload for layout changes such as `BACKGROUND`.
 - [x] Clock refreshes can be sent as `1|0|0|HH:MM:SS|0`, keeping the clock layout active while avoiding fake `0%` stats fields from empty slots.
-- [x] On affected D200 firmware builds, mixing host-rendered wide-strip uploads with firmware-native `CLOCK` / `STATS` packets can resurrect stale `CPU/RAM/GPU` overlays. Custom `metrics_items` mode now avoids `SET_SMALL_WINDOW_DATA` entirely and keeps the strip pinned to `BACKGROUND`.
+- [x] On affected D200 firmware builds, mixing host-rendered wide-strip uploads with firmware-native `CLOCK` / `STATS` packets can resurrect stale `CPU/RAM/GPU` overlays. Custom `metrics_items` mode now scrubs the firmware-native cache with blank `CLOCK` / `STATS` payloads, then keeps the strip pinned to `BACKGROUND` for ongoing host-rendered updates.
 - [ ] Whether `BACKGROUND` mode accepts extra fields beyond the standard payload.
 - [ ] Whether brightness value is clamped by firmware or silently wraps.
 - [ ] Any handshake the official client does before sending `SET_BUTTONS`.

@@ -123,9 +123,11 @@ ulanzi-linux push-config <CONFIG_PATH> [--partial] [--save-firmware]
   loop pushes either the plain clock layout or the CPU/MEM stats layout
   every `interval_s` seconds depending on `small_window.show_metrics`; if
   `small_window.metrics_items` is set, the daemon keeps the device pinned
-  to `BACKGROUND` and uploads both the clock page and the custom metrics
-  page host-side to avoid stale firmware overlays; the watcher polls
-  `deck.yaml`'s mtime every ~1 s and triggers an atomic swap on change.
+  to `BACKGROUND`, first overwrites the firmware-native clock/stats cache
+  with blank payloads, and then uploads both the clock page and the custom
+  metrics page host-side to avoid stale firmware overlays; the watcher
+  polls `deck.yaml`'s mtime every ~1 s and triggers an atomic swap on
+  change.
 3. **Shutdown** — on `SIGINT`/`SIGTERM` the daemon cancels its async
    tasks, flushes the final HID packet, closes the device, and exits 0.
 
