@@ -61,7 +61,11 @@ alternates between the clock and stats layouts while the daemon keeps
 refreshing faster than the firmware watchdog. When disabled, a plain
 heartbeat loop runs in its place to keep the firmware watchdog happy.
 If `metrics_items` is populated, the daemon switches the wide strip into
-its Linux-rendered custom mode instead of the firmware-native stats mode.
+its Linux-rendered custom mode instead of the firmware-native small-window
+layouts. In that mode both the clock page and the stats page are drawn on
+the host and uploaded as the wide strip while the device stays pinned to
+`BACKGROUND`; this avoids firmware builds that resurrect stale
+`CPU/RAM/GPU` overlays underneath custom content.
 
 | Field | Type | Default | Constraints |
 | --- | --- | --- | --- |
@@ -71,7 +75,7 @@ its Linux-rendered custom mode instead of the firmware-native stats mode.
 | `show_metrics` | bool | `true` | `true` shows the stats layout, `false` keeps the plain clock layout. |
 | `rotate_every_s` | float or null | `null` | Optional. When set together with `show_metrics: true`, the daemon alternates clock and stats after this many seconds per mode while still refreshing under `interval_s`. |
 | `background_color` | hex color | `"#000000"` | Optional. Uploaded as a solid background for the wide info strip so the firmware logo can be replaced with a chosen matte color. |
-| `metrics_items` | list[string] | `[]` | Optional. Up to 3 unique values chosen from `cpu`, `memory`, `gpu`, `temperature`, `disk`, `network`, `battery`. Empty keeps the firmware-native stats mode; a non-empty list enables the Linux-rendered custom strip. |
+| `metrics_items` | list[string] | `[]` | Optional. Up to 3 unique values chosen from `cpu`, `memory`, `gpu`, `temperature`, `disk`, `network`, `battery`. Empty keeps the firmware-native stats mode; a non-empty list enables the Linux-rendered custom strip for both clock and stats pages. |
 
 ```yaml
 small_window:
@@ -91,9 +95,10 @@ is also configured, the daemon starts in clock mode, keeps that layout for
 the configured duration, then alternates to stats for the same duration.
 Independently of the active mode, `background_color` is uploaded as a solid
 wide background for the small-window strip; if omitted, the daemon falls back
-to black. When `metrics_items` is set, the daemon renders the wide strip
-itself and shows up to three custom metrics per page using the selected
-background color instead of the firmware-native stats panel.
+to black. When `metrics_items` is set, the daemon stops using the
+firmware-native small-window renderer entirely and instead uploads its own
+wide-strip pages: an analog + digital clock page and, when enabled, up to
+three custom Linux metrics on the selected background color.
 
 ### Metric notes
 

@@ -7,6 +7,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] — 2026-05-17
+
+### Fixed
+
+- Custom `small_window.metrics_items` mode no longer mixes firmware-native
+  `CLOCK` / `STATS` packets with the Linux-rendered strip. Both the clock
+  page and the stats page are now rendered host-side while the device stays
+  pinned to `BACKGROUND`, avoiding the stale `CPU/RAM/GPU` overlay that some
+  D200 firmware builds kept reviving underneath the custom page.
+- The custom clock page now draws an analog + digital layout in the wide
+  strip, preserving the earlier visual style without relying on the unstable
+  firmware-native clock transition path.
+
 ## [0.10.1] — 2026-05-17
 
 ### Fixed
