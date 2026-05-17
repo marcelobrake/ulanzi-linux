@@ -7,6 +7,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.4] — 2026-05-17
+
+### Fixed
+
+- The native small-window cache scrub used by custom `metrics_items` mode now
+  sends blank `CLOCK` / `STATS` fields instead of zeroes. On firmware builds
+  that still resurface the native layer underneath the host-rendered pages,
+  the fallback should now come back visually empty instead of showing `0%`
+  values.
+
 ## [0.10.3] — 2026-05-17
 
 ### Fixed
