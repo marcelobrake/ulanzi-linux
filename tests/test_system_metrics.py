@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from ulanzi_linux.infrastructure.system_metrics import ProcSystemMetrics
 
 
@@ -76,3 +74,43 @@ def test_format_time_uses_strftime_pattern() -> None:
     )
     out = reader.format_time("%Y")
     assert out.isdigit() and len(out) == 4  # year
+
+
+def test_metric_value_formats_human_readable_strings(tmp_path: Path) -> None:
+    stat_path = tmp_path / "stat"
+    stat_path.write_text(_stat_line(100, 0, 50, 800))
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemTotal: 100 kB\nMemAvailable: 50 kB\n")
+    netdev = tmp_path / "netdev"
+    netdev.write_text(
+        "Inter-|   Receive                                                |  Transmit\n"
+        " face |bytes    packets errs drop fifo frame compressed multicast|"
+        "bytes    packets errs drop fifo colls carrier compressed\n"
+        "  eth0: 100 0 0 0 0 0 0 0 200 0 0 0 0 0 0 0\n"
+    )
+    thermal = tmp_path / "thermal"
+    (thermal / "thermal_zone0").mkdir(parents=True)
+    (thermal / "thermal_zone0" / "temp").write_text("55000")
+    power = tmp_path / "power"
+    (power / "BAT0").mkdir(parents=True)
+    (power / "BAT0" / "capacity").write_text("82")
+    drm = tmp_path / "drm"
+    (drm / "card0" / "device").mkdir(parents=True)
+    (drm / "card0" / "device" / "gpu_busy_percent").write_text("41")
+
+    reader = ProcSystemMetrics(
+        proc_stat=stat_path,
+        proc_meminfo=meminfo,
+        proc_net_dev=netdev,
+        sys_thermal=thermal,
+        sys_power_supply=power,
+        sys_drm=drm,
+    )
+
+    assert reader.read_metric_value("cpu") == "0%"
+    assert reader.read_metric_value("memory") == "50%"
+    assert reader.read_metric_value("temperature") == "55C"
+    assert reader.read_metric_value("disk").endswith("%")
+    assert reader.read_metric_value("battery") == "82%"
+    assert reader.read_metric_value("gpu") == "41%"
+    assert reader.read_metric_value("network").endswith("/s")

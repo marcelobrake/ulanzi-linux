@@ -153,6 +153,7 @@ def test_get_editor_returns_structured_config(
     assert body["small_window"]["show_metrics"] is True
     assert body["small_window"]["rotate_every_s"] is None
     assert body["small_window"]["background_color"] == "#000000"
+    assert body["small_window"]["metrics_items"] == []
     assert body["pages"][0]["buttons"][0]["action"]["command_id"] == ""
     assert body["pages"][0]["buttons"][0]["text_style"]["background_color"] == "#111827"
     assert body["versioned_config_path"] is None
@@ -163,13 +164,17 @@ def test_small_window_preview_returns_live_payload(
     client: tuple[TestClient, Path],
 ) -> None:
     c, _ = client
-    r = c.get("/api/small-window/preview", params={"time_format": "%H:%M"})
+    r = c.get(
+        "/api/small-window/preview",
+        params=[("time_format", "%H:%M"), ("metrics_items", "cpu"), ("metrics_items", "disk")],
+    )
     assert r.status_code == 200
     body = r.json()
     assert isinstance(body["time_text"], str)
     assert isinstance(body["cpu_percent"], int)
     assert isinstance(body["mem_percent"], int)
     assert body["gpu_percent"] == 0
+    assert [metric["id"] for metric in body["metrics"]] == ["cpu", "disk"]
 
 
 def test_builtin_assets_catalog_returns_many_icons(

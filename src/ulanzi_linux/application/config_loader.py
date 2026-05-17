@@ -174,6 +174,7 @@ def _parse_small_window(raw: dict[str, Any] | None) -> SmallWindowConfig:
                 DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR,
             )
         ),
+        metrics_items=tuple(raw.get("metrics_items") or ()),
     )
 
 

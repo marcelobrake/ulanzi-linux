@@ -97,7 +97,9 @@
                     <div class="small-window-clock">
                       <span class="small-window-badge">alternando</span>
                       <strong x-text="smallWindowTimeLabel"></strong>
-                      <small x-text="'relógio ↔ CPU/MEM · ' + smallWindowRotateLabel + 's'"></small>
+                      <small x-text="usesCustomSmallWindowMetrics
+                        ? 'relógio ↔ métricas · ' + smallWindowRotateLabel + 's'
+                        : 'relógio ↔ CPU/MEM · ' + smallWindowRotateLabel + 's'"></small>
                     </div>
                   </template>
                   <template x-if="editor?.small_window?.enabled && !smallWindowAlternates && editor?.small_window?.show_metrics === false">
@@ -108,7 +110,7 @@
                     </div>
                   </template>
                   <template x-if="editor?.small_window?.enabled && !smallWindowAlternates && editor?.small_window?.show_metrics !== false">
-                    <div class="small-window-stats">
+                    <div class="small-window-stats" x-show="!usesCustomSmallWindowMetrics">
                       <div class="small-window-metric">
                         <span>CPU</span>
                         <strong x-text="smallWindowPreview.cpu_percent + '%' "></strong>
@@ -117,6 +119,16 @@
                         <span>MEM</span>
                         <strong x-text="smallWindowPreview.mem_percent + '%' "></strong>
                       </div>
+                    </div>
+                  </template>
+                  <template x-if="editor?.small_window?.enabled && !smallWindowAlternates && editor?.small_window?.show_metrics !== false && usesCustomSmallWindowMetrics">
+                    <div class="small-window-stats">
+                      <template x-for="metric in smallWindowPreview.metrics" :key="metric.id">
+                        <div class="small-window-metric">
+                          <span x-text="metric.label"></span>
+                          <strong x-text="metric.value"></strong>
+                        </div>
+                      </template>
                     </div>
                   </template>
                   <template x-if="!editor?.small_window?.enabled">
@@ -437,6 +449,22 @@
                :disabled="!editor.small_window.enabled" />
         <span>Usar modo de estatísticas (CPU e memória) no lugar do relógio</span>
       </label>
+
+      <div class="field">
+        <span>Estatísticas customizadas (1 a 3 itens)</span>
+        <div class="style-toggle-row">
+          <template x-for="metric in smallWindowMetricOptions" :key="metric.value">
+            <button type="button"
+                    class="style-chip"
+                    :class="smallWindowMetricSelected(metric.value) ? 'active' : ''"
+                    :disabled="smallWindowMetricDisabled(metric.value)"
+                    @click="toggleSmallWindowMetric(metric.value)">
+              <span x-text="metric.label"></span>
+            </button>
+          </template>
+        </div>
+        <small>Deixe vazio para continuar usando o visor nativo do firmware. Quando você selecionar itens aqui, o slot largo passa a ser renderizado pelo Linux.</small>
+      </div>
 
       <label class="field">
         <span>Intervalo (s)</span>

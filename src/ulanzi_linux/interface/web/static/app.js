@@ -41,6 +41,16 @@ const BUILTIN_ICON_STYLES = Object.freeze([
     { value: "solid", label: "Solid" },
 ]);
 
+const SMALL_WINDOW_METRICS = Object.freeze([
+    { value: "cpu", label: "CPU" },
+    { value: "memory", label: "Memória" },
+    { value: "gpu", label: "GPU" },
+    { value: "temperature", label: "Temperatura" },
+    { value: "disk", label: "Uso de disco" },
+    { value: "network", label: "Rede" },
+    { value: "battery", label: "Bateria" },
+]);
+
 function emptyAction() {
     return {
         type: "none",
@@ -88,6 +98,7 @@ function makeResetEditor(defaultPage = "main") {
             show_metrics: false,
             rotate_every_s: null,
             background_color: "#000000",
+            metrics_items: [],
         },
     };
 }
@@ -102,6 +113,7 @@ window.editorApp = function editorApp() {
             cpu_percent: 0,
             mem_percent: 0,
             gpu_percent: 0,
+            metrics: [],
         },
         status: "",
         statusClass: "",
@@ -114,6 +126,7 @@ window.editorApp = function editorApp() {
         newPageName: "",
         fontOptions: FONT_OPTIONS,
         builtinIconStyles: BUILTIN_ICON_STYLES,
+        smallWindowMetricOptions: SMALL_WINDOW_METRICS,
         builtinIcons: [],
         builtinIconQuery: "",
         builtinIconStyle: "all",
@@ -197,7 +210,10 @@ window.editorApp = function editorApp() {
             const timeFormat = this.editor.small_window?.time_format || "%H:%M";
             try {
                 const response = await fetch(
-                    `/api/small-window/preview?time_format=${encodeURIComponent(timeFormat)}`,
+                    `/api/small-window/preview?${new URLSearchParams([
+                        ["time_format", timeFormat],
+                        ...((this.editor.small_window?.metrics_items || []).map((item) => ["metrics_items", item])),
+                    ]).toString()}`,
                 );
                 const payload = await response.json();
                 if (!response.ok) {
@@ -208,6 +224,7 @@ window.editorApp = function editorApp() {
                     cpu_percent: Number(payload.cpu_percent) || 0,
                     mem_percent: Number(payload.mem_percent) || 0,
                     gpu_percent: Number(payload.gpu_percent) || 0,
+                    metrics: Array.isArray(payload.metrics) ? payload.metrics : [],
                 };
             } catch (_error) {
                 this.smallWindowPreview = {
@@ -235,10 +252,14 @@ window.editorApp = function editorApp() {
                 show_metrics: true,
                 rotate_every_s: null,
                 background_color: "#000000",
+                metrics_items: [],
             };
             editor.small_window.show_metrics = editor.small_window.show_metrics !== false;
             editor.small_window.rotate_every_s = this.parseOptionalNumber(editor.small_window.rotate_every_s);
             editor.small_window.background_color = editor.small_window.background_color || "#000000";
+            editor.small_window.metrics_items = Array.isArray(editor.small_window.metrics_items)
+                ? editor.small_window.metrics_items.slice(0, 3)
+                : [];
             return editor;
         },
 
@@ -535,9 +556,30 @@ window.editorApp = function editorApp() {
                     show_metrics: this.editor.small_window.show_metrics !== false,
                     rotate_every_s: this.parseOptionalNumber(this.editor.small_window.rotate_every_s),
                     background_color: this.editor.small_window.background_color || "#000000",
+                    metrics_items: (this.editor.small_window.metrics_items || []).slice(0, 3),
                 },
                 save_firmware_bundle: Boolean(this.saveFirmwareBundle),
             };
+        },
+
+        toggleSmallWindowMetric(metric) {
+            const current = this.editor.small_window.metrics_items || [];
+            if (current.includes(metric)) {
+                this.editor.small_window.metrics_items = current.filter((item) => item !== metric);
+            } else if (current.length < 3) {
+                this.editor.small_window.metrics_items = [...current, metric];
+            }
+            this.dirty = true;
+            void this.refreshSmallWindowPreview();
+        },
+
+        smallWindowMetricSelected(metric) {
+            return (this.editor.small_window.metrics_items || []).includes(metric);
+        },
+
+        smallWindowMetricDisabled(metric) {
+            return !this.smallWindowMetricSelected(metric)
+                && (this.editor.small_window.metrics_items || []).length >= 3;
         },
 
         smallWindowPreviewStyle() {
@@ -830,11 +872,15 @@ window.editorApp = function editorApp() {
             }
             if (this.smallWindowAlternates) {
                 const seconds = this.formatSeconds(this.editor.small_window.rotate_every_s);
-                return `Relógio ${seconds}s / estatísticas ${seconds}s`;
+                return this.usesCustomSmallWindowMetrics
+                    ? `Relógio ${seconds}s / métricas ${seconds}s`
+                    : `Relógio ${seconds}s / estatísticas ${seconds}s`;
             }
             return this.editor.small_window.show_metrics === false
                 ? "Somente relógio"
-                : "Estatísticas";
+                : this.usesCustomSmallWindowMetrics
+                    ? "Métricas customizadas"
+                    : "Estatísticas nativas";
         },
 
         get smallWindowAlternates() {
@@ -851,6 +897,10 @@ window.editorApp = function editorApp() {
 
         get smallWindowTimeLabel() {
             return this.smallWindowPreview.time_text || "--:--";
+        },
+
+        get usesCustomSmallWindowMetrics() {
+            return Boolean((this.editor?.small_window?.metrics_items || []).length);
         },
 
         get currentTextTileStyle() {

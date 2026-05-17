@@ -33,12 +33,12 @@ import re
 import tempfile
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import quote
 
 import structlog
 import yaml
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -53,6 +53,7 @@ from ulanzi_linux.application.config_loader import load_deck_config
 from ulanzi_linux.domain.button_config import (
     DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR,
     DEFAULT_TIME_FORMAT,
+    SMALL_WINDOW_METRIC_CHOICES,
     ButtonConfig,
     DeckConfig,
     PredefinedCommandAction,
@@ -62,13 +63,16 @@ from ulanzi_linux.domain.button_config import (
     TextStyle,
     UrlAction,
 )
-from ulanzi_linux.infrastructure.hid_transport import enumerate_hid_devices
 from ulanzi_linux.infrastructure.builtin_icons import (
     list_builtin_icons,
     materialize_builtin_icon,
     render_builtin_icon_png,
 )
-from ulanzi_linux.infrastructure.system_metrics import ProcSystemMetrics
+from ulanzi_linux.infrastructure.hid_transport import enumerate_hid_devices
+from ulanzi_linux.infrastructure.system_metrics import (
+    SMALL_WINDOW_METRIC_LABELS,
+    ProcSystemMetrics,
+)
 from ulanzi_linux.infrastructure.ulanzi_d200 import D200_SPEC
 from ulanzi_linux.infrastructure.zip_builder import ICON_SIZE
 from ulanzi_linux.interface.web.models import (
@@ -89,6 +93,7 @@ from ulanzi_linux.interface.web.models import (
     EditorTextStyleModel,
     HealthResponse,
     PageSummary,
+    SmallWindowPreviewMetric,
     SmallWindowPreviewResponse,
     ValidationSummary,
 )
@@ -218,6 +223,7 @@ def _config_to_editor_response(
             show_metrics=cfg.small_window.show_metrics,
             rotate_every_s=cfg.small_window.rotate_every_s,
             background_color=cfg.small_window.background_color,
+            metrics_items=list(cfg.small_window.metrics_items),
         ),
         versioned_config_path=versioned_config_path,
         saved_firmware_bundle_path=saved_firmware_bundle_path,
@@ -356,6 +362,8 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
     }
     if req.small_window.rotate_every_s is not None:
         doc["small_window"]["rotate_every_s"] = req.small_window.rotate_every_s
+    if req.small_window.metrics_items:
+        doc["small_window"]["metrics_items"] = req.small_window.metrics_items
     if req.fixed_buttons:
         doc["fixed_buttons"] = [
             _editor_button_to_doc(button)
@@ -606,12 +614,26 @@ def create_app(config_path: Path) -> FastAPI:
     )
     def get_small_window_preview(
         time_format: str = DEFAULT_TIME_FORMAT,
+        metrics_items: Annotated[list[str] | None, Query()] = None,
     ) -> SmallWindowPreviewResponse:
+        selected_metrics = [
+            metric
+            for metric in (metrics_items or [])
+            if metric in SMALL_WINDOW_METRIC_CHOICES
+        ][:3]
         return SmallWindowPreviewResponse(
             time_text=metrics_reader.format_time(time_format),
             cpu_percent=metrics_reader.read_cpu_percent(),
             mem_percent=metrics_reader.read_memory_percent(),
             gpu_percent=0,
+            metrics=[
+                SmallWindowPreviewMetric(
+                    id=metric,
+                    label=SMALL_WINDOW_METRIC_LABELS.get(metric, metric.upper()),
+                    value=metrics_reader.read_metric_value(metric),
+                )
+                for metric in selected_metrics
+            ],
         )
 
     # ------------------------------------------------------------------ #

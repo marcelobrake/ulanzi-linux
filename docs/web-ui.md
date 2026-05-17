@@ -63,10 +63,15 @@ action-specific help and a direct "test link" affordance for URL actions.
 
 The simulator uses fixed 96×96 button tiles and the wide bottom-right slot
 now renders a live small-window preview. When `show_metrics` is off it shows
-the current clock; when it is on it shows live CPU and memory values from the
-host, matching the D200 mode switch already validated on hardware. The small-
-window inspector also exposes a color picker for the strip background; when no
-color is saved, the daemon uses solid black.
+the current clock; when it is on it shows either the firmware-native CPU /
+memory preview or up to three custom Linux metrics selected in the inspector.
+The small-window inspector also exposes a color picker for the strip
+background; when no color is saved, the daemon uses solid black.
+
+Leaving the metric selection empty preserves the firmware-native stats mode.
+Selecting 1 to 3 items switches the strip to the Linux-rendered custom mode,
+which can display `CPU`, `Memória`, `GPU`, `Temperatura`, `Uso de disco`,
+`Rede`, or `Bateria`.
 
 The image inspector also ships with a built-in asset catalog backed by Font
 Awesome Free plus Unicode emoji metadata rendered locally through Noto Color

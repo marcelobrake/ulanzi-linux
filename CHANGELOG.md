@@ -7,9 +7,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.5] — 2026-05-17
+## [0.10.0] — 2026-05-17
+
+### Added
+
+- Added optional `small_window.metrics_items`, letting the editor and YAML
+  select up to three custom Linux-host metrics for the wide status strip:
+  `cpu`, `memory`, `gpu`, `temperature`, `disk`, `network`, and `battery`.
+  Leaving the list empty preserves the firmware-native stats mode; selecting
+  items switches the strip to a Linux-rendered custom page.
 
 ### Fixed
+
+- The desktop window now passes the bundled Ulanzi icon into the Qt webview
+  startup path, so the running app no longer falls back to the generic gear
+  icon in the dock / task switcher.
+- The visual editor small-window preview now mirrors the selected custom
+  metrics and keeps the existing clock/stats rotation workflow for the new
+  Linux-rendered mode.
 
 - Restored the D200 small-window payload to the protocol used by the
   `redphx/strmdck` reference implementation: `STATS=0`, `CLOCK=1`, and live

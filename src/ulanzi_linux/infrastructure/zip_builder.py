@@ -27,9 +27,9 @@ Firmware bug worked around here:
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
-import hashlib
 import zipfile
 from collections.abc import Iterable
 from pathlib import Path
@@ -216,20 +216,22 @@ def _wrap_text(
     font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
     max_width: int,
 ) -> list[str]:
-    words = text.split()
-    if not words:
-        return [text]
     lines: list[str] = []
-    current = words[0]
-    for word in words[1:]:
-        candidate = f"{current} {word}"
-        width = draw.textbbox((0, 0), candidate, font=font)[2]
-        if width <= max_width:
-            current = candidate
+    for paragraph in text.splitlines() or [text]:
+        words = paragraph.split()
+        if not words:
+            lines.append("")
             continue
+        current = words[0]
+        for word in words[1:]:
+            candidate = f"{current} {word}"
+            width = draw.textbbox((0, 0), candidate, font=font)[2]
+            if width <= max_width:
+                current = candidate
+                continue
+            lines.append(current)
+            current = word
         lines.append(current)
-        current = word
-    lines.append(current)
     return lines
 
 

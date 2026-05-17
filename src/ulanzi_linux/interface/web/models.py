@@ -130,6 +130,7 @@ class EditorSmallWindowModel(BaseModel):
     show_metrics: bool = True
     rotate_every_s: float | None = None
     background_color: str = DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR
+    metrics_items: list[str] = Field(default_factory=list)
 
 
 class EditorConfigResponse(BaseModel):
@@ -197,6 +198,15 @@ class SmallWindowPreviewResponse(BaseModel):
     cpu_percent: int
     mem_percent: int
     gpu_percent: int = 0
+    metrics: list[SmallWindowPreviewMetric] = Field(default_factory=list)
+
+
+class SmallWindowPreviewMetric(BaseModel):
+    """One custom metric entry shown in the wide small-window preview."""
+
+    id: str
+    label: str
+    value: str
 
 
 class DeviceSummary(BaseModel):
@@ -237,6 +247,7 @@ __all__ = [
     "EditorTextStyleModel",
     "HealthResponse",
     "PageSummary",
+    "SmallWindowPreviewMetric",
     "SmallWindowPreviewResponse",
     "ValidationSummary",
 ]

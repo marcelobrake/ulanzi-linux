@@ -17,6 +17,7 @@ small_window:                   # optional block
   show_metrics: true            # true = stats layout, false = plain clock
   rotate_every_s: 5.0           # optional: alternate clock/stats every 5s
   background_color: "#000000"  # optional: solid background for the strip
+  metrics_items: [cpu, disk]    # optional: up to 3 custom Linux metrics
 pages:                          # multi-page schema (preferred)
   <page-name>:
     buttons:
@@ -59,6 +60,8 @@ switches the panel to CPU / memory stats. `rotate_every_s` optionally
 alternates between the clock and stats layouts while the daemon keeps
 refreshing faster than the firmware watchdog. When disabled, a plain
 heartbeat loop runs in its place to keep the firmware watchdog happy.
+If `metrics_items` is populated, the daemon switches the wide strip into
+its Linux-rendered custom mode instead of the firmware-native stats mode.
 
 | Field | Type | Default | Constraints |
 | --- | --- | --- | --- |
@@ -68,6 +71,7 @@ heartbeat loop runs in its place to keep the firmware watchdog happy.
 | `show_metrics` | bool | `true` | `true` shows the stats layout, `false` keeps the plain clock layout. |
 | `rotate_every_s` | float or null | `null` | Optional. When set together with `show_metrics: true`, the daemon alternates clock and stats after this many seconds per mode while still refreshing under `interval_s`. |
 | `background_color` | hex color | `"#000000"` | Optional. Uploaded as a solid background for the wide info strip so the firmware logo can be replaced with a chosen matte color. |
+| `metrics_items` | list[string] | `[]` | Optional. Up to 3 unique values chosen from `cpu`, `memory`, `gpu`, `temperature`, `disk`, `network`, `battery`. Empty keeps the firmware-native stats mode; a non-empty list enables the Linux-rendered custom strip. |
 
 ```yaml
 small_window:
@@ -77,6 +81,7 @@ small_window:
   show_metrics: true
   rotate_every_s: 5.0            # 5 s de relógio, 5 s de estatísticas
   background_color: "#000000"
+  metrics_items: [cpu, temperature, disk]
 ```
 
 When `show_metrics: false`, the daemon still sends a clock-safe payload
@@ -86,14 +91,19 @@ is also configured, the daemon starts in clock mode, keeps that layout for
 the configured duration, then alternates to stats for the same duration.
 Independently of the active mode, `background_color` is uploaded as a solid
 wide background for the small-window strip; if omitted, the daemon falls back
-to black.
+to black. When `metrics_items` is set, the daemon renders the wide strip
+itself and shows up to three custom metrics per page using the selected
+background color instead of the firmware-native stats panel.
 
-### Why no GPU metric?
+### Metric notes
 
-Brake explicitly dropped it — no portable way to get utilization
-across Intel / AMD / NVIDIA without pulling in heavy drivers. If you
-want it, add a custom metric in
-`src/ulanzi_linux/infrastructure/system_metrics.py` and submit a PR.
+- `cpu` and `memory` come from `/proc`.
+- `temperature` is best-effort from `/sys/class/thermal`.
+- `disk` uses the `/` filesystem percentage.
+- `network` is aggregate non-loopback throughput.
+- `battery` reads `BAT*/capacity` when available.
+- `gpu` is best-effort from sysfs (`gpu_busy_percent` / `load`) and can show
+  `n/a` on hosts that do not expose a portable GPU utilisation file.
 
 ## 4. `pages`
 

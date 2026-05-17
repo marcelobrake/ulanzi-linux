@@ -129,6 +129,18 @@ class FakeMetrics(SystemMetricsReader):
             return f"{self.time_str_const}:00"
         return self.time_str_const
 
+    def read_metric_value(self, metric: str) -> str:
+        values = {
+            "cpu": f"{self.read_cpu_percent()}%",
+            "memory": f"{self.read_memory_percent()}%",
+            "gpu": "0%",
+            "temperature": "55C",
+            "disk": "67%",
+            "network": "1.2 M/s",
+            "battery": "82%",
+        }
+        return values[metric]
+
 
 def _cfg_with_small_window(
     *,
@@ -136,6 +148,7 @@ def _cfg_with_small_window(
     interval_s: float = 0.05,
     show_metrics: bool = True,
     rotate_every_s: float | None = None,
+    metrics_items: tuple[str, ...] = (),
 ) -> DeckConfig:
     return DeckConfig(
         pages={
@@ -151,6 +164,7 @@ def _cfg_with_small_window(
             time_format="%H:%M",
             show_metrics=show_metrics,
             rotate_every_s=rotate_every_s,
+            metrics_items=metrics_items,
         ),
     )
 
@@ -220,6 +234,14 @@ def test_small_window_rejects_rotate_below_floor() -> None:
         SmallWindowConfig(enabled=True, rotate_every_s=0.001)
 
 
+def test_small_window_rejects_more_than_three_custom_metrics() -> None:
+    with pytest.raises(ValueError, match="1 and 3"):
+        SmallWindowConfig(
+            enabled=True,
+            metrics_items=("cpu", "memory", "disk", "battery"),
+        )
+
+
 def test_loader_parses_small_window_block(tmp_path: Path) -> None:
     yaml_text = (
         "default_page: main\n"
@@ -229,6 +251,7 @@ def test_loader_parses_small_window_block(tmp_path: Path) -> None:
         "  rotate_every_s: 5.0\n"
         "  time_format: \"%H:%M\"\n"
         "  background_color: \"#123456\"\n"
+        "  metrics_items: [cpu, temperature, disk]\n"
         "pages:\n"
         "  main:\n"
         "    buttons:\n"
@@ -243,6 +266,7 @@ def test_loader_parses_small_window_block(tmp_path: Path) -> None:
     assert cfg.small_window.rotate_every_s == 5.0
     assert cfg.small_window.time_format == "%H:%M"
     assert cfg.small_window.background_color == "#123456"
+    assert cfg.small_window.metrics_items == ("cpu", "temperature", "disk")
 
 
 def test_loader_small_window_block_on_legacy_schema(tmp_path: Path) -> None:
@@ -415,6 +439,42 @@ async def test_small_window_can_alternate_clock_and_stats() -> None:
     assert any(
         call["cpu"] == 42 and call["mem"] == 61 and call["time_str"] == "14:32:00"
         for call in fake.small_window_data_calls
+    )
+
+
+@pytest.mark.asyncio
+async def test_small_window_custom_metrics_render_as_partial_info_window() -> None:
+    fake = RecordingFakeDeck()
+    metrics = FakeMetrics(cpu_values=[0, 37, 37], mem=61, time_str="14:32")
+    cfg = _cfg_with_small_window(
+        enabled=True,
+        interval_s=0.05,
+        show_metrics=True,
+        metrics_items=("cpu", "temperature", "disk"),
+    )
+
+    async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
+        daemon = DeckDaemon(svc, cfg, metrics_reader=metrics)
+        stop = asyncio.Event()
+
+        async def _stop_after() -> None:
+            await asyncio.sleep(0.15)
+            stop.set()
+
+        await asyncio.gather(
+            daemon.run(stop_event=stop),
+            _stop_after(),
+        )
+
+    assert SmallWindowMode.BACKGROUND in fake.small_window_modes
+    assert fake.small_window_data_calls == []
+    assert any(
+        upload
+        and upload[0].index == 13
+        and "CPU" in upload[0].label
+        and "TEMP" in upload[0].label
+        and "DISK" in upload[0].label
+        for upload in fake.button_uploads
     )
 
 

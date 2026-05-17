@@ -41,6 +41,7 @@ from ulanzi_linux.domain.button_config import (
 from ulanzi_linux.domain.commands import SmallWindowMode
 from ulanzi_linux.domain.events import ButtonEvent
 from ulanzi_linux.infrastructure.system_metrics import (
+    SMALL_WINDOW_METRIC_LABELS,
     ProcSystemMetrics,
     SystemMetricsReader,
 )
@@ -79,6 +80,43 @@ def _rotates_small_window(sw_cfg: object) -> bool:
     return bool(
         getattr(sw_cfg, "show_metrics", False)
         and getattr(sw_cfg, "rotate_every_s", None) is not None
+    )
+
+
+def _uses_custom_small_window(sw_cfg: object) -> bool:
+    return bool(getattr(sw_cfg, "metrics_items", ()))
+
+
+def _small_window_clock_button(*, background_color: str, time_str: str) -> ButtonConfig:
+    return ButtonConfig(
+        index=INFO_WINDOW_INDEX,
+        label=time_str,
+        text_style=TextStyle(
+            background_color=background_color,
+            text_color="#F8FAFC",
+            font_family="DejaVu Sans Mono",
+            font_size=48,
+            bold=True,
+        ),
+    )
+
+
+def _small_window_metrics_button(
+    *,
+    background_color: str,
+    metric_lines: list[str],
+) -> ButtonConfig:
+    font_size = 44 if len(metric_lines) == 1 else 34 if len(metric_lines) == 2 else 28
+    return ButtonConfig(
+        index=INFO_WINDOW_INDEX,
+        label="\n".join(metric_lines),
+        text_style=TextStyle(
+            background_color=background_color,
+            text_color="#F8FAFC",
+            font_family="DejaVu Sans Mono",
+            font_size=font_size,
+            bold=True,
+        ),
     )
 
 
@@ -288,12 +326,21 @@ class DeckDaemon:
             return rendered
         return self._metrics_reader.format_time("%H:%M:%S")
 
+    def _custom_metric_lines(self, metrics_items: tuple[str, ...]) -> list[str]:
+        lines: list[str] = []
+        for metric in metrics_items:
+            label = SMALL_WINDOW_METRIC_LABELS.get(metric, metric.upper())
+            value = self._metrics_reader.read_metric_value(metric)
+            lines.append(f"{label:<4} {value}")
+        return lines
+
     async def _status_loop(self, stop_event: asyncio.Event) -> None:
         logger.info("status_loop_started")
         active_mode: SmallWindowMode | None = None
+        device_mode: SmallWindowMode | None = None
         mode_started_at: float | None = None
         metrics_primed = False
-        strategy_key: tuple[bool, bool, float | None] | None = None
+        strategy_key: tuple[bool, bool, float | None, tuple[str, ...]] | None = None
         try:
             while not stop_event.is_set():
                 try:
@@ -302,9 +349,11 @@ class DeckDaemon:
                         sw_cfg.enabled,
                         sw_cfg.show_metrics,
                         sw_cfg.rotate_every_s,
+                        tuple(sw_cfg.metrics_items),
                     )
                     if strategy_key != current_strategy:
                         active_mode = None
+                        device_mode = None
                         mode_started_at = None
                         metrics_primed = False
                         strategy_key = current_strategy
@@ -340,44 +389,88 @@ class DeckDaemon:
                                 desired_mode = SmallWindowMode.STATS
                         else:
                             desired_mode = SmallWindowMode.CLOCK
-                        if active_mode != desired_mode:
-                            await self._service._device.set_small_window_mode(
-                                desired_mode
-                            )
-                            active_mode = desired_mode
-                            mode_started_at = now
-                            metrics_primed = False
-                            if _rotates_small_window(sw_cfg):
-                                next_mode_switch_in = sw_cfg.rotate_every_s
-                        if sw_cfg.show_metrics and not metrics_primed:
-                            self._metrics_reader.read_cpu_percent()
-                            metrics_primed = True
-                        if active_mode == SmallWindowMode.STATS:
-                            cpu: int | None = self._metrics_reader.read_cpu_percent()
-                            mem: int | None = self._metrics_reader.read_memory_percent()
-                            time_str = self._wire_time_string(sw_cfg.time_format)
-                            await self._service._device.set_small_window_data(
-                                cpu=cpu,
-                                mem=mem,
-                                gpu=0,
-                                time_str=time_str,
-                            )
+                        if _uses_custom_small_window(sw_cfg):
+                            if device_mode != SmallWindowMode.BACKGROUND:
+                                await self._service._device.set_small_window_mode(
+                                    SmallWindowMode.BACKGROUND
+                                )
+                                device_mode = SmallWindowMode.BACKGROUND
+                            if active_mode != desired_mode:
+                                active_mode = desired_mode
+                                mode_started_at = now
+                                metrics_primed = False
+                                if _rotates_small_window(sw_cfg):
+                                    next_mode_switch_in = sw_cfg.rotate_every_s
+                            if sw_cfg.show_metrics and not metrics_primed:
+                                for metric in sw_cfg.metrics_items:
+                                    if metric in {"cpu", "network"}:
+                                        self._metrics_reader.read_metric_value(metric)
+                                metrics_primed = True
+                            if active_mode == SmallWindowMode.STATS:
+                                await self._service._device.set_buttons(
+                                    (
+                                        _small_window_metrics_button(
+                                            background_color=sw_cfg.background_color,
+                                            metric_lines=self._custom_metric_lines(
+                                                sw_cfg.metrics_items
+                                            ),
+                                        ),
+                                    ),
+                                    partial=True,
+                                )
+                            else:
+                                await self._service._device.set_buttons(
+                                    (
+                                        _small_window_clock_button(
+                                            background_color=sw_cfg.background_color,
+                                            time_str=self._wire_time_string(
+                                                sw_cfg.time_format
+                                            ),
+                                        ),
+                                    ),
+                                    partial=True,
+                                )
                         else:
-                            time_str = self._wire_time_string(sw_cfg.time_format)
-                            await self._service._device.set_small_window_data(
-                                cpu=0,
-                                mem=0,
-                                gpu=0,
-                                time_str=time_str,
-                            )
+                            if active_mode != desired_mode:
+                                await self._service._device.set_small_window_mode(
+                                    desired_mode
+                                )
+                                device_mode = desired_mode
+                                active_mode = desired_mode
+                                mode_started_at = now
+                                metrics_primed = False
+                                if _rotates_small_window(sw_cfg):
+                                    next_mode_switch_in = sw_cfg.rotate_every_s
+                            if sw_cfg.show_metrics and not metrics_primed:
+                                self._metrics_reader.read_cpu_percent()
+                                metrics_primed = True
+                            if active_mode == SmallWindowMode.STATS:
+                                cpu: int | None = self._metrics_reader.read_cpu_percent()
+                                mem: int | None = self._metrics_reader.read_memory_percent()
+                                time_str = self._wire_time_string(sw_cfg.time_format)
+                                await self._service._device.set_small_window_data(
+                                    cpu=cpu,
+                                    mem=mem,
+                                    gpu=0,
+                                    time_str=time_str,
+                                )
+                            else:
+                                time_str = self._wire_time_string(sw_cfg.time_format)
+                                await self._service._device.set_small_window_data(
+                                    cpu=0,
+                                    mem=0,
+                                    gpu=0,
+                                    time_str=time_str,
+                                )
                         timeout = sw_cfg.interval_s
                         if next_mode_switch_in is not None:
                             timeout = min(timeout, max(next_mode_switch_in, 0.01))
                     else:
-                        if active_mode != SmallWindowMode.BACKGROUND:
+                        if device_mode != SmallWindowMode.BACKGROUND:
                             await self._service._device.set_small_window_mode(
                                 SmallWindowMode.BACKGROUND
                             )
+                            device_mode = SmallWindowMode.BACKGROUND
                             active_mode = SmallWindowMode.BACKGROUND
                             mode_started_at = None
                             metrics_primed = False

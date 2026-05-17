@@ -12,11 +12,10 @@ touching the core dispatch logic.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
-import re
-
 
 # ---------------------------------------------------------------------- #
 # Actions                                                                #
@@ -83,6 +82,15 @@ DEFAULT_TEXT_COLOR = "#F8FAFC"
 DEFAULT_TEXT_FONT_FAMILY = "DejaVu Sans"
 DEFAULT_TEXT_FONT_SIZE = 30
 DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR = "#000000"
+SMALL_WINDOW_METRIC_CHOICES = (
+    "cpu",
+    "memory",
+    "gpu",
+    "temperature",
+    "disk",
+    "network",
+    "battery",
+)
 
 
 def _normalize_hex_color(value: str) -> str:
@@ -191,6 +199,7 @@ class SmallWindowConfig:
     show_metrics: bool = True
     rotate_every_s: float | None = None
     background_color: str = DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR
+    metrics_items: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -215,6 +224,20 @@ class SmallWindowConfig:
                 f"small_window.rotate_every_s={self.rotate_every_s} out of range "
                 f"[{SMALL_WINDOW_MIN_INTERVAL_S}, inf)"
             )
+        normalized_metrics = tuple(str(item).strip().lower() for item in self.metrics_items)
+        if len(set(normalized_metrics)) != len(normalized_metrics):
+            raise ValueError("small_window.metrics_items contains duplicates")
+        invalid = sorted(
+            item for item in normalized_metrics if item not in SMALL_WINDOW_METRIC_CHOICES
+        )
+        if invalid:
+            raise ValueError(
+                "small_window.metrics_items contains unsupported values: "
+                f"{invalid!r}"
+            )
+        if normalized_metrics and not 1 <= len(normalized_metrics) <= 3:
+            raise ValueError("small_window.metrics_items must select between 1 and 3 items")
+        object.__setattr__(self, "metrics_items", normalized_metrics)
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,8 +308,6 @@ class DeckConfig:
 
 
 __all__ = [
-    "Action",
-    "ButtonConfig",
     "DEFAULT_PAGE_NAME",
     "DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR",
     "DEFAULT_TEXT_BACKGROUND_COLOR",
@@ -294,13 +315,16 @@ __all__ = [
     "DEFAULT_TEXT_FONT_FAMILY",
     "DEFAULT_TEXT_FONT_SIZE",
     "DEFAULT_TIME_FORMAT",
+    "SMALL_WINDOW_MAX_INTERVAL_S",
+    "SMALL_WINDOW_METRIC_CHOICES",
+    "SMALL_WINDOW_MIN_INTERVAL_S",
+    "Action",
+    "ButtonConfig",
     "DeckConfig",
     "Page",
     "PredefinedCommandAction",
     "ShellAction",
     "ShortcutAction",
-    "SMALL_WINDOW_MAX_INTERVAL_S",
-    "SMALL_WINDOW_MIN_INTERVAL_S",
     "SmallWindowConfig",
     "SwitchPageAction",
     "TextStyle",
