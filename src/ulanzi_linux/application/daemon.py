@@ -102,16 +102,16 @@ async def _scrub_native_small_window_cache(device: DeckService) -> None:
 
     await device._device.set_small_window_mode(SmallWindowMode.CLOCK)
     await device._device.set_small_window_data(
-        cpu=0,
-        mem=0,
-        gpu=0,
+        cpu="",
+        mem="",
+        gpu="",
         time_str="",
     )
     await device._device.set_small_window_mode(SmallWindowMode.STATS)
     await device._device.set_small_window_data(
-        cpu=0,
-        mem=0,
-        gpu=0,
+        cpu="",
+        mem="",
+        gpu="",
         time_str="",
     )
     await device._device.set_small_window_mode(SmallWindowMode.BACKGROUND)
