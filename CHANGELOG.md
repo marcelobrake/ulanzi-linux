@@ -7,6 +7,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] — 2026-05-17
+
+### Fixed
+
+- The daemon now keeps the D200 small window in `BACKGROUND` continuously and
+  renders the alternating clock / CPU-MEM strip itself, so the firmware's
+  native `CPU/RAM/GPU` panel no longer gets stuck underneath the custom view.
+- CPU sampling for the rendered stats strip now stays warm even while the
+  clock phase is active, avoiding alternation cycles that could show `CPU 0%`
+  just because the stats phase had to re-prime `/proc/stat`.
+- The visual editor now preserves the `info window` "Aparece em todas as
+  páginas" choice when you save, even if that wide slot is being used only as
+  the shared small-window touch area with no extra icon or label.
+
 ## [0.9.3] — 2026-05-17
 
 ### Fixed

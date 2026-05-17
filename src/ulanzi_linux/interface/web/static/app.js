@@ -386,7 +386,12 @@ window.editorApp = function editorApp() {
             this.removeButton(this.editor.fixed_buttons, this.selectedIndex);
             this.removeButton(this.currentPage.buttons, this.selectedIndex);
 
-            if (this.isButtonMeaningful(nextButton)) {
+            const persistInfoWindowFixedPlaceholder = (
+                this.isInfoWindowSlot(this.selectedIndex)
+                && Boolean(this.buttonForm.fixed)
+            );
+
+            if (this.isButtonMeaningful(nextButton) || persistInfoWindowFixedPlaceholder) {
                 const target = this.buttonForm.fixed
                     ? this.editor.fixed_buttons
                     : this.currentPage.buttons;

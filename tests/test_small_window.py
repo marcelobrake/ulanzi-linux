@@ -284,17 +284,20 @@ async def test_small_window_loop_pushes_cpu_mem_time() -> None:
             _stop_after_a_few_ticks(),
         )
 
-    assert fake.button_uploads == []
-    assert SmallWindowMode.STATS in fake.small_window_modes
-    assert fake.small_window_data_calls, "expected live small-window payloads"
-    last = fake.small_window_data_calls[-1]
-    assert last["cpu"] == 42
-    assert last["mem"] == 42
-    assert last["gpu"] == 0
-    assert last["time_str"] == "14:32:00"
+        assert SmallWindowMode.BACKGROUND in fake.small_window_modes
+    dynamic_updates = [
+        upload[0]
+        for upload in fake.button_uploads
+        if upload and len(upload) == 1 and upload[0].index == 13 and upload[0].label
+    ]
+    assert dynamic_updates, "expected at least one rendered small-window update"
+    last = dynamic_updates[-1]
+    assert last.label == "CPU 42%   MEM 42%"
+    assert last.text_style.background_color == "#000000"
     assert metrics.last_format_fmt == "%H:%M"
     # Heartbeat must NOT have run — small_window subsumes it.
     assert fake.keep_alive_calls == 0
+    assert fake.small_window_data_calls == []
 
 
 @pytest.mark.asyncio
@@ -370,16 +373,18 @@ async def test_small_window_can_run_in_time_only_mode() -> None:
             _stop_after(),
         )
 
-    assert fake.button_uploads == []
-    assert SmallWindowMode.CLOCK in fake.small_window_modes
-    assert fake.small_window_data_calls
-    last = fake.small_window_data_calls[-1]
-    assert last["cpu"] == 0
-    assert last["mem"] == 0
-    assert last["gpu"] == 0
-    assert last["time_str"] == "14:32:00"
+    dynamic_updates = [
+        upload[0]
+        for upload in fake.button_uploads
+        if upload and len(upload) == 1 and upload[0].index == 13 and upload[0].label
+    ]
+    assert dynamic_updates
+    assert SmallWindowMode.BACKGROUND in fake.small_window_modes
+    last = dynamic_updates[-1]
+    assert last.label == "14:32:00"
     assert fake.keep_alive_calls == 0
     assert metrics.mem_reads == 0
+    assert fake.small_window_data_calls == []
 
 
 @pytest.mark.asyncio
@@ -406,17 +411,15 @@ async def test_small_window_can_alternate_clock_and_stats() -> None:
             _stop_after(),
         )
 
-    assert fake.button_uploads == []
-    assert SmallWindowMode.CLOCK in fake.small_window_modes
-    assert SmallWindowMode.STATS in fake.small_window_modes
-    assert any(
-        call["cpu"] == 0 and call["mem"] == 0 and call["time_str"] == "14:32:00"
-        for call in fake.small_window_data_calls
-    )
-    assert any(
-        call["cpu"] == 42 and call["mem"] == 61 and call["time_str"] == "14:32:00"
-        for call in fake.small_window_data_calls
-    )
+    labels = [
+        upload[0].label
+        for upload in fake.button_uploads
+        if upload and len(upload) == 1 and upload[0].index == 13 and upload[0].label
+    ]
+    assert SmallWindowMode.BACKGROUND in fake.small_window_modes
+    assert any(label == "14:32:00" for label in labels)
+    assert any(label == "CPU 42%   MEM 61%" for label in labels)
+    assert fake.small_window_data_calls == []
 
 
 @pytest.mark.asyncio
@@ -449,4 +452,7 @@ async def test_small_window_loop_survives_reader_exceptions() -> None:
 
     # Enough ticks ran that we recovered at least one successful push after
     # the injected failure.
-    assert any(call["cpu"] == 33 for call in fake.small_window_data_calls)
+    assert any(
+        upload and len(upload) == 1 and upload[0].index == 13 and upload[0].label
+        for upload in fake.button_uploads
+    )
