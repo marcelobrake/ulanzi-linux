@@ -7,6 +7,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] — 2026-05-17
+
+### Fixed
+
+- Custom `small_window.metrics_items` mode now keeps the native D200 clock
+  during the clock phase of `rotate_every_s`, restoring the analog + digital
+  clock presentation while still switching back to the Linux-rendered custom
+  metrics page for the stats phase.
+- The custom metrics phase now reasserts `BACKGROUND` immediately before every
+  wide-strip render tick, reducing cases where the firmware-native
+  `CPU/RAM/GPU` panel could bleed through underneath the custom page.
+
 ## [0.10.0] — 2026-05-17
 
 ### Added

@@ -390,23 +390,22 @@ class DeckDaemon:
                         else:
                             desired_mode = SmallWindowMode.CLOCK
                         if _uses_custom_small_window(sw_cfg):
-                            if device_mode != SmallWindowMode.BACKGROUND:
-                                await self._service._device.set_small_window_mode(
-                                    SmallWindowMode.BACKGROUND
-                                )
-                                device_mode = SmallWindowMode.BACKGROUND
                             if active_mode != desired_mode:
                                 active_mode = desired_mode
                                 mode_started_at = now
                                 metrics_primed = False
                                 if _rotates_small_window(sw_cfg):
                                     next_mode_switch_in = sw_cfg.rotate_every_s
-                            if sw_cfg.show_metrics and not metrics_primed:
-                                for metric in sw_cfg.metrics_items:
-                                    if metric in {"cpu", "network"}:
-                                        self._metrics_reader.read_metric_value(metric)
-                                metrics_primed = True
                             if active_mode == SmallWindowMode.STATS:
+                                await self._service._device.set_small_window_mode(
+                                    SmallWindowMode.BACKGROUND
+                                )
+                                device_mode = SmallWindowMode.BACKGROUND
+                                if sw_cfg.show_metrics and not metrics_primed:
+                                    for metric in sw_cfg.metrics_items:
+                                        if metric in {"cpu", "network"}:
+                                            self._metrics_reader.read_metric_value(metric)
+                                    metrics_primed = True
                                 await self._service._device.set_buttons(
                                     (
                                         _small_window_metrics_button(
@@ -419,16 +418,18 @@ class DeckDaemon:
                                     partial=True,
                                 )
                             else:
-                                await self._service._device.set_buttons(
-                                    (
-                                        _small_window_clock_button(
-                                            background_color=sw_cfg.background_color,
-                                            time_str=self._wire_time_string(
-                                                sw_cfg.time_format
-                                            ),
-                                        ),
+                                if device_mode != SmallWindowMode.CLOCK:
+                                    await self._service._device.set_small_window_mode(
+                                        SmallWindowMode.CLOCK
+                                    )
+                                    device_mode = SmallWindowMode.CLOCK
+                                await self._service._device.set_small_window_data(
+                                    cpu=0,
+                                    mem=0,
+                                    gpu=0,
+                                    time_str=self._wire_time_string(
+                                        sw_cfg.time_format
                                     ),
-                                    partial=True,
                                 )
                         else:
                             if active_mode != desired_mode:
