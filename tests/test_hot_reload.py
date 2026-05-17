@@ -107,6 +107,14 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text)
 
 
+def _page_uploads(fake: FakeDeck) -> list[tuple[ButtonConfig, ...]]:
+    return [
+        upload
+        for upload in fake.button_uploads
+        if upload and any(button.index < fake.spec.button_count for button in upload)
+    ]
+
+
 # ---------------------------------------------------------------------- #
 # Direct reload_config tests                                             #
 # ---------------------------------------------------------------------- #
@@ -147,8 +155,8 @@ pages:
 
     assert daemon.current_page == "media"  # preserved
     assert set(daemon.config.pages.keys()) == {"main", "media", "dev"}
-    # Initial sync + switch_to("media") + reload push = 3 uploads.
-    assert len(fake.button_uploads) == 3
+    # Initial sync + switch_to("media") + reload push = 3 visible page uploads.
+    assert len(_page_uploads(fake)) == 3
 
 
 @pytest.mark.asyncio
@@ -195,7 +203,7 @@ async def test_reload_ignores_broken_yaml(tmp_path: Path) -> None:
     # Previous config stays intact; no extra push happened.
     assert daemon.current_page == "main"
     assert list(daemon.config.pages.keys()) == ["main"]
-    assert len(fake.button_uploads) == 1
+    assert len(_page_uploads(fake)) == 1
 
 
 # ---------------------------------------------------------------------- #
