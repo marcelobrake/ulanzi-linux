@@ -467,15 +467,51 @@ async def test_small_window_custom_metrics_render_as_partial_info_window() -> No
         )
 
     assert SmallWindowMode.BACKGROUND in fake.small_window_modes
+    assert SmallWindowMode.CLOCK not in fake.small_window_modes
+    assert SmallWindowMode.STATS not in fake.small_window_modes
     assert fake.small_window_data_calls == []
     assert any(
         upload
         and upload[0].index == 13
-        and "CPU" in upload[0].label
-        and "TEMP" in upload[0].label
-        and "DISK" in upload[0].label
+        and upload[0].icon_data is not None
         for upload in fake.button_uploads
     )
+
+
+@pytest.mark.asyncio
+async def test_small_window_custom_metrics_rotation_stays_fully_host_rendered() -> None:
+    fake = RecordingFakeDeck()
+    metrics = FakeMetrics(cpu_values=[0, 37, 39, 41], mem=61, time_str="14:32")
+    cfg = _cfg_with_small_window(
+        enabled=True,
+        interval_s=0.05,
+        show_metrics=True,
+        rotate_every_s=0.1,
+        metrics_items=("cpu", "memory", "disk"),
+    )
+
+    async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
+        daemon = DeckDaemon(svc, cfg, metrics_reader=metrics)
+        stop = asyncio.Event()
+
+        async def _stop_after() -> None:
+            await asyncio.sleep(0.28)
+            stop.set()
+
+        await asyncio.gather(
+            daemon.run(stop_event=stop),
+            _stop_after(),
+        )
+
+    assert fake.small_window_data_calls == []
+    assert fake.small_window_modes and set(fake.small_window_modes) == {
+        SmallWindowMode.BACKGROUND
+    }
+    assert sum(
+        1
+        for upload in fake.button_uploads
+        if upload and upload[0].index == 13 and upload[0].icon_data is not None
+    ) >= 2
 
 
 @pytest.mark.asyncio

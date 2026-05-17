@@ -40,6 +40,10 @@ from ulanzi_linux.domain.button_config import (
 )
 from ulanzi_linux.domain.commands import SmallWindowMode
 from ulanzi_linux.domain.events import ButtonEvent
+from ulanzi_linux.infrastructure.small_window_renderer import (
+    render_small_window_clock_png,
+    render_small_window_metrics_png,
+)
 from ulanzi_linux.infrastructure.system_metrics import (
     SMALL_WINDOW_METRIC_LABELS,
     ProcSystemMetrics,
@@ -90,13 +94,13 @@ def _uses_custom_small_window(sw_cfg: object) -> bool:
 def _small_window_clock_button(*, background_color: str, time_str: str) -> ButtonConfig:
     return ButtonConfig(
         index=INFO_WINDOW_INDEX,
-        label=time_str,
+        icon_data=render_small_window_clock_png(
+            background_color=background_color,
+            digital_time=time_str[:5] if len(time_str) >= 5 else time_str,
+            analog_time=time_str if len(time_str) >= 8 else f"{time_str}:00",
+        ),
         text_style=TextStyle(
             background_color=background_color,
-            text_color="#F8FAFC",
-            font_family="DejaVu Sans Mono",
-            font_size=48,
-            bold=True,
         ),
     )
 
@@ -106,16 +110,14 @@ def _small_window_metrics_button(
     background_color: str,
     metric_lines: list[str],
 ) -> ButtonConfig:
-    font_size = 44 if len(metric_lines) == 1 else 34 if len(metric_lines) == 2 else 28
     return ButtonConfig(
         index=INFO_WINDOW_INDEX,
-        label="\n".join(metric_lines),
+        icon_data=render_small_window_metrics_png(
+            background_color=background_color,
+            metric_lines=metric_lines,
+        ),
         text_style=TextStyle(
             background_color=background_color,
-            text_color="#F8FAFC",
-            font_family="DejaVu Sans Mono",
-            font_size=font_size,
-            bold=True,
         ),
     )
 
@@ -390,6 +392,11 @@ class DeckDaemon:
                         else:
                             desired_mode = SmallWindowMode.CLOCK
                         if _uses_custom_small_window(sw_cfg):
+                            if device_mode != SmallWindowMode.BACKGROUND:
+                                await self._service._device.set_small_window_mode(
+                                    SmallWindowMode.BACKGROUND
+                                )
+                                device_mode = SmallWindowMode.BACKGROUND
                             if active_mode != desired_mode:
                                 active_mode = desired_mode
                                 mode_started_at = now
@@ -397,10 +404,6 @@ class DeckDaemon:
                                 if _rotates_small_window(sw_cfg):
                                     next_mode_switch_in = sw_cfg.rotate_every_s
                             if active_mode == SmallWindowMode.STATS:
-                                await self._service._device.set_small_window_mode(
-                                    SmallWindowMode.BACKGROUND
-                                )
-                                device_mode = SmallWindowMode.BACKGROUND
                                 if sw_cfg.show_metrics and not metrics_primed:
                                     for metric in sw_cfg.metrics_items:
                                         if metric in {"cpu", "network"}:
@@ -418,18 +421,16 @@ class DeckDaemon:
                                     partial=True,
                                 )
                             else:
-                                if device_mode != SmallWindowMode.CLOCK:
-                                    await self._service._device.set_small_window_mode(
-                                        SmallWindowMode.CLOCK
-                                    )
-                                    device_mode = SmallWindowMode.CLOCK
-                                await self._service._device.set_small_window_data(
-                                    cpu=0,
-                                    mem=0,
-                                    gpu=0,
-                                    time_str=self._wire_time_string(
-                                        sw_cfg.time_format
+                                await self._service._device.set_buttons(
+                                    (
+                                        _small_window_clock_button(
+                                            background_color=sw_cfg.background_color,
+                                            time_str=self._wire_time_string(
+                                                sw_cfg.time_format
+                                            ),
+                                        ),
                                     ),
+                                    partial=True,
                                 )
                         else:
                             if active_mode != desired_mode:

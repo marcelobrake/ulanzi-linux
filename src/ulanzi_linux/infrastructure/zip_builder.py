@@ -174,6 +174,8 @@ def _render_info_window_background(background_color: str) -> bytes:
 
 
 def _real_icon_path(cfg: ButtonConfig) -> Path | None:
+    if cfg.icon_data is not None:
+        return None
     path = Path(cfg.icon_path).expanduser() if cfg.icon_path else None
     if path is None or not path.exists():
         return None
@@ -339,6 +341,28 @@ def _render_info_window_text(cfg: ButtonConfig) -> bytes:
 
 def _normalize_icon(cfg: ButtonConfig) -> bytes:
     """Load and resize a PNG — or render a black tile if absent."""
+    if cfg.icon_data is not None:
+        with Image.open(io.BytesIO(cfg.icon_data)) as img:
+            img = img.convert("RGBA")
+            target_size = INFO_WINDOW_SIZE if int(cfg.index) == _INFO_WINDOW_INDEX else ICON_SIZE
+            fitted = ImageOps.contain(
+                img,
+                target_size,
+                Image.Resampling.LANCZOS,
+            )
+            tile = Image.new(
+                "RGBA",
+                target_size,
+                _hex_to_rgba(cfg.text_style.background_color),
+            )
+            origin = (
+                (target_size[0] - fitted.width) // 2,
+                (target_size[1] - fitted.height) // 2,
+            )
+            tile.alpha_composite(fitted, origin)
+            buf = io.BytesIO()
+            tile.save(buf, format="PNG")
+            return buf.getvalue()
     path = _real_icon_path(cfg)
     if int(cfg.index) == _INFO_WINDOW_INDEX:
         if path is None:
@@ -398,10 +422,15 @@ def _normalize_icon(cfg: ButtonConfig) -> bytes:
 
 
 def _has_real_icon(cfg: ButtonConfig) -> bool:
-    return _real_icon_path(cfg) is not None
+    return cfg.icon_data is not None or _real_icon_path(cfg) is not None
 
 
 def _archive_icon_name(cfg: ButtonConfig) -> str:
+    if cfg.icon_data is not None:
+        digest = hashlib.sha256(cfg.icon_data).hexdigest()[:12]
+        if int(cfg.index) == _INFO_WINDOW_INDEX:
+            return f"icons/info-window-{digest}.png"
+        return f"icons/{int(cfg.index)}-{digest}.png"
     path = _real_icon_path(cfg)
     if path is not None:
         return f"icons/{path.name}"

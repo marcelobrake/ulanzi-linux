@@ -145,6 +145,7 @@ class ButtonConfig:
 
     index: int
     icon_path: Path | None = None
+    icon_data: bytes | None = None
     label: str = ""
     action: Action | None = None
     text_style: TextStyle = field(default_factory=TextStyle)

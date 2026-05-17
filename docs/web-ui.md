@@ -70,8 +70,10 @@ background; when no color is saved, the daemon uses solid black.
 
 Leaving the metric selection empty preserves the firmware-native stats mode.
 Selecting 1 to 3 items switches the strip to the Linux-rendered custom mode,
-which can display `CPU`, `Memória`, `GPU`, `Temperatura`, `Uso de disco`,
-`Rede`, or `Bateria`.
+which keeps the device pinned to `BACKGROUND`, renders its own analog +
+digital clock page, and can display `CPU`, `Memória`, `GPU`,
+`Temperatura`, `Uso de disco`, `Rede`, or `Bateria` on the alternating
+stats page.
 
 The image inspector also ships with a built-in asset catalog backed by Font
 Awesome Free plus Unicode emoji metadata rendered locally through Noto Color
