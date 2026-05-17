@@ -6,6 +6,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import threading
 import time
 import webbrowser
@@ -21,6 +22,20 @@ DEFAULT_WINDOW_TITLE = "Ulanzi Linux"
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "ulanzi" / "deck.yaml"
 DEFAULT_APPLICATIONS_DIR = Path.home() / ".local" / "share" / "applications"
 DEFAULT_ICON_DIR = Path.home() / ".local" / "share" / "icons" / "hicolor" / "scalable" / "apps"
+DEFAULT_EXECUTABLE = "ulanzi-linux"
+
+
+def _find_wayland_display() -> str | None:
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    if not runtime_dir:
+        return None
+    runtime_path = Path(runtime_dir)
+    if not runtime_path.exists():
+        return None
+    matches = sorted(runtime_path.glob("wayland-*"))
+    if not matches:
+        return None
+    return matches[0].name
 
 
 def _configure_qt_platform() -> None:
@@ -28,9 +43,58 @@ def _configure_qt_platform() -> None:
         return
     if os.environ.get("XDG_SESSION_TYPE") != "wayland":
         return
-    if not os.environ.get("WAYLAND_DISPLAY"):
+    wayland_display = os.environ.get("WAYLAND_DISPLAY") or _find_wayland_display()
+    if not wayland_display:
         return
+    os.environ.setdefault("WAYLAND_DISPLAY", wayland_display)
     os.environ["QT_QPA_PLATFORM"] = "wayland"
+
+
+def _inotify_watch_usage() -> tuple[int, int] | None:
+    limit_path = Path("/proc/sys/fs/inotify/max_user_watches")
+    try:
+        limit = int(limit_path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+    used = 0
+    for fdinfo in Path("/proc").glob("[0-9]*/fdinfo/*"):
+        try:
+            used += fdinfo.read_text(encoding="utf-8").count("inotify wd:")
+        except OSError:
+            continue
+    return used, limit
+
+
+def _configure_qt_input_method() -> None:
+    if os.environ.get("QT_IM_MODULE"):
+        return
+    usage = _inotify_watch_usage()
+    if usage is None:
+        return
+    used, limit = usage
+    if used < limit:
+        return
+    os.environ["QT_IM_MODULE"] = "xim"
+    logger.warning(
+        "desktop_qt_ibus_disabled",
+        reason="inotify_watch_limit_exhausted",
+        used=used,
+        limit=limit,
+    )
+
+
+def _default_launcher_executable() -> str:
+    candidate = shutil.which(DEFAULT_EXECUTABLE)
+    if candidate:
+        return candidate
+    sibling = Path(sys.executable).resolve().parent / DEFAULT_EXECUTABLE
+    if sibling.exists():
+        return str(sibling)
+    user_local = Path.home() / ".local" / "bin" / DEFAULT_EXECUTABLE
+    if user_local.exists():
+        return str(user_local)
+    return DEFAULT_EXECUTABLE
 
 
 def _asset_icon_path() -> Path:
@@ -46,8 +110,9 @@ def desktop_entry_contents(
     *,
     config_path: Path,
     icon_path: Path,
-    executable: str = "ulanzi-linux",
+    executable: str | None = None,
 ) -> str:
+    resolved_executable = executable or _default_launcher_executable()
     return "\n".join(
         [
             "[Desktop Entry]",
@@ -55,13 +120,14 @@ def desktop_entry_contents(
             "Version=1.0",
             f"Name={DEFAULT_WINDOW_TITLE}",
             "Comment=Desktop editor for the Ulanzi D200 deck configuration",
-            f"Exec={executable} desktop {_quoted_exec_arg(str(config_path))}",
-            f"TryExec={executable}",
+            f"Exec={resolved_executable} desktop {_quoted_exec_arg(str(config_path))}",
+            f"TryExec={resolved_executable}",
             f"Icon={icon_path}",
             "Terminal=false",
-            "Categories=Utility;Graphics;",
+            "Categories=Utility;",
             "Keywords=Ulanzi;Stream Deck;D200;Editor;",
             "StartupNotify=true",
+            "StartupWMClass=ulanzi-linux",
         ]
     ) + "\n"
 
@@ -71,6 +137,7 @@ def install_desktop_launcher(
     *,
     applications_dir: Path = DEFAULT_APPLICATIONS_DIR,
     icons_dir: Path = DEFAULT_ICON_DIR,
+    executable: str | None = None,
 ) -> tuple[Path, Path]:
     applications_dir.mkdir(parents=True, exist_ok=True)
     icons_dir.mkdir(parents=True, exist_ok=True)
@@ -83,6 +150,7 @@ def install_desktop_launcher(
         desktop_entry_contents(
             config_path=config_path.expanduser().resolve(),
             icon_path=icon_target,
+            executable=executable or _default_launcher_executable(),
         ),
         encoding="utf-8",
     )
@@ -158,12 +226,22 @@ def _build_tray_image() -> object:
 
     image = Image.new("RGBA", (64, 64), (13, 17, 24, 255))
     draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((6, 6, 58, 58), radius=12, fill=(18, 24, 33, 255), outline=(121, 221, 248, 255), width=2)
+    draw.rounded_rectangle(
+        (6, 6, 58, 58),
+        radius=12,
+        fill=(18, 24, 33, 255),
+        outline=(121, 221, 248, 255),
+        width=2,
+    )
     for row in range(3):
         for col in range(3):
             left = 14 + (col * 14)
             top = 14 + (row * 14)
-            draw.rounded_rectangle((left, top, left + 8, top + 8), radius=3, fill=(243, 201, 108, 255))
+            draw.rounded_rectangle(
+                (left, top, left + 8, top + 8),
+                radius=3,
+                fill=(243, 201, 108, 255),
+            )
     return image
 
 
@@ -178,9 +256,9 @@ def _start_tray(url: str, window_holder: dict[str, object | None]) -> object | N
         window = window_holder.get("window")
         if window is not None:
             with suppress(Exception):
-                getattr(window, "show")()
+                window.show()
             with suppress(Exception):
-                getattr(window, "restore")()
+                window.restore()
         else:
             webbrowser.open(url)
 
@@ -193,7 +271,7 @@ def _start_tray(url: str, window_holder: dict[str, object | None]) -> object | N
         window = window_holder.get("window")
         if window is not None:
             with suppress(Exception):
-                getattr(window, "destroy")()
+                window.destroy()
         with suppress(Exception):
             icon.stop()
 
@@ -213,6 +291,7 @@ def _start_tray(url: str, window_holder: dict[str, object | None]) -> object | N
 
 def launch_desktop_app(config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
     _configure_qt_platform()
+    _configure_qt_input_method()
     import webview
 
     resolved_config = Path(config_path).expanduser().resolve()
@@ -226,7 +305,6 @@ def launch_desktop_app(config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
     tray_icon: object | None = None
     window_holder: dict[str, object | None] = {"window": None}
     try:
-        tray_icon = _start_tray(server.url, window_holder)
         window_holder["window"] = webview.create_window(
             DEFAULT_WINDOW_TITLE,
             server.url,
@@ -236,6 +314,12 @@ def launch_desktop_app(config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
             text_select=True,
             confirm_close=True,
         )
+        if os.environ.get("ULANZI_LINUX_ENABLE_TRAY", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }:
+            tray_icon = _start_tray(server.url, window_holder)
         webview.start(gui="qt", debug=False)
     finally:
         if tray_icon is not None:

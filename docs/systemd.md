@@ -38,7 +38,11 @@ The helper script resolves the actual `ulanzi-linux` executable from your
 current shell first. That matters on hosts that install the package via
 pyenv or a virtual environment, where the console script does not live in
 `~/.local/bin`. The same helper also installs a desktop autostart entry
-for the graphical-session bridge at `~/.config/autostart/ulanzi-linux-session-agent.desktop`.
+for the graphical-session bridge at `~/.config/autostart/ulanzi-linux-session-agent.desktop`,
+plus the desktop editor launcher under
+`~/.local/share/applications/ulanzi-linux.desktop` with the resolved absolute
+console-script path so GNOME does not hide it when the graphical session uses
+a narrower `$PATH` than your terminal.
 
 The daemon keeps running under the user systemd manager, but shell / URL /
 shortcut actions can now be delegated to a second process started by the

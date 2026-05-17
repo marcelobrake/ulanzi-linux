@@ -117,8 +117,7 @@ async def test_write_failure_reconnects_and_replays_cached_state() -> None:
     assert int(OutgoingCommand.SET_BUTTONS) in codes
     assert int(OutgoingCommand.SET_SMALL_WINDOW_DATA) in codes
     payloads = _raw_small_window_payloads(second.writes)
-    assert b"\x00" in payloads
-    assert b"11,22,0,18:42" in payloads
+    assert b"0|11|22|18:42|0" in payloads
 
 
 @pytest.mark.asyncio
@@ -152,8 +151,7 @@ async def test_write_failure_reconnects_and_replays_cached_clock_state() -> None
     assert factory_calls == 1
     assert first.closed is True
     payloads = _raw_small_window_payloads(second.writes)
-    assert b"\x01" in payloads
-    assert b"0,0,0,18:42:00" in payloads
+    assert b"1|0|0|18:42:00|0" in payloads
 
 
 @pytest.mark.asyncio

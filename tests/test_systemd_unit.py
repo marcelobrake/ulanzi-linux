@@ -109,6 +109,8 @@ def test_install_script_references_correct_unit_name() -> None:
     assert "systemctl --user" in text
     assert 'AUTOSTART_NAME="ulanzi-linux-session-agent.desktop"' in text
     assert 'systemctl --user restart "${UNIT_NAME}"' in text
+    assert 'desktop-install "${DECK_YAML}"' in text
+    assert 'DESKTOP_ENTRY_DST="${APPLICATIONS_DIR}/ulanzi-linux.desktop"' in text
 
 
 def test_autostart_desktop_file_has_expected_shape() -> None:

@@ -7,6 +7,7 @@ from click.testing import CliRunner
 from ulanzi_linux.interface.cli import cli
 from ulanzi_linux.interface.desktop.app import (
     _configure_qt_platform,
+    _default_launcher_executable,
     desktop_entry_contents,
     install_desktop_launcher,
 )
@@ -17,12 +18,14 @@ def test_desktop_entry_contains_exec_icon_and_categories(tmp_path: Path) -> None
     content = desktop_entry_contents(
         config_path=config_path,
         icon_path=tmp_path / "ulanzi-linux.svg",
+        executable="/opt/ulanzi/bin/ulanzi-linux",
     )
 
-    assert "Exec=ulanzi-linux desktop" in content
+    assert "Exec=/opt/ulanzi/bin/ulanzi-linux desktop" in content
+    assert "TryExec=/opt/ulanzi/bin/ulanzi-linux" in content
     assert f'"{config_path}"' in content
     assert f"Icon={tmp_path / 'ulanzi-linux.svg'}" in content
-    assert "Categories=Utility;Graphics;" in content
+    assert "Categories=Utility;" in content
 
 
 def test_install_desktop_launcher_writes_entry_and_icon(tmp_path: Path) -> None:
@@ -34,12 +37,31 @@ def test_install_desktop_launcher_writes_entry_and_icon(tmp_path: Path) -> None:
         config_path,
         applications_dir=applications_dir,
         icons_dir=icons_dir,
+        executable="/venv/bin/ulanzi-linux",
     )
 
     assert entry_path.exists()
     assert icon_path.exists()
     assert entry_path.read_text(encoding="utf-8").startswith("[Desktop Entry]")
-    assert "ulanzi-linux desktop" in entry_path.read_text(encoding="utf-8")
+    assert "Exec=/venv/bin/ulanzi-linux desktop" in entry_path.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_default_launcher_executable_prefers_current_python_sibling(
+    monkeypatch, tmp_path: Path
+) -> None:
+    bin_dir = tmp_path / "venv" / "bin"
+    bin_dir.mkdir(parents=True)
+    python_path = bin_dir / "python"
+    python_path.write_text("", encoding="utf-8")
+    ulanzi_path = bin_dir / "ulanzi-linux"
+    ulanzi_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+    monkeypatch.setattr("sys.executable", str(python_path))
+
+    assert _default_launcher_executable() == str(ulanzi_path)
 
 
 def test_desktop_command_reports_missing_runtime_dependency(monkeypatch) -> None:
