@@ -322,6 +322,45 @@ def test_put_editor_persists_info_window_action_without_visuals(
     assert "label: Ignored" not in saved
 
 
+def test_put_editor_persists_fixed_info_window_placeholder(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, path = client
+    payload = c.get("/api/editor").json()
+    payload["fixed_buttons"].append(
+        {
+            "index": 13,
+            "label": "",
+            "icon_path": None,
+            "action": {
+                "type": "none",
+                "cmd": "",
+                "keys": "",
+                "command_id": "",
+                "url": "",
+                "page": "",
+            },
+            "text_style": {
+                "background_color": "#111827",
+                "text_color": "#F8FAFC",
+                "bold": False,
+                "italic": False,
+                "underline": False,
+                "font_family": "DejaVu Sans",
+                "font_size": 30,
+            },
+        }
+    )
+
+    r = c.put("/api/editor", json=payload)
+    assert r.status_code == 200
+    body = r.json()
+    assert any(button["index"] == 13 for button in body["fixed_buttons"])
+    saved = path.read_text()
+    assert "fixed_buttons:" in saved
+    assert "- index: 13" in saved
+
+
 def test_put_editor_persists_text_style_for_text_only_button(
     client: tuple[TestClient, Path],
 ) -> None:
