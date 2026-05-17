@@ -19,6 +19,10 @@ DST_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
 DST_UNIT="${DST_DIR}/${UNIT_NAME}"
 AUTOSTART_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/autostart"
 AUTOSTART_DST="${AUTOSTART_DIR}/${AUTOSTART_NAME}"
+APPLICATIONS_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/applications"
+DESKTOP_ENTRY_DST="${APPLICATIONS_DIR}/ulanzi-linux.desktop"
+ICON_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/icons/hicolor/scalable/apps"
+ICON_DST="${ICON_DIR}/ulanzi-linux.svg"
 DECK_YAML="${HOME}/.config/ulanzi/deck.yaml"
 DEFAULT_ULANZI_BIN="${HOME}/.local/bin/ulanzi-linux"
 ULANZI_BIN=""
@@ -138,6 +142,8 @@ if (( UNINSTALL )); then
     run_ok systemctl --user disable --now "${UNIT_NAME}"
     run rm -f "${DST_UNIT}"
     run rm -f "${AUTOSTART_DST}"
+    run rm -f "${DESKTOP_ENTRY_DST}"
+    run rm -f "${ICON_DST}"
     run systemctl --user daemon-reload
     log "done."
     exit 0
@@ -187,6 +193,13 @@ else
     run install -m 0644 "${SRC_AUTOSTART}" "${AUTOSTART_DST}"
 fi
 
+if [[ -n "${ULANZI_BIN}" ]]; then
+    log "installing desktop launcher into ${DESKTOP_ENTRY_DST}"
+    run "${ULANZI_BIN}" desktop-install "${DECK_YAML}"
+else
+    warn "skipping desktop launcher install because ulanzi-linux was not resolved"
+fi
+
 log "reloading user systemd"
 run systemctl --user daemon-reload
 
@@ -201,5 +214,6 @@ if (( ! DRY_RUN )); then
     systemctl --user --no-pager status "${UNIT_NAME}" || true
     log "tail logs with:  journalctl --user -u ${UNIT_NAME} -f"
     log "session agent autostart installed at: ${AUTOSTART_DST}"
+    log "desktop launcher installed at: ${DESKTOP_ENTRY_DST}"
     log "start it now with: ${ULANZI_BIN:-ulanzi-linux} --json-logs session-agent"
 fi

@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator, Callable, Iterable
+from contextlib import suppress
 from typing import Final, TypeAlias
 
 import structlog
@@ -168,7 +169,7 @@ class UlanziD200Device(DeckDevice):
             self._read_task.cancel()
             try:
                 await self._read_task
-            except (asyncio.CancelledError, Exception) as exc:  # noqa: BLE001
+            except (asyncio.CancelledError, Exception) as exc:
                 if not isinstance(exc, asyncio.CancelledError):
                     logger.warning("read_loop_shutdown_error", error=str(exc))
         if transport is not None:
@@ -205,26 +206,22 @@ class UlanziD200Device(DeckDevice):
                 gpu=gpu,
                 time_str=time_str,
             )
-        elif self._cached_small_window_mode is not None:
-            await self._send(
-                OutgoingCommand.SET_SMALL_WINDOW_DATA,
-                self._build_small_window_mode_payload(self._cached_small_window_mode),
-            )
         else:
             await self._send(OutgoingCommand.SET_SMALL_WINDOW_DATA, b"")
         logger.debug("keep_alive_sent")
 
     async def set_small_window_mode(self, mode: SmallWindowMode) -> None:
         self._cached_small_window_mode = mode
-        await self._send(
-            OutgoingCommand.SET_SMALL_WINDOW_DATA,
-            self._build_small_window_mode_payload(mode),
-        )
+        if mode == SmallWindowMode.BACKGROUND:
+            await self._send(
+                OutgoingCommand.SET_SMALL_WINDOW_DATA,
+                self._build_small_window_mode_payload(mode),
+            )
         logger.info(
             "small_window_mode_set",
             mode=mode.name,
             mode_value=int(mode),
-            deferred=self._last_small_window_data is None,
+            deferred=mode != SmallWindowMode.BACKGROUND,
         )
 
     async def set_small_window_data(
@@ -285,7 +282,7 @@ class UlanziD200Device(DeckDevice):
         transport = await self._require_transport()
         try:
             await self._send_chunked_raw(transport, command, blob)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             await self._recover_transport(
                 failed_transport=transport,
                 operation=f"write_{command.name.lower()}",
@@ -354,7 +351,7 @@ class UlanziD200Device(DeckDevice):
         transport = await self._require_transport()
         try:
             await self._send_raw(transport, command, data)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             await self._recover_transport(
                 failed_transport=transport,
                 operation=f"write_{command.name.lower()}",
@@ -393,7 +390,7 @@ class UlanziD200Device(DeckDevice):
                 transport = await self._require_transport()
                 try:
                     raw = await transport.read(PACKET_SIZE)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     await self._recover_transport(
                         failed_transport=transport,
                         operation="read_packet",
@@ -411,7 +408,7 @@ class UlanziD200Device(DeckDevice):
         except asyncio.CancelledError:
             logger.info("read_loop_cancelled")
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # Surface unexpected errors but keep the coroutine from crashing
             # the whole event loop.
             logger.error("read_loop_error", error=str(exc), exc_info=True)
@@ -420,7 +417,7 @@ class UlanziD200Device(DeckDevice):
     def _dispatch_incoming(self, raw: bytes) -> None:
         try:
             parsed = IncomingPacketStruct.parse(raw)
-        except Exception as exc:  # noqa: BLE001 — construct raises many types
+        except Exception as exc:
             logger.warning("packet_parse_failed", error=str(exc))
             return
 
@@ -459,10 +456,8 @@ class UlanziD200Device(DeckDevice):
         except asyncio.QueueFull:
             # Drop the oldest event so the latest state always wins — better
             # than blocking the read loop and dropping live input.
-            try:
+            with suppress(asyncio.QueueEmpty):
                 _ = self._event_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                pass
             self._event_queue.put_nowait(event)
             logger.warning("event_queue_overflow_dropped_oldest")
 
@@ -523,7 +518,7 @@ class UlanziD200Device(DeckDevice):
                     )
                     await asyncio.sleep(self._reconnect_poll_interval_s)
                     continue
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     if reopened_transport is not None:
                         await reopened_transport.close()
                     logger.warning(
@@ -594,12 +589,6 @@ class UlanziD200Device(DeckDevice):
             )
         elif self._last_small_window_data is not None:
             cpu, mem, gpu, time_str = self._last_small_window_data
-            if self._cached_small_window_mode is not None:
-                await self._send_raw(
-                    transport,
-                    OutgoingCommand.SET_SMALL_WINDOW_DATA,
-                    self._build_small_window_mode_payload(self._cached_small_window_mode),
-                )
             await self._send_raw(
                 transport,
                 OutgoingCommand.SET_SMALL_WINDOW_DATA,
@@ -668,13 +657,13 @@ class UlanziD200Device(DeckDevice):
         gpu: int | None,
         time_str: str | None,
     ) -> bytes:
-        del mode
         cpu_field = "0" if cpu is None else str(cpu)
         mem_field = "0" if mem is None else str(mem)
         gpu_field = "0" if gpu is None else str(gpu)
-        if time_str:
-            return f"{cpu_field},{mem_field},{gpu_field},{time_str}".encode("ascii")
-        return f"{cpu_field},{mem_field},{gpu_field}".encode("ascii")
+        time_field = "" if time_str is None else time_str
+        return (
+            f"{int(mode)}|{cpu_field}|{mem_field}|{time_field}|{gpu_field}"
+        ).encode("ascii")
 
     @staticmethod
     def _build_small_window_mode_payload(mode: SmallWindowMode) -> bytes:

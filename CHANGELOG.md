@@ -7,6 +7,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.5] — 2026-05-17
+
+### Fixed
+
+- Restored the D200 small-window payload to the protocol used by the
+  `redphx/strmdck` reference implementation: `STATS=0`, `CLOCK=1`, and live
+  ASCII updates in the `mode|cpu|mem|time|gpu` format. This replaces the
+  experimental native-mode packets that left some devices stuck on the static
+  `CPU/RAM/GPU 0%` firmware screen.
+- The desktop launcher now resolves and writes the absolute `ulanzi-linux`
+  executable path into `Exec=` and `TryExec=` so GNOME can keep the app visible
+  in the Applications menu even when the graphical session does not inherit the
+  same `$PATH` as the terminal.
+- `./systemd/install.sh` now installs the desktop editor launcher together with
+  the user service and session-agent autostart entry, keeping the menu
+  integration in sync with the active Python environment.
+- The native desktop wrapper now avoids the optional tray thread unless
+  explicitly requested and falls back to `QT_IM_MODULE=xim` when the host has
+  exhausted its inotify watch budget, reducing Qt startup failures on busy
+  GNOME desktops.
+
 ## [0.9.4] — 2026-05-17
 
 ### Fixed

@@ -47,7 +47,7 @@ uint32, but the firmware expects the bytes reversed. We encode this with
 | --- | --- | --- |
 | `0x0001` | `SET_BUTTONS` | ZIP archive (full button grid) |
 | `0x000D` | `PARTIALLY_UPDATE_BUTTONS` | ZIP archive (additive update) |
-| `0x0006` | `SET_SMALL_WINDOW_DATA` | mode byte or ASCII `mode\|cpu\|mem\|time\|gpu` |
+| `0x0006` | `SET_SMALL_WINDOW_DATA` | mode byte (`BACKGROUND`) or ASCII `mode\|cpu\|mem\|time\|gpu` |
 | `0x000A` | `SET_BRIGHTNESS` | ASCII integer `0..100` |
 | `0x000B` | `SET_LABEL_STYLE` | JSON (`Align`, `Color`, `FontName`, ...) |
 
@@ -102,7 +102,7 @@ at the transport boundary.
 ## Open questions
 
 - [x] `SET_SMALL_WINDOW_DATA` uses pipe-separated ASCII fields: `mode|cpu|mem|time|gpu`.
-- [x] `SET_SMALL_WINDOW_DATA` accepts a single-byte mode payload for layout changes.
+- [x] `SET_SMALL_WINDOW_DATA` accepts a single-byte mode payload for layout changes such as `BACKGROUND`.
 - [x] Clock refreshes can be sent as `1|0|0|HH:MM:SS|0`, keeping the clock layout active while avoiding fake `0%` stats fields from empty slots.
 - [ ] Whether `BACKGROUND` mode accepts extra fields beyond the standard payload.
 - [ ] Whether brightness value is clamped by firmware or silently wraps.
