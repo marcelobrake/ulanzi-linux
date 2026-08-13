@@ -7,6 +7,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] — 2026-08-13
+
+### Added
+
+- `shortcut` actions now support `ydotool`, and prefer it on Wayland. Backend
+  order is `ydotool` → `xdotool` → `wtype` under Wayland and
+  `xdotool` → `ydotool` → `wtype` under X11, falling through whenever a tool
+  is absent or exits non-zero.
+- New `ulanzi_linux.infrastructure.keysym_evdev` module translating X11 keysym
+  names into evdev codes, since `ydotool` accepts only raw `<code>:<pressed>`
+  pairs. Covers letters, digits, `F1`–`F24`, navigation and punctuation keys,
+  modifiers with their `ctrl` / `super` / `cmd` shorthands, and the common
+  `XF86*` media, brightness, and launcher keys. Chords press in order and
+  release in reverse, so `ctrl+alt+t` emits `29:1 56:1 20:1 20:0 56:0 29:0`.
+
+### Fixed
+
+- Shortcuts no longer fail silently on Wayland. `xdotool` runs and exits 0
+  under a Wayland compositor, but its events reach only XWayland clients, so
+  shortcuts aimed at native Wayland applications were dropped while the daemon
+  logged success. Untranslatable keysyms still fall back to `xdotool` rather
+  than emitting a wrong chord.
+- `docs/configuration.md` claimed `ydotool` was used on Wayland, which the
+  implementation never did. The documented behaviour and the code now agree.
+
 ## [0.10.5] — 2026-08-13
 
 ### Fixed

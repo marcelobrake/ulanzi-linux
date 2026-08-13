@@ -223,9 +223,9 @@ action: { type: shell, cmd: "gnome-terminal -- bash -lc 'docker ps; exec bash'" 
 
 ### 5.2 — `shortcut`
 
-Emit a keyboard shortcut via `xdotool` (X11) or `ydotool` (Wayland).
-Key names follow the underlying tool's grammar — `ctrl+alt+t`,
-`XF86AudioPlay`, `Super_L`.
+Emit a keyboard shortcut. `keys` is always written in X11 keysym grammar —
+`ctrl+alt+t`, `XF86AudioPlay`, `Super_L` — regardless of which backend
+ends up delivering it.
 
 ```yaml
 action: { type: shortcut, keys: "ctrl+alt+t" }
@@ -234,6 +234,45 @@ action: { type: shortcut, keys: "XF86AudioPlay" }
 
 Relies on the daemon running inside a session where `$DISPLAY` /
 `$WAYLAND_DISPLAY` are set — hence the user-unit choice for systemd.
+
+#### Backend selection
+
+The backend is chosen from the session type, and the daemon falls through
+to the next candidate whenever one is missing or exits non-zero:
+
+| Session | Order |
+| --- | --- |
+| Wayland (`$WAYLAND_DISPLAY` set, or `XDG_SESSION_TYPE=wayland`) | `ydotool` → `xdotool` → `wtype` |
+| X11 | `xdotool` → `ydotool` → `wtype` |
+
+Wayland leads with `ydotool` because `xdotool` under a Wayland compositor
+still runs and still exits 0, but its synthetic events only reach
+**XWayland** clients — a shortcut aimed at a native Wayland application is
+dropped while the log reports success. `ydotool` writes to `/dev/uinput`,
+below the display server, so it reaches every client.
+
+X11 leads with `xdotool` because it consumes keysym names directly, with
+no translation step that could lose fidelity.
+
+**`ydotool` requires `ydotoold` to be running**, and your user needs access
+to its socket (typically `/run/user/$UID/.ydotool_socket`). Without the
+daemon, `ydotool` exits non-zero and the chain falls back to `xdotool`.
+
+#### Keysym translation
+
+`ydotool` speaks raw evdev codes (`<code>:<pressed>`), never keysym names,
+so `keys` is translated through
+`ulanzi_linux.infrastructure.keysym_evdev`. It covers letters, digits,
+`F1`–`F24`, navigation and punctuation keys, modifiers (including the
+`ctrl` / `super` / `cmd` shorthands), and the common `XF86*` media,
+brightness, and launcher keys.
+
+A chord presses in order and releases in reverse, so `ctrl+alt+t` becomes
+`29:1 56:1 20:1 20:0 56:0 29:0`.
+
+If a keysym is outside the table, translation returns nothing and the
+shortcut falls through to `xdotool` rather than emitting a wrong chord —
+so uncommon keysyms still work on X11 and under XWayland.
 
 ### 5.3 — `url`
 
