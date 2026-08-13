@@ -24,18 +24,33 @@ const FONT_OPTIONS = Object.freeze([
     "Liberation Serif",
 ]);
 
+// --- i18n -----------------------------------------------------------------
+// Strings come from the catalogue the server injects into the page, so the
+// JS half stays in the same .po file as the HTML. An unknown msgid falls
+// through unchanged, which is exactly the pt-BR (source language) path.
+const I18N = (typeof window !== "undefined" && window.__I18N__) || {};
+const I18N_CATALOG = I18N.catalog || {};
+
+function t(message, ...args) {
+    const template = I18N_CATALOG[message] || message;
+    return template.replace(/\{(\d+)\}/g, (match, index) => {
+        const value = args[Number(index)];
+        return value === undefined ? match : String(value);
+    });
+}
+
 const ACTION_LABELS = Object.freeze({
-    none: "Sem ação",
-    shell: "Comando",
+    none: t("Sem ação"),
+    shell: t("Comando"),
     shortcut: "Atalho",
-    predefined_command: "Comando pré-definido",
+    predefined_command: t("Comando pré-definido"),
     url: "Link",
-    switch_page: "Troca de página",
+    switch_page: t("Troca de página"),
 });
 
 const BUILTIN_ICON_STYLES = Object.freeze([
     { value: "all", label: "Todos" },
-    { value: "brands", label: "Apps/brands" },
+    { value: "brands", label: t("Apps/brands") },
     { value: "emoji", label: "Emojis" },
     { value: "regular", label: "Regular" },
     { value: "solid", label: "Solid" },
@@ -43,10 +58,10 @@ const BUILTIN_ICON_STYLES = Object.freeze([
 
 const SMALL_WINDOW_METRICS = Object.freeze([
     { value: "cpu", label: "CPU" },
-    { value: "memory", label: "Memória" },
+    { value: "memory", label: t("Memória") },
     { value: "gpu", label: "GPU" },
     { value: "temperature", label: "Temperatura" },
-    { value: "disk", label: "Uso de disco" },
+    { value: "disk", label: t("Uso de disco") },
     { value: "network", label: "Rede" },
     { value: "battery", label: "Bateria" },
 ]);
@@ -165,12 +180,12 @@ window.editorApp = function editorApp() {
                 const response = await fetch("/api/builtin-assets");
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || "Falha ao carregar catálogo");
+                    throw new Error(payload.detail || payload.error || t("Falha ao carregar catálogo"));
                 }
                 this.builtinIcons = payload.items || [];
             } catch (error) {
                 this.builtinIcons = [];
-                this.setStatus(`Catálogo embutido indisponível: ${error.message}`, "warn");
+                this.setStatus(t("Catálogo embutido indisponível: {0}", error.message), "warn");
             }
         },
 
@@ -181,7 +196,7 @@ window.editorApp = function editorApp() {
                 const response = await fetch("/api/editor");
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || "Falha ao carregar o editor");
+                    throw new Error(payload.detail || payload.error || t("Falha ao carregar o editor"));
                 }
                 this.editor = this.normalizeEditor(payload);
                 if (!this.selectedPage || !this.editor.pages.some((page) => page.name === this.selectedPage)) {
@@ -192,12 +207,12 @@ window.editorApp = function editorApp() {
                 await this.refreshSmallWindowPreview();
                 this.setStatus(
                     this.editor.config_exists
-                        ? "Configuração carregada"
-                        : "Novo layout pronto para salvar",
+                        ? t("Configuração carregada")
+                        : t("Novo layout pronto para salvar"),
                     "ok",
                 );
             } catch (error) {
-                this.setStatus(`Falha ao carregar: ${error.message}`, "err");
+                this.setStatus(t("Falha ao carregar: {0}", error.message), "err");
             } finally {
                 this.busy = false;
             }
@@ -217,7 +232,7 @@ window.editorApp = function editorApp() {
                 );
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || "Falha ao atualizar a prévia");
+                    throw new Error(payload.detail || payload.error || t("Falha ao atualizar a prévia"));
                 }
                 this.smallWindowPreview = {
                     time_text: payload.time_text || "--:--",
@@ -427,12 +442,12 @@ window.editorApp = function editorApp() {
             const keepFixed = this.buttonForm?.fixed || false;
             this.buttonForm = makeEmptyButton(this.selectedIndex, keepFixed);
             this.syncSelectedButton();
-            this.setStatus(`Botão ${this.selectedIndex + 1} limpo`, "warn");
+            this.setStatus(t("Botão {0} limpo", this.selectedIndex + 1), "warn");
         },
 
         resetSelectedButton() {
             this.buttonForm = this.formForIndex(this.selectedIndex);
-            this.setStatus(`Botão ${this.selectedIndex + 1} recarregado`, "");
+            this.setStatus(t("Botão {0} recarregado", this.selectedIndex + 1), "");
         },
 
         handleIconPathInput() {
@@ -465,14 +480,14 @@ window.editorApp = function editorApp() {
                 });
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || "Falha no upload da imagem");
+                    throw new Error(payload.detail || payload.error || t("Falha no upload da imagem"));
                 }
                 this.buttonForm.icon_path = payload.path;
                 this.buttonForm.preview_url = payload.preview_url;
                 this.syncSelectedButton();
-                this.setStatus(`Imagem enviada: ${file.name}`, "ok");
+                this.setStatus(t("Imagem enviada: {0}", file.name), "ok");
             } catch (error) {
-                this.setStatus(`Falha no upload: ${error.message}`, "err");
+                this.setStatus(t("Falha no upload: {0}", error.message), "err");
             } finally {
                 this.busy = false;
                 event.target.value = "";
@@ -489,15 +504,15 @@ window.editorApp = function editorApp() {
                 });
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || "Falha ao importar ícone embutido");
+                    throw new Error(payload.detail || payload.error || t("Falha ao importar ícone embutido"));
                 }
                 this.buttonForm.icon_path = payload.path;
                 this.buttonForm.preview_url = payload.preview_url;
                 this.syncSelectedButton();
                 this.showBuiltinIconBrowser = false;
-                this.setStatus(`Ícone embutido aplicado: ${icon.name}`, "ok");
+                this.setStatus(t("Ícone embutido aplicado: {0}", icon.name), "ok");
             } catch (error) {
-                this.setStatus(`Falha ao importar catálogo: ${error.message}`, "err");
+                this.setStatus(t("Falha ao importar catálogo: {0}", error.message), "err");
             } finally {
                 this.busy = false;
             }
@@ -589,7 +604,7 @@ window.editorApp = function editorApp() {
         },
 
         async resetDeck() {
-            if (!window.confirm("Resetar o deck vai remover todos os botões configurados e deixar o visor só com a hora. Continuar?")) {
+            if (!window.confirm(t("Resetar o deck vai remover todos os botões configurados e deixar o visor só com a hora. Continuar?"))) {
                 return;
             }
             const defaultPage = this.editor?.default_page || this.selectedPage || "main";
@@ -600,7 +615,7 @@ window.editorApp = function editorApp() {
             this.selectedPage = this.editor.default_page;
             this.selectSlot(0);
             this.dirty = true;
-            this.setStatus("Deck resetado. Clique em Salvar no deck para aplicar.", "warn");
+            this.setStatus(t("Deck resetado. Clique em Salvar no deck para aplicar."), "warn");
         },
 
         async validateDeck() {
@@ -618,17 +633,17 @@ window.editorApp = function editorApp() {
                 });
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || "Falha ao validar");
+                    throw new Error(payload.detail || payload.error || t("Falha ao validar"));
                 }
                 if (!payload.ok) {
-                    this.validationError = payload.error || "Layout inválido";
-                    this.setStatus("Layout inválido", "err");
+                    this.validationError = payload.error || t("Layout inválido");
+                    this.setStatus(t("Layout inválido"), "err");
                     return;
                 }
-                this.setStatus("Layout válido", "ok");
+                this.setStatus(t("Layout válido"), "ok");
             } catch (error) {
                 this.validationError = error.message;
-                this.setStatus(`Falha ao validar: ${error.message}`, "err");
+                this.setStatus(t("Falha ao validar: {0}", error.message), "err");
             } finally {
                 this.busy = false;
             }
@@ -649,8 +664,8 @@ window.editorApp = function editorApp() {
                 });
                 const payload = await response.json();
                 if (!response.ok) {
-                    this.validationError = payload.error || payload.detail || "Não foi possível salvar";
-                    this.setStatus("Salvar falhou", "err");
+                    this.validationError = payload.error || payload.detail || t("Não foi possível salvar");
+                    this.setStatus(t("Salvar falhou"), "err");
                     return;
                 }
                 this.editor = this.normalizeEditor(payload);
@@ -666,13 +681,13 @@ window.editorApp = function editorApp() {
                 ].filter(Boolean);
                 this.setStatus(
                     savedItems.length
-                        ? `Salvo às ${new Date().toLocaleTimeString()} · ${savedItems.join(" · ")}`
-                        : `Salvo às ${new Date().toLocaleTimeString()}`,
+                        ? t("Salvo às {0} · {1}", new Date().toLocaleTimeString(), savedItems.join(" · "))
+                        : t("Salvo às {0}", new Date().toLocaleTimeString()),
                     "ok",
                 );
             } catch (error) {
                 this.validationError = error.message;
-                this.setStatus(`Falha ao salvar: ${error.message}`, "err");
+                this.setStatus(t("Falha ao salvar: {0}", error.message), "err");
             } finally {
                 this.busy = false;
             }
@@ -681,11 +696,11 @@ window.editorApp = function editorApp() {
         addPage() {
             const nextName = this.newPageName.trim();
             if (!nextName) {
-                this.setStatus("Informe um nome para a página", "err");
+                this.setStatus(t("Informe um nome para a página"), "err");
                 return;
             }
             if (this.editor.pages.some((page) => page.name === nextName)) {
-                this.setStatus(`A página ${nextName} já existe`, "err");
+                this.setStatus(t("A página {0} já existe", nextName), "err");
                 return;
             }
             this.editor.pages.push({ name: nextName, buttons: [] });
@@ -694,12 +709,12 @@ window.editorApp = function editorApp() {
             this.selectedPage = nextName;
             this.selectSlot(0);
             this.dirty = true;
-            this.setStatus(`Página ${nextName} criada`, "ok");
+            this.setStatus(t("Página {0} criada", nextName), "ok");
         },
 
         removeCurrentPage() {
             if (!this.editor || this.editor.pages.length <= 1) {
-                this.setStatus("É preciso manter ao menos uma página", "err");
+                this.setStatus(t("É preciso manter ao menos uma página"), "err");
                 return;
             }
             const removedPage = this.selectedPage;
@@ -722,7 +737,7 @@ window.editorApp = function editorApp() {
             this.selectedPage = this.editor.pages[0].name;
             this.selectSlot(this.selectedIndex);
             this.dirty = true;
-            this.setStatus(`Página ${removedPage} removida`, "warn");
+            this.setStatus(t("Página {0} removida", removedPage), "warn");
         },
 
         refreshFromDisk() {
@@ -794,8 +809,8 @@ window.editorApp = function editorApp() {
                     text_style: this.normalizeTextStyle(button?.text_style),
                     actionLabel: this.actionLabel(button?.action?.type || "none"),
                     placeholder: slot.span === 2
-                        ? `Botão ${slot.index + 1} · 2x1`
-                        : `Botão ${slot.index + 1}`,
+                        ? t("Botão {0} · {1}", slot.index + 1, "2x1")
+                        : t("Botão {0}", slot.index + 1),
                 };
             });
         },
@@ -824,7 +839,7 @@ window.editorApp = function editorApp() {
         get builtinIconSummary() {
             const total = (this.builtinIcons || []).length;
             const visible = this.filteredBuiltinIcons.length;
-            return `${visible} de ${total} assets embutidos`;
+            return t("{0} de {1} assets embutidos", visible, total);
         },
 
         get currentTextOnlyPreview() {
@@ -856,10 +871,10 @@ window.editorApp = function editorApp() {
                 return "Botão";
             }
             if (this.isInfoWindowSlot(slot.index)) {
-                return "Info window · ação ao toque";
+                return t("Info window · ação ao toque");
             }
             const size = slot.span === 2 ? "2x1" : "1x1";
-            return `Botão ${slot.index + 1} · ${size}`;
+            return t("Botão {0} · {1}", slot.index + 1, size);
         },
 
         get pageOptions() {
@@ -873,14 +888,14 @@ window.editorApp = function editorApp() {
             if (this.smallWindowAlternates) {
                 const seconds = this.formatSeconds(this.editor.small_window.rotate_every_s);
                 return this.usesCustomSmallWindowMetrics
-                    ? `Relógio ${seconds}s / métricas ${seconds}s`
-                    : `Relógio ${seconds}s / estatísticas ${seconds}s`;
+                    ? t("Relógio {0}s / métricas {1}s", seconds, seconds)
+                    : t("Relógio {0}s / estatísticas {1}s", seconds, seconds);
             }
             return this.editor.small_window.show_metrics === false
-                ? "Somente relógio"
+                ? t("Somente relógio")
                 : this.usesCustomSmallWindowMetrics
-                    ? "Métricas customizadas"
-                    : "Estatísticas nativas";
+                    ? t("Métricas customizadas")
+                    : t("Estatísticas nativas");
         },
 
         get smallWindowAlternates() {

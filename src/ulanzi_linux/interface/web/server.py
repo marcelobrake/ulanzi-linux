@@ -29,11 +29,15 @@ def serve(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     log_level: str = "info",
+    language: str | None = None,
 ) -> None:
     """Run the web editor until the process is signalled.
 
     Blocks the current thread. SIGINT / SIGTERM are handled by uvicorn's
     default graceful-shutdown path.
+
+    ``language`` pins the UI language; left as ``None`` the page follows the
+    browser's ``Accept-Language``.
     """
     if host not in {"127.0.0.1", "localhost", "::1"}:
         logger.warning(
@@ -45,12 +49,13 @@ def serve(
             ),
         )
 
-    app = create_app(Path(config_path))
+    app = create_app(Path(config_path), language=language)
     logger.info(
         "web_ui_starting",
         host=host,
         port=port,
         config_path=str(Path(config_path).expanduser().resolve()),
+        language=language or "auto",
     )
     uvicorn.run(app, host=host, port=port, log_level=log_level)
 

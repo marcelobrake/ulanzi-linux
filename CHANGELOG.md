@@ -7,6 +7,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] — 2026-08-13
+
+### Added
+
+- The web editor is translatable, and ships an English translation alongside
+  the original Portuguese. Language is resolved most-specific-first: `?lang=`
+  on the URL, then `--lang` / `$ULANZI_LANG` on the server, then the browser's
+  `Accept-Language`, then pt-BR. An unknown tag logs a warning and falls back
+  rather than refusing to start.
+- Catalogues are GNU gettext `.po` files under
+  `interface/web/locales/<lang>/LC_MESSAGES/ulanzi_web.po`. Adding a language
+  is copying the English catalogue and filling in the `msgstr` values — no
+  build step, no `msgfmt`, no code change. The msgids are the original
+  Portuguese strings, so pt-BR needs no catalogue at all and an untranslated
+  or `#, fuzzy` entry falls through to Portuguese instead of showing nothing.
+- `GET /api/i18n` returns a catalogue as JSON plus the languages found on disk.
+
+### Changed
+
+- The `/` route renders the page instead of serving it as a static file, so
+  the HTML can be translated. Translation parses the document — text nodes
+  plus `placeholder`, `title` and `aria-label` — rather than replacing
+  substrings, which would corrupt JS inside `<script>` and rewrite Alpine.js
+  expression attributes like `x-text`. `/static/*` is unchanged.
+- Front-end strings now go through a `t()` helper reading the catalogue the
+  server injects into the page, so the JS and HTML halves share one `.po` and
+  there is no flash of untranslated toasts. Placeholders are positional:
+  `t("Botão {0} limpo", n)`.
+- `create_app()` and `serve()` take an optional `language`.
+
 ## [0.11.1] — 2026-08-13
 
 ### Fixed

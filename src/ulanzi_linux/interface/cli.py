@@ -372,7 +372,16 @@ async def _session_agent_async() -> None:
     show_default=True,
     help="TCP port for the web editor.",
 )
-def gui_command(config_path: str, host: str, port: int) -> None:
+@click.option(
+    "--lang",
+    default=None,
+    envvar="ULANZI_LANG",
+    help=(
+        "UI language (e.g. en, pt_BR). Defaults to the browser's "
+        "Accept-Language. Also read from $ULANZI_LANG."
+    ),
+)
+def gui_command(config_path: str, host: str, port: int, lang: str | None) -> None:
     """Launch a localhost web editor for the YAML deck config.
 
     The editor is decoupled from the daemon: it only reads/validates/writes
@@ -389,7 +398,7 @@ def gui_command(config_path: str, host: str, port: int) -> None:
             f"({exc})"
         )
 
-    serve(config_path, host=host, port=port)
+    serve(config_path, host=host, port=port, language=lang)
 
 
 @cli.command("desktop")

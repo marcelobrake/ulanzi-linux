@@ -27,6 +27,7 @@ Design decisions:
 
 from __future__ import annotations
 
+import json
 import mimetypes
 import os
 import re
@@ -38,8 +39,8 @@ from urllib.parse import quote
 
 import structlog
 import yaml
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -75,6 +76,14 @@ from ulanzi_linux.infrastructure.system_metrics import (
 )
 from ulanzi_linux.infrastructure.ulanzi_d200 import D200_SPEC
 from ulanzi_linux.infrastructure.zip_builder import ICON_SIZE
+from ulanzi_linux.interface.web.i18n import (
+    DEFAULT_LANGUAGE,
+    SOURCE_LANGUAGE,
+    Translator,
+    available_languages,
+    normalize_language,
+    parse_accept_language,
+)
 from ulanzi_linux.interface.web.models import (
     AssetUploadResponse,
     BuiltinAssetImportRequest,
@@ -521,14 +530,27 @@ def _atomic_write(path: Path, text: str) -> None:
 # ---------------------------------------------------------------------- #
 
 
-def create_app(config_path: Path) -> FastAPI:
+def create_app(config_path: Path, *, language: str | None = None) -> FastAPI:
     """Build the FastAPI instance bound to a specific YAML path.
 
     The path is fixed per-process: an editor that lets the URL pick the
     file would be a path-traversal foot-gun on a tool with filesystem
     write access.
+
+    ``language`` pins the UI language for this process. Left as ``None`` the
+    page follows the browser's ``Accept-Language``, and ``?lang=`` overrides
+    either.
     """
     config_path = Path(config_path).expanduser().resolve()
+
+    # Catalogues are immutable once read, so parse each at most once per
+    # process rather than on every page load.
+    translator_cache: dict[str, Translator] = {}
+
+    def _translator_for(lang: str) -> Translator:
+        if lang not in translator_cache:
+            translator_cache[lang] = Translator(lang)
+        return translator_cache[lang]
 
     app = FastAPI(
         title="ulanzi-linux web editor",
@@ -887,8 +909,53 @@ def create_app(config_path: Path) -> FastAPI:
     # ------------------------------------------------------------------ #
 
     @app.get("/")
-    def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
+    def index(request: Request) -> Response:
+        """Serve the editor, translated into the requested language.
+
+        Language resolution, most specific first: an explicit ``?lang=``,
+        then the language the server was started with, then the browser's
+        ``Accept-Language``. The source language needs no catalogue, so the
+        untranslated page is always reachable.
+        """
+        requested = request.query_params.get("lang")
+        if not requested and language is None:
+            for tag in parse_accept_language(request.headers.get("accept-language")):
+                candidate = normalize_language(tag)
+                if candidate != DEFAULT_LANGUAGE:
+                    requested = candidate
+                    break
+        resolved = normalize_language(requested or language)
+        translator = _translator_for(resolved)
+
+        html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        html = translator.translate_html(html)
+        # The JS half reads its strings from here rather than fetching a
+        # second time; keeps the page a single request and avoids a flash of
+        # untranslated toasts.
+        payload = json.dumps(
+            {"language": resolved, "catalog": translator.catalog},
+            ensure_ascii=False,
+        )
+        html = html.replace(
+            "</head>",
+            f'<script>window.__I18N__ = {payload};</script>\n</head>',
+            1,
+        )
+        if resolved != SOURCE_LANGUAGE:
+            html = html.replace('<html lang="pt-BR"', f'<html lang="{resolved}"', 1)
+        return HTMLResponse(html)
+
+    @app.get("/api/i18n")
+    def i18n_catalog(lang: str | None = None) -> JSONResponse:
+        """Expose a catalogue, for tooling and for switching without a reload."""
+        resolved = normalize_language(lang or language)
+        return JSONResponse(
+            {
+                "language": resolved,
+                "available": available_languages(),
+                "catalog": _translator_for(resolved).catalog,
+            }
+        )
 
     app.mount(
         "/static",

@@ -91,6 +91,58 @@ URL actions entered through the editor are normalized on save: if the
 operator pastes only a hostname like `claude.ai`, the saved action becomes
 `https://claude.ai`.
 
+## Language
+
+The editor ships in Portuguese (pt-BR) and English. Language is resolved
+most-specific-first:
+
+1. `?lang=` on the URL — `http://127.0.0.1:8765/?lang=en`
+2. `--lang` / `$ULANZI_LANG` on the server — `ulanzi-linux gui --lang en …`
+3. the browser's `Accept-Language`
+4. pt-BR
+
+```bash
+ulanzi-linux gui --lang en ~/.config/ulanzi/deck.yaml
+ULANZI_LANG=en ulanzi-linux gui ~/.config/ulanzi/deck.yaml
+```
+
+An unknown tag logs a warning and falls back to pt-BR, so a typo in `--lang`
+degrades to the shipped UI instead of refusing to start.
+
+### Adding a language
+
+Catalogues are GNU gettext `.po` files under
+`src/ulanzi_linux/interface/web/locales/<lang>/LC_MESSAGES/ulanzi_web.po`.
+Copy the English one, replace each `msgstr`, and the language is picked up on
+next start — no build step, no `msgfmt`, no code change:
+
+```bash
+cd src/ulanzi_linux/interface/web/locales
+mkdir -p de/LC_MESSAGES && cp en/LC_MESSAGES/ulanzi_web.po de/LC_MESSAGES/
+```
+
+The `.po` is read directly rather than compiled to `.mo`. It is the file a
+translator edits, and keeping it as the only artifact removes the class of bug
+where a stale `.mo` silently overrides an edited `.po`. `msgfmt --check` still
+validates these files if you want it to.
+
+**The msgids are the original Portuguese strings.** gettext places no
+constraint on the source language, and this keeps pt-BR working with no
+catalogue at all — an untranslated msgid falls through unchanged. English is
+therefore an ordinary translation, and an entry left empty simply shows the
+Portuguese rather than showing nothing. Entries marked `#, fuzzy` are ignored
+for the same reason.
+
+Both halves of the UI share one catalogue. The HTML is translated server-side
+by parsing it — text nodes plus `placeholder`, `title` and `aria-label` — so
+`<script>` bodies and Alpine.js expression attributes such as `x-text` are
+never touched. The JS strings go through a `t()` helper reading the catalogue
+the server injects into the page, so there is no second request and no flash
+of untranslated toasts. Placeholders are positional: `t("Botão {0} limpo", n)`.
+
+`GET /api/i18n?lang=en` returns a catalogue as JSON, along with the list of
+languages found on disk.
+
 ## Design
 
 The UI is three small files under
