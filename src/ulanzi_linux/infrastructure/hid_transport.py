@@ -132,6 +132,17 @@ class DeviceOpenError(RuntimeError):
     """A device matching VID/PID was found but could not be opened."""
 
 
+class TransportReconnectExhaustedError(RuntimeError):
+    """Reconnect gave up; only a fresh process can recover.
+
+    python-hidapi offers no way to reset the library context from inside the
+    process, so a handle invalidated by an unplug can leave this process unable
+    to enumerate the device at all — indefinitely, and even while a newly
+    started process sees it straight away. Raising lets the daemon exit so its
+    supervisor can restart it with a clean context.
+    """
+
+
 def enumerate_hid_devices(
     vendor_id: int | None = None,
     product_id: int | None = None,

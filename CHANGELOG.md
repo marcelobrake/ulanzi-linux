@@ -7,6 +7,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] — 2026-08-13
+
+### Fixed
+
+- The daemon no longer hangs forever after the deck is unplugged and plugged
+  back in. Reconnection is now bounded by `max_reconnect_attempts` (default
+  10, i.e. ~10 s at the 1 s poll interval); once spent, the daemon raises
+  `TransportReconnectExhaustedError` and exits non-zero so its supervisor
+  restarts it. The budget still has to outlast USB re-enumeration and a
+  briefly flaky cable, both of which recover in-process without a restart.
+  Set the value to `0` to keep the previous unbounded behaviour.
+
+  python-hidapi exposes no way to reset the library context from inside the
+  process — the Cython binding offers only `device` and `enumerate` — so a
+  handle invalidated by an unplug can leave that process permanently unable to
+  enumerate the deck, even while a freshly started process finds it
+  immediately. Retrying enumeration in-process therefore cannot recover, and
+  the old loop simply polled a dead context forever: observed at 241
+  consecutive failed attempts against a device that was plugged in, powered,
+  and correctly permissioned the whole time.
+
+  The systemd user unit already carries `Restart=on-failure`, so it recovers
+  on its own; `ulanzi-linux daemon` run by hand now reports the reason instead
+  of an uncaught traceback.
+
+- A background worker that dies now brings the daemon down with it. `run()`
+  waited only on the stop event, so a dead worker went unnoticed: the process
+  stayed alive and looked healthy while the deck was unreachable. It now waits
+  on the stop event *and* the workers, winds the survivors down, and re-raises
+  the failure. The status loop no longer swallows
+  `TransportReconnectExhaustedError` into a `status_loop_tick_failed` warning
+  either — without both halves, bounding the retries changed nothing, because
+  the error never reached the exit path.
+
 ## [0.11.0] — 2026-08-13
 
 ### Added

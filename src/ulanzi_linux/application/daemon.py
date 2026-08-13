@@ -40,6 +40,9 @@ from ulanzi_linux.domain.button_config import (
 )
 from ulanzi_linux.domain.commands import SmallWindowMode
 from ulanzi_linux.domain.events import ButtonEvent
+from ulanzi_linux.infrastructure.hid_transport import (
+    TransportReconnectExhaustedError,
+)
 from ulanzi_linux.infrastructure.small_window_renderer import (
     render_small_window_clock_png,
     render_small_window_metrics_png,
@@ -296,9 +299,34 @@ class DeckDaemon:
                     watcher.run(stop), name="ulanzi_daemon_config_watch"
                 )
             )
+        # Wait on the stop event *and* the workers. Waiting on `stop` alone
+        # would let a worker die unnoticed — the daemon would sit here looking
+        # healthy while the deck was unreachable.
+        stop_waiter = asyncio.create_task(stop.wait(), name="ulanzi_daemon_stop")
+        fatal: BaseException | None = None
         try:
-            await stop.wait()
+            done, _pending = await asyncio.wait(
+                [stop_waiter, *tasks],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in done:
+                if task is stop_waiter or task.cancelled():
+                    continue
+                exc = task.exception()
+                if exc is not None:
+                    fatal = exc
+                    logger.error(
+                        "daemon_worker_failed",
+                        task=task.get_name(),
+                        error=str(exc),
+                    )
+                    break
         finally:
+            stop.set()
+            if not stop_waiter.done():
+                stop_waiter.cancel()
+            with suppress(asyncio.CancelledError):
+                await stop_waiter
             for task in tasks:
                 if not task.done():
                     task.cancel()
@@ -314,6 +342,8 @@ class DeckDaemon:
                         error=str(exc),
                     )
             logger.info("daemon_stopped")
+        if fatal is not None:
+            raise fatal
 
     # ------------------------------------------------------------------ #
     # Internals                                                          #
@@ -511,6 +541,11 @@ class DeckDaemon:
                             native_cache_scrubbed = False
                         await self._service._device.keep_alive()
                         timeout = self._heartbeat_interval_s
+                except TransportReconnectExhaustedError:
+                    # Fatal: the deck is unreachable and no amount of retrying
+                    # inside this process can change that. Let it out so the
+                    # daemon exits and the supervisor restarts it clean.
+                    raise
                 except Exception as exc:
                     logger.warning("status_loop_tick_failed", error=str(exc))
                     timeout = self._heartbeat_interval_s

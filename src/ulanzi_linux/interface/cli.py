@@ -39,6 +39,7 @@ from ulanzi_linux.domain.events import ButtonEvent, DeviceInfoEvent
 from ulanzi_linux.infrastructure.hid_transport import (
     DeviceNotFoundError,
     DeviceOpenError,
+    TransportReconnectExhaustedError,
     enumerate_hid_devices,
 )
 from ulanzi_linux.infrastructure.ulanzi_d200 import D200_SPEC
@@ -285,6 +286,10 @@ def daemon_command(config_path: str, skip_sync: bool, no_watch: bool) -> None:
         _bail(str(exc))
     except DeviceOpenError as exc:
         _bail(str(exc))
+    except TransportReconnectExhaustedError as exc:
+        # Exit non-zero on purpose: the systemd user unit restarts on failure,
+        # and only a fresh process gets a usable hidapi context back.
+        _bail(f"{exc} — restart the daemon to pick the deck back up")
 
 
 async def _daemon_async(
