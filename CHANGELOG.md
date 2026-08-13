@@ -7,6 +7,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.5] — 2026-08-13
+
+### Fixed
+
+- The `web` and `desktop` extras now declare `python-multipart`, which FastAPI
+  requires for the multipart upload endpoint used by the asset browser. A
+  clean `pip install -e ".[web]"` previously produced a working CLI but a
+  `ulanzi-linux gui` that aborted at startup with
+  `RuntimeError: Form data requires "python-multipart" to be installed`.
+  FastAPI raises this while registering routes, before the deck YAML is read,
+  so the failure surfaced as an import-time traceback with no reference to the
+  user's configuration.
+
 ## [0.10.4] — 2026-05-17
 
 ### Fixed
