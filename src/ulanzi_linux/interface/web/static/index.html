@@ -251,7 +251,8 @@
                  x-show="iconTarget !== null"
                  x-text="t('Aplicando ao passo {0}', iconTarget + 1)"></p>
               <div class="builtin-toolbar">
-                <input type="text"
+                <input type="search"
+                       x-ref="builtinSearch"
                        x-model="builtinIconQuery"
                        placeholder="Buscar por nome, app ou termo" />
                 <select x-model="builtinIconStyle" title="Filtrar catálogo por estilo">
@@ -265,12 +266,14 @@
 
               <div class="builtin-grid">
                 <template x-for="icon in filteredBuiltinIcons" :key="icon.asset_id">
-                  <button type="button" class="builtin-icon-card" @click="useBuiltinIcon(icon)">
+                  <button type="button"
+                          class="builtin-icon-card"
+                          :title="`${icon.name} · ${icon.family} · ${icon.style}`"
+                          :aria-label="icon.name"
+                          @click="useBuiltinIcon(icon)">
                     <span class="builtin-icon-frame">
                       <img :src="icon.preview_url" :alt="icon.name" />
                     </span>
-                    <strong x-text="icon.name"></strong>
-                    <small x-text="`${icon.family} · ${icon.style}`"></small>
                   </button>
                 </template>
               </div>

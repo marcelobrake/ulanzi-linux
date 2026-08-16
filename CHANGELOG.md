@@ -7,6 +7,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] — 2026-08-16
+
+### Changed
+
+- The built-in icon catalogue now shows icons only, four to a row. The name,
+  family and style moved to the hover tooltip and the accessible label, so a
+  panel that is scanned by shape is no longer half filled with text.
+- Catalogue search is ranked instead of raw substring matching. Searching
+  `mic` used to return "anatomical heart" (`anato-mic-al`) alongside the
+  microphone, in no useful order; matches at the start of a word now beat
+  matches buried mid-word, and an icon's own name beats its keywords. Nothing
+  is hidden — the weaker matches simply sort below.
+- Opening the catalogue puts the caret in its search box, since the cards no
+  longer carry names to skim.
+
+### Added
+
+- Seven tests covering the ranking, driving the shipped `app.js` through node
+  so the assertions apply to the code the browser actually runs. They skip
+  cleanly where node is absent.
+
 ## [0.14.1] — 2026-08-16
 
 ### Fixed

@@ -742,10 +742,12 @@ textarea {
     gap: 0.7rem;
 }
 
+/* Four fixed columns: the catalogue is scanned by shape, not read, so the
+   grid stays predictable instead of reflowing with the panel width. */
 .builtin-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
-    gap: 0.65rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
     max-height: 340px;
     overflow: auto;
     padding-right: 0.2rem;
@@ -753,41 +755,25 @@ textarea {
 
 .builtin-icon-card {
     display: grid;
-    gap: 0.35rem;
-    justify-items: center;
-    align-content: start;
-    padding: 0.65rem 0.55rem;
-    border-radius: 16px;
-    text-align: center;
-    min-height: 126px;
+    place-items: center;
+    padding: 0.4rem;
+    border-radius: 14px;
+    aspect-ratio: 1;
 }
 
 .builtin-icon-frame {
-    width: 56px;
-    height: 56px;
+    width: 100%;
+    height: 100%;
     display: grid;
     place-items: center;
-    border-radius: 14px;
+    border-radius: 12px;
     background: rgba(8, 13, 18, 0.58);
 }
 
 .builtin-icon-frame img {
-    width: 36px;
-    height: 36px;
+    width: 62%;
+    height: 62%;
     object-fit: contain;
-}
-
-.builtin-icon-card strong {
-    font-size: 0.76rem;
-    line-height: 1.1;
-    word-break: break-word;
-}
-
-.builtin-icon-card small {
-    color: var(--muted);
-    font-size: 0.66rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
 }
 
 .compact-copy {
