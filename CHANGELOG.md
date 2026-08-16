@@ -7,6 +7,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] — 2026-08-16
+
+### Fixed
+
+- Five paging tests had been failing since `_push_page` started following each
+  layout sync with a partial push for the small-window background strip: they
+  counted raw `set_buttons` calls, so every page sync read as two uploads. The
+  test deck now records full and partial pushes separately, which restores the
+  "one upload per page sync" assertions and makes the strip push assertable in
+  its own right. No production code changed.
+
 ## [0.13.0] — 2026-08-16
 
 ### Added

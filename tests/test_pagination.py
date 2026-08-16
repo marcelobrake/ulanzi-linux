@@ -10,7 +10,7 @@ from typing import cast
 import pytest
 
 from ulanzi_linux.application.config_loader import load_deck_config
-from ulanzi_linux.application.daemon import DeckDaemon
+from ulanzi_linux.application.daemon import INFO_WINDOW_INDEX, DeckDaemon
 from ulanzi_linux.application.deck_service import DeckService
 from ulanzi_linux.domain.button_config import (
     ButtonConfig,
@@ -216,7 +216,12 @@ class FakeDeck(DeckDevice):
             icon_width=196,
             icon_height=196,
         )
+        # Full layout pushes only. Every page sync is followed by a partial
+        # push that just paints the small-window background strip; lumping
+        # the two together would make "how many layouts were uploaded?"
+        # answer two per page, which is not what these tests are asking.
         self.button_uploads: list[tuple[ButtonConfig, ...]] = []
+        self.partial_uploads: list[tuple[ButtonConfig, ...]] = []
         self.closed = False
         self.keep_alive_calls = 0
         self._queue: asyncio.Queue[ButtonEvent | DeviceInfoEvent] = asyncio.Queue()
@@ -248,7 +253,8 @@ class FakeDeck(DeckDevice):
         pass
 
     async def set_buttons(self, configs, *, partial: bool = False) -> None:  # type: ignore[override]
-        self.button_uploads.append(tuple(configs))
+        target = self.partial_uploads if partial else self.button_uploads
+        target.append(tuple(configs))
 
     def events(self) -> AsyncIterator[ButtonEvent | DeviceInfoEvent]:
         async def _iter() -> AsyncIterator[ButtonEvent | DeviceInfoEvent]:
@@ -327,6 +333,8 @@ async def test_sync_layout_pushes_default_page_with_fixed_buttons() -> None:
     uploaded_indices = [b.index for b in fake.button_uploads[0]]
     # main page button (0) + fixed buttons (10, 11)
     assert uploaded_indices == [0, 10, 11]
+    # ...followed by the partial push that paints the small-window strip.
+    assert [b.index for b in fake.partial_uploads[0]] == [INFO_WINDOW_INDEX]
 
 
 @pytest.mark.asyncio
