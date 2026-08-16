@@ -43,7 +43,10 @@ DEFAULT_LANGUAGE = SOURCE_LANGUAGE
 
 #: Attributes whose values are shown to the user and must be translated.
 #: Deliberately narrow: ``x-text``, ``:class`` and friends hold JS expressions.
-TRANSLATABLE_ATTRS = frozenset({"placeholder", "title", "aria-label"})
+#: ``alt`` is prose the reader sees whenever an image fails to load, so it
+#: belongs here; Alpine's dynamic ``:alt`` stays excluded like every other
+#: bound attribute.
+TRANSLATABLE_ATTRS = frozenset({"alt", "placeholder", "title", "aria-label"})
 
 #: Element content that is code, not prose.
 OPAQUE_ELEMENTS = frozenset({"script", "style"})

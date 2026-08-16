@@ -35,6 +35,12 @@ msgstr "Validate"
 msgid "Salvar no deck"
 msgstr "Save to deck"
 
+msgid "{0} dispositivo(s)"
+msgstr "{0} device(s)"
+
+msgid "Pronto para editar"
+msgstr "Ready to edit"
+
 # --- pages ---------------------------------------------------------------
 
 msgid "Página padrão"
@@ -111,8 +117,23 @@ msgstr "No image"
 msgid "Escolher imagem"
 msgstr "Choose image"
 
+msgid "Catálogo embutido"
+msgstr "Built-in catalogue"
+
+msgid "Fechar catálogo"
+msgstr "Close catalogue"
+
 msgid "Remover"
 msgstr "Remove"
+
+msgid "Ícone do botão"
+msgstr "Button icon"
+
+msgid "Prévia do ícone"
+msgstr "Icon preview"
+
+msgid "fixo"
+msgstr "fixed"
 
 # --- actions -------------------------------------------------------------
 
@@ -384,6 +405,12 @@ msgstr "Info window · touch action"
 
 msgid "{0} de {1} assets embutidos"
 msgstr "{0} of {1} built-in assets"
+
+msgid "relógio ↔ métricas · {0}s"
+msgstr "clock ↔ metrics · {0}s"
+
+msgid "relógio ↔ CPU/MEM · {0}s"
+msgstr "clock ↔ CPU/MEM · {0}s"
 
 msgid "Relógio {0}s / métricas {1}s"
 msgstr "Clock {0}s / metrics {1}s"

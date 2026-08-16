@@ -7,6 +7,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.2] — 2026-08-16
+
+### Fixed
+
+- Portuguese no longer leaks into the English editor. Two classes of string
+  had been unreachable by the translator: `alt` text, which the reader sees
+  whenever an image fails to load, and string literals written inside Alpine
+  `x-text` expressions — that attribute holds JS, so the server-side HTML
+  translator deliberately never looks inside it. Affected: the **Built-in
+  catalogue** / **Close catalogue** button, the `fixed` button badge, the
+  "Ready to edit" status line, the alternating small-window caption, and both
+  icon `alt` texts. `t()` is now exposed on the editor component so templates
+  can translate, and `alt` joined the translatable-attribute whitelist.
+- The device-count pill was hard-coded to English (`2 device(s)`) and so read
+  wrong in the Portuguese UI; it is now a catalogue entry like everything else.
+
+### Added
+
+- Two catalogue-coverage tests: one asserts every `t()` call in the HTML and
+  JS has an English entry, the other that no display literal sits bare inside
+  an `x-text` expression, where no catalogue could ever reach it.
+
 ## [0.13.1] — 2026-08-16
 
 ### Fixed

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from ulanzi_linux.interface.web.i18n import (
     DEFAULT_LANGUAGE,
     SOURCE_LANGUAGE,
@@ -11,6 +14,8 @@ from ulanzi_linux.interface.web.i18n import (
     parse_accept_language,
     parse_po,
 )
+
+STATIC_DIR = Path(__file__).resolve().parents[1] / "src/ulanzi_linux/interface/web/static"
 
 # --- .po parsing -----------------------------------------------------------
 
@@ -142,6 +147,13 @@ def test_translates_text_nodes_and_whitelisted_attributes() -> None:
     assert 'title="e.g. streaming"' in out
 
 
+def test_translates_alt_text() -> None:
+    """``alt`` is what the reader sees when an image fails to load."""
+    translator = Translator("en")
+    out = translator.translate_html('<img src="x.png" alt="Prévia do ícone" />')
+    assert 'alt="Icon preview"' in out
+
+
 def test_leaves_script_bodies_alone() -> None:
     """A substring replace would corrupt JS that mentions a UI string."""
     translator = Translator("en")
@@ -164,6 +176,56 @@ def test_preserves_surrounding_whitespace() -> None:
     translator = Translator("en")
     out = translator.translate_html("<p>\n  Recarregar\n</p>")
     assert out == "<p>\n  Reload\n</p>"
+
+
+# --- catalogue coverage ----------------------------------------------------
+
+#: Literals that read the same in every language — status words, tile
+#: geometry, a strftime pattern — so wrapping them in ``t()`` would only add
+#: catalogue noise.
+LANGUAGE_NEUTRAL_LITERALS = frozenset(
+    {"online", "offline", " btn", "1x1", "2x1", "%H:%M"}
+)
+
+
+def _template_t_calls() -> set[str]:
+    """Every string passed to ``t()`` from the editor's HTML and JS."""
+    sources = (STATIC_DIR / "index.html", STATIC_DIR / "app.js")
+    pattern = re.compile(r"""\bt\(\s*(['"])((?:[^'"\\]|\\.)*)\1""")
+    return {
+        match.group(2)
+        for source in sources
+        for match in pattern.finditer(source.read_text(encoding="utf-8"))
+    }
+
+
+def test_english_catalog_covers_every_translated_call() -> None:
+    """A ``t()`` call with no catalogue entry silently ships Portuguese."""
+    catalog = Translator("en").catalog
+    missing = sorted(msgid for msgid in _template_t_calls() if msgid not in catalog)
+    assert missing == []
+
+
+def test_display_text_in_alpine_expressions_goes_through_t() -> None:
+    """``x-text`` holds JS, so the server-side translator cannot see inside it.
+
+    A bare literal there ships untranslated no matter how complete the
+    catalogue is — the only way through is a ``t()`` call.
+    """
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    literal = re.compile(r"""(t\(\s*)?'([^']*)'""")
+
+    bare: list[str] = []
+    for expression in re.findall(r'x-text="([^"]*)"', html):
+        for match in literal.finditer(expression):
+            text = match.group(2)
+            if not any(char.isalpha() for char in text):
+                continue  # punctuation placeholders like '?'
+            if text in LANGUAGE_NEUTRAL_LITERALS or match.group(1):
+                continue
+            bare.append(text)
+
+    assert bare == []
 
 
 def test_source_language_returns_html_untouched() -> None:

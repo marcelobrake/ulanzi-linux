@@ -121,6 +121,11 @@ function makeResetEditor(defaultPage = "main") {
 
 window.editorApp = function editorApp() {
     return {
+        // Exposed on the component so Alpine expressions can translate too.
+        // A string literal inside x-text is invisible to the server-side HTML
+        // translator — that attribute holds JS, not prose — so any wording
+        // chosen in a template has to come through here instead.
+        t,
         health: { ok: false, version: "", config_path: "", devices_found: 0 },
         editor: makeResetEditor(),
         saveFirmwareBundle: false,

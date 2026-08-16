@@ -21,7 +21,7 @@
       <span class="thin">v<span x-text="health.version || '?'">?</span></span>
     </span>
     <span class="pill" :class="health.devices_found ? 'pill-ok' : 'pill-warn'">
-      <span x-text="health.devices_found + ' device(s)'"></span>
+      <span x-text="t('{0} dispositivo(s)', health.devices_found)"></span>
     </span>
     <span class="pill thin" :title="health.config_path" x-text="shortPath"></span>
   </div>
@@ -98,8 +98,8 @@
                       <span class="small-window-badge">alternando</span>
                       <strong x-text="smallWindowTimeLabel"></strong>
                       <small x-text="usesCustomSmallWindowMetrics
-                        ? 'relógio ↔ métricas · ' + smallWindowRotateLabel + 's'
-                        : 'relógio ↔ CPU/MEM · ' + smallWindowRotateLabel + 's'"></small>
+                        ? t('relógio ↔ métricas · {0}s', smallWindowRotateLabel)
+                        : t('relógio ↔ CPU/MEM · {0}s', smallWindowRotateLabel)"></small>
                     </div>
                   </template>
                   <template x-if="editor?.small_window?.enabled && !smallWindowAlternates && editor?.small_window?.show_metrics === false">
@@ -185,7 +185,7 @@
           <h2 x-text="selectedSlotTitle"></h2>
         </div>
         <span class="pill" :class="buttonForm?.fixed ? 'pill-ok' : 'pill-warn'"
-              x-text="buttonForm?.fixed ? 'fixo' : selectedPage"></span>
+              x-text="buttonForm?.fixed ? t('fixo') : selectedPage"></span>
       </div>
 
       <label class="toggle-row">
@@ -231,7 +231,7 @@
               <button @click="toggleBuiltinIconBrowser()"
                       title="Abrir ou fechar o catálogo de ícones embutidos"
                       :disabled="busy"
-                      x-text="showBuiltinIconBrowser ? 'Fechar catálogo' : 'Catálogo embutido'"></button>
+                      x-text="showBuiltinIconBrowser ? t('Fechar catálogo') : t('Catálogo embutido')"></button>
               <button @click="clearIcon()" :disabled="busy || !buttonForm.icon_path">Remover</button>
             </div>
 
@@ -525,7 +525,7 @@
         </div>
       </div>
 
-      <p class="status-line" :class="statusClass" x-text="status || 'Pronto para editar'"></p>
+      <p class="status-line" :class="statusClass" x-text="status || t('Pronto para editar')"></p>
 
       <template x-if="validationError">
         <pre class="error-block" x-text="validationError"></pre>
