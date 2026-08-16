@@ -193,9 +193,11 @@ code {
     border-color: rgba(255, 122, 122, 0.25);
 }
 
+/* The inspector is wide enough for a four-up icon grid at a size worth
+   looking at; the deck panel still gets the larger share on a wide screen. */
 .workspace {
     display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 420px);
+    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 520px);
     gap: 1.2rem;
     width: min(1480px, calc(100vw - 2rem));
     margin: 0 auto 1.6rem;
@@ -728,18 +730,25 @@ textarea {
 }
 
 .builtin-browser {
+    grid-column: 1 / -1;
     display: grid;
     gap: 0.7rem;
-    padding: 0.85rem;
+    padding: 0.6rem;
     border-radius: var(--radius-sm);
     border: 1px solid rgba(121, 221, 248, 0.16);
     background: rgba(255, 255, 255, 0.04);
 }
 
+/* Search gets its own full-width row: with no names on the cards it is the
+   only way to find anything, so it should not share space with the filter. */
 .builtin-toolbar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 160px;
-    gap: 0.7rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+}
+
+.builtin-toolbar input[type="search"] {
+    width: 100%;
 }
 
 /* Four fixed columns: the catalogue is scanned by shape, not read, so the
@@ -747,16 +756,41 @@ textarea {
 .builtin-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.5rem;
-    max-height: 340px;
-    overflow: auto;
-    padding-right: 0.2rem;
+    gap: 0.4rem;
+    max-height: 460px;
+    overflow-y: auto;
+    padding-right: 0.35rem;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(121, 221, 248, 0.32) transparent;
+}
+
+.builtin-grid::-webkit-scrollbar {
+    width: 10px;
+}
+
+.builtin-grid::-webkit-scrollbar-track {
+    background: rgba(8, 13, 18, 0.4);
+    border-radius: 999px;
+}
+
+/* Padding via a transparent border + background-clip keeps the thumb inset
+   from the track instead of filling the full gutter width. */
+.builtin-grid::-webkit-scrollbar-thumb {
+    background: rgba(121, 221, 248, 0.32);
+    background-clip: content-box;
+    border: 2px solid transparent;
+    border-radius: 999px;
+}
+
+.builtin-grid::-webkit-scrollbar-thumb:hover {
+    background: rgba(121, 221, 248, 0.55);
+    background-clip: content-box;
 }
 
 .builtin-icon-card {
     display: grid;
     place-items: center;
-    padding: 0.4rem;
+    padding: 0;
     border-radius: 14px;
     aspect-ratio: 1;
 }
@@ -771,8 +805,8 @@ textarea {
 }
 
 .builtin-icon-frame img {
-    width: 62%;
-    height: 62%;
+    width: 82%;
+    height: 82%;
     object-fit: contain;
 }
 
@@ -901,10 +935,6 @@ textarea {
     }
 
     .image-editor {
-        grid-template-columns: 1fr;
-    }
-
-    .builtin-toolbar {
         grid-template-columns: 1fr;
     }
 

@@ -245,38 +245,41 @@
                    x-model="buttonForm.icon_path"
                    @input="handleIconPathInput()"
                    placeholder="~/.config/ulanzi/icons/meu-icone.png" />
+          </div>
 
-            <div class="builtin-browser" x-ref="builtinBrowser" x-show="showBuiltinIconBrowser">
-              <p class="muted compact-copy"
-                 x-show="iconTarget !== null"
-                 x-text="t('Aplicando ao passo {0}', iconTarget + 1)"></p>
-              <div class="builtin-toolbar">
-                <input type="search"
-                       x-ref="builtinSearch"
-                       x-model="builtinIconQuery"
-                       placeholder="Buscar por nome, app ou termo" />
-                <select x-model="builtinIconStyle" title="Filtrar catálogo por estilo">
-                  <template x-for="style in builtinIconStyles" :key="style.value">
-                    <option :value="style.value" x-text="style.label"></option>
-                  </template>
-                </select>
-              </div>
-
-              <p class="muted compact-copy" x-text="builtinIconSummary"></p>
-
-              <div class="builtin-grid">
-                <template x-for="icon in filteredBuiltinIcons" :key="icon.asset_id">
-                  <button type="button"
-                          class="builtin-icon-card"
-                          :title="`${icon.name} · ${icon.family} · ${icon.style}`"
-                          :aria-label="icon.name"
-                          @click="useBuiltinIcon(icon)">
-                    <span class="builtin-icon-frame">
-                      <img :src="icon.preview_url" :alt="icon.name" />
-                    </span>
-                  </button>
+          <!-- Spans both columns of .image-editor: penned into the actions
+               column the grid had ~250px to split four ways, which left the
+               icons unreadably small. -->
+          <div class="builtin-browser" x-ref="builtinBrowser" x-show="showBuiltinIconBrowser">
+            <p class="muted compact-copy"
+               x-show="iconTarget !== null"
+               x-text="t('Aplicando ao passo {0}', iconTarget + 1)"></p>
+            <div class="builtin-toolbar">
+              <input type="search"
+                     x-ref="builtinSearch"
+                     x-model="builtinIconQuery"
+                     placeholder="Buscar por nome, app ou termo" />
+              <select x-model="builtinIconStyle" title="Filtrar catálogo por estilo">
+                <template x-for="style in builtinIconStyles" :key="style.value">
+                  <option :value="style.value" x-text="style.label"></option>
                 </template>
-              </div>
+              </select>
+            </div>
+
+            <p class="muted compact-copy" x-text="builtinIconSummary"></p>
+
+            <div class="builtin-grid">
+              <template x-for="icon in filteredBuiltinIcons" :key="icon.asset_id">
+                <button type="button"
+                        class="builtin-icon-card"
+                        :title="`${icon.name} · ${icon.family} · ${icon.style}`"
+                        :aria-label="icon.name"
+                        @click="useBuiltinIcon(icon)">
+                  <span class="builtin-icon-frame">
+                    <img :src="icon.preview_url" :alt="icon.name" />
+                  </span>
+                </button>
+              </template>
             </div>
           </div>
         </div>

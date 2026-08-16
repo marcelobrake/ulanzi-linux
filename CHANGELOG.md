@@ -7,6 +7,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] — 2026-08-16
+
+### Fixed
+
+- Catalogue icons were rendering around 28px: the grid was penned inside the
+  image editor's ~250px actions column and split it four ways. The catalogue
+  now spans both columns of that editor, the inspector panel may grow to
+  520px (from 420px), and the icon fills 82% of its tile instead of 62% —
+  roughly a threefold increase, still four to a row.
+- The catalogue search box takes a full-width row of its own instead of
+  sharing one with the style filter. With no names on the cards it is the
+  only way to find anything, so it should not be the narrower half.
+- The catalogue's scrollbar is styled to match the panel rather than falling
+  back to the browser default, in both the WebKit and Firefox spellings.
+
 ## [0.15.0] — 2026-08-16
 
 ### Changed
