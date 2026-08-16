@@ -27,6 +27,7 @@ Design decisions:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import mimetypes
 import os
@@ -119,6 +120,42 @@ SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 #: How a cycling shortcut's chords are joined into the editor's single text
 #: field. A chord is never allowed a comma, so splitting back is unambiguous.
 CYCLE_KEYS_SEPARATOR = ", "
+#: Static assets whose URL carries a content stamp, so a browser can never
+#: pair a cached copy of one with a fresh copy of the page.
+STAMPED_ASSETS = ("/static/app.js", "/static/app.css")
+
+
+class RevalidatingStaticFiles(StaticFiles):
+    """Serve ``static/`` with revalidation forced on every request.
+
+    ``/`` is rendered per request while the assets it references are not, so
+    a heuristically-cached ``app.js`` can be paired with freshly-rendered HTML
+    that calls functions the cached copy has never heard of — the page then
+    half-works in a way no server-side test can reproduce. The URLs are also
+    content-stamped (see ``_stamp_asset_urls``); this header is the belt to
+    that pair of braces, and costs one 304 on localhost.
+    """
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["cache-control"] = "no-cache"
+        return response
+
+
+def _asset_stamp(path: Path) -> str:
+    """Short content hash, so any edit changes the URL."""
+    try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return __version__
+    return digest[:12]
+
+
+def _stamp_asset_urls(html: str) -> str:
+    for asset in STAMPED_ASSETS:
+        stamp = _asset_stamp(STATIC_DIR / Path(asset).name)
+        html = html.replace(f'"{asset}"', f'"{asset}?v={stamp}"')
+    return html
 UPLOADED_ICON_MARGIN_PX = 5
 UPLOAD_FILE_FIELD = File(...)
 
@@ -962,6 +999,7 @@ def create_app(config_path: Path, *, language: str | None = None) -> FastAPI:
 
         html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
         html = translator.translate_html(html)
+        html = _stamp_asset_urls(html)
         # The JS half reads its strings from here rather than fetching a
         # second time; keeps the page a single request and avoids a flash of
         # untranslated toasts.
@@ -992,7 +1030,7 @@ def create_app(config_path: Path, *, language: str | None = None) -> FastAPI:
 
     app.mount(
         "/static",
-        StaticFiles(directory=str(STATIC_DIR)),
+        RevalidatingStaticFiles(directory=str(STATIC_DIR)),
         name="static",
     )
 
