@@ -7,6 +7,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] — 2026-08-16
+
+### Added
+
+- New `cycle_shortcut` action: one button that emits a different shortcut on
+  each press and wraps around at the end of the list, so
+  `keys: [F23, F24]` alternates F23 / F24 / F23 / F24 forever. Accepts a YAML
+  list or a comma-separated string.
+- The web editor exposes it as **Atalho alternado** / **Alternating
+  shortcut**, taking the chords in one comma-separated field (`F23, F24`) and
+  saving them as a YAML list. Saving fewer than two chords is rejected with a
+  message pointing at the plain shortcut action.
+
+### Changed
+
+- The daemon now resolves cycling shortcuts itself, the same way it already
+  intercepts `switch_page`, and hands the action runner a plain `shortcut`.
+  The cursor is per page and button index — a fixed button keeps one shared
+  cursor across pages, since it is one physical button — and lives in memory
+  only, so a daemon restart begins the sequence again. Hot-reload keeps each
+  cursor unless that button's chord list changed.
+
 ## [0.12.0] — 2026-08-13
 
 ### Added

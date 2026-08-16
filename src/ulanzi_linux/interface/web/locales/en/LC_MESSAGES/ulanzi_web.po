@@ -128,6 +128,19 @@ msgstr "Command"
 msgid "Atalho"
 msgstr "Shortcut"
 
+msgid "Atalho alternado"
+msgstr "Alternating shortcut"
+
+msgid "Atalhos alternados"
+msgstr "Alternating shortcuts"
+
+msgid ""
+"Separe os atalhos por vírgula. Cada toque envia o próximo da lista e volta "
+"ao primeiro depois do último."
+msgstr ""
+"Separate the shortcuts with commas. Each press sends the next one in the "
+"list, wrapping back to the first after the last."
+
 msgid "Comando pré-definido"
 msgstr "Predefined command"
 

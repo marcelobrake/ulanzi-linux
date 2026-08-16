@@ -282,6 +282,7 @@
           <option value="none">Sem ação</option>
           <option value="shell">Comando</option>
           <option value="shortcut">Atalho</option>
+          <option value="cycle_shortcut">Atalho alternado</option>
           <option value="predefined_command">Comando pré-definido</option>
           <option value="url">Link</option>
           <option value="switch_page">Troca de página</option>
@@ -304,6 +305,17 @@
                  x-model="buttonForm.action.keys"
                  @input="syncSelectedButton()"
                  placeholder="ctrl+alt+t" />
+        </label>
+      </template>
+
+      <template x-if="buttonForm.action.type === 'cycle_shortcut'">
+        <label class="field">
+          <span>Atalhos alternados</span>
+          <input type="text"
+                 x-model="buttonForm.action.keys"
+                 @input="syncSelectedButton()"
+                 placeholder="F23, F24" />
+          <small>Separe os atalhos por vírgula. Cada toque envia o próximo da lista e volta ao primeiro depois do último.</small>
         </label>
       </template>
 

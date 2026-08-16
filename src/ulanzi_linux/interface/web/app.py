@@ -56,6 +56,7 @@ from ulanzi_linux.domain.button_config import (
     DEFAULT_TIME_FORMAT,
     SMALL_WINDOW_METRIC_CHOICES,
     ButtonConfig,
+    CycleShortcutAction,
     DeckConfig,
     PredefinedCommandAction,
     ShellAction,
@@ -115,6 +116,9 @@ INFO_WINDOW_INDEX = 13
 EDITOR_DEFAULT_PAGE = "main"
 HOME_DIR = Path.home()
 SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+#: How a cycling shortcut's chords are joined into the editor's single text
+#: field. A chord is never allowed a comma, so splitting back is unambiguous.
+CYCLE_KEYS_SEPARATOR = ", "
 UPLOADED_ICON_MARGIN_PX = 5
 UPLOAD_FILE_FIELD = File(...)
 
@@ -169,6 +173,11 @@ def _action_to_editor(action: object | None) -> EditorActionModel:
         return EditorActionModel(type="shell", cmd=action.cmd)
     if isinstance(action, ShortcutAction):
         return EditorActionModel(type="shortcut", keys=action.keys)
+    if isinstance(action, CycleShortcutAction):
+        return EditorActionModel(
+            type="cycle_shortcut",
+            keys=CYCLE_KEYS_SEPARATOR.join(action.keys),
+        )
     if isinstance(action, PredefinedCommandAction):
         return EditorActionModel(
             type="predefined_command",
@@ -271,7 +280,7 @@ def _validate_button_indices(
         seen.add(button.index)
 
 
-def _editor_action_to_doc(action: EditorActionModel) -> dict[str, str] | None:
+def _editor_action_to_doc(action: EditorActionModel) -> dict[str, Any] | None:
     if action.type == "none":
         return None
     if action.type == "shell":
@@ -282,6 +291,14 @@ def _editor_action_to_doc(action: EditorActionModel) -> dict[str, str] | None:
         if not action.keys.strip():
             raise ValueError("shortcut action requires keys")
         return {"type": "shortcut", "keys": action.keys}
+    if action.type == "cycle_shortcut":
+        keys = [part.strip() for part in action.keys.split(",") if part.strip()]
+        if len(keys) < 2:
+            raise ValueError(
+                "cycle_shortcut action requires at least two shortcuts "
+                "separated by commas"
+            )
+        return {"type": "cycle_shortcut", "keys": keys}
     if action.type == "predefined_command":
         if not action.command_id.strip():
             raise ValueError("predefined_command action requires command_id")

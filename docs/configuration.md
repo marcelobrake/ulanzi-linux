@@ -184,7 +184,7 @@ device can otherwise prefer the label fallback and hide the PNG.
 
 ## 5. Actions
 
-`action` is a discriminated union on the `type` field. Four action
+`action` is a discriminated union on the `type` field. Six action
 types are recognised today.
 
 ### 5.1 — `shell`
@@ -274,7 +274,39 @@ If a keysym is outside the table, translation returns nothing and the
 shortcut falls through to `xdotool` rather than emitting a wrong chord —
 so uncommon keysyms still work on X11 and under XWayland.
 
-### 5.3 — `url`
+### 5.3 — `cycle_shortcut`
+
+Emit a *different* shortcut on each press, looping over the list. The
+first press sends `keys[0]`, the second `keys[1]`, and after the last
+entry the cursor wraps back to the first — so a two-entry list alternates
+forever.
+
+```yaml
+action: { type: cycle_shortcut, keys: [F23, F24] }
+action:
+  type: cycle_shortcut
+  keys:
+    - ctrl+alt+1
+    - ctrl+alt+2
+    - ctrl+alt+3
+```
+
+At least two entries are required; a single one is a plain `shortcut`.
+A comma-separated string (`keys: "F23, F24"`) is accepted too, which is
+what the web editor writes when you type into its one-line field.
+
+Each chord follows the exact same rules as `shortcut` above — same
+grammar, same backend selection, same keysym translation.
+
+The cursor lives in the daemon, not in the file: nothing is written back
+to `deck.yaml` as you press, and restarting the daemon starts the
+sequence over at the first entry. It is tracked per page and button
+index, so the same list bound to two buttons gives each its own position.
+A fixed button keeps one shared cursor across every page, since it is one
+physical button. Editing the list in the config resets that button's
+cursor on hot-reload; editing anything else preserves it.
+
+### 5.4 — `url`
 
 Open a URL with the desktop opener. The daemon prefers `gio open` first,
 then falls back to `xdg-open`, `sensible-browser`, and finally the stdlib
@@ -293,7 +325,7 @@ off.
 action: { type: url, url: "https://claude.ai" }
 ```
 
-### 5.4 — `switch_page`
+### 5.5 — `switch_page`
 
 The only action intercepted by the daemon itself; never hits the action
 runner. Swaps the active page and re-syncs the layout.
@@ -305,7 +337,7 @@ action: { type: switch_page, page: media }
 The target `page` must exist in `pages:` — otherwise the action is a
 no-op and a warning is logged.
 
-### 5.5 — `predefined_command`
+### 5.6 — `predefined_command`
 
 Compatibility-friendly shorthand for a small built-in catalog of common
 desktop actions. This is useful when reusing decks created from newer

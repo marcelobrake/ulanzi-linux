@@ -43,6 +43,7 @@ const ACTION_LABELS = Object.freeze({
     none: t("Sem ação"),
     shell: t("Comando"),
     shortcut: "Atalho",
+    cycle_shortcut: t("Atalho alternado"),
     predefined_command: t("Comando pré-definido"),
     url: "Link",
     switch_page: t("Troca de página"),
@@ -377,6 +378,8 @@ window.editorApp = function editorApp() {
                 return { ...emptyAction(), type: "shell", cmd: action.cmd || "" };
             case "shortcut":
                 return { ...emptyAction(), type: "shortcut", keys: action.keys || "" };
+            case "cycle_shortcut":
+                return { ...emptyAction(), type: "cycle_shortcut", keys: action.keys || "" };
             case "predefined_command":
                 return {
                     ...emptyAction(),

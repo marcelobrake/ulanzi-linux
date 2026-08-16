@@ -91,6 +91,15 @@ URL actions entered through the editor are normalized on save: if the
 operator pastes only a hostname like `claude.ai`, the saved action becomes
 `https://claude.ai`.
 
+The **Alternating shortcut** action takes its chords in one comma-separated
+field — `F23, F24` — and saves them as a YAML list under
+`action: { type: cycle_shortcut, keys: [...] }`. At least two chords are
+required; a single one belongs in the plain shortcut action, and saving one
+is rejected with HTTP 422 and that message in `error`. Each press sends the
+next chord and wraps back to the first after the last. See
+[configuration.md](configuration.md) §5.3 for where the cursor lives and when
+it resets.
+
 ## Language
 
 The editor ships in Portuguese (pt-BR) and English. Language is resolved

@@ -32,6 +32,7 @@ from ulanzi_linux.application.predefined_commands import (
 )
 from ulanzi_linux.domain.button_config import (
     Action,
+    CycleShortcutAction,
     PredefinedCommandAction,
     ShellAction,
     ShortcutAction,
@@ -130,8 +131,15 @@ class ActionRunner:
         self._background_tasks: set[asyncio.Task[object]] = set()
         self._desktop_targets: tuple[DesktopLaunchTarget, ...] | None = None
         self._session_agent = GraphicalSessionAgentClient(self._env)
+        self._cycle_cursors: dict[tuple[str, ...], int] = {}
 
     async def run(self, action: Action) -> None:
+        if isinstance(action, CycleShortcutAction):
+            # The daemon normally resolves this itself, keeping one cursor per
+            # page + button. A direct call has no such context, so fall back to
+            # a cursor keyed by the chord list — every button sharing the same
+            # sequence then shares a position, which beats doing nothing.
+            action = self._advance_cycle_shortcut(action)
         if await self._delegate_to_session_agent(action):
             return
         if isinstance(action, PredefinedCommandAction):
@@ -169,6 +177,21 @@ class ActionRunner:
             detail=result.detail,
         )
         return False
+
+    def _advance_cycle_shortcut(
+        self,
+        action: CycleShortcutAction,
+    ) -> ShortcutAction:
+        position = self._cycle_cursors.get(action.keys, 0)
+        self._cycle_cursors[action.keys] = (position + 1) % len(action.keys)
+        resolved = action.shortcut_at(position)
+        logger.info(
+            "action_cycle_shortcut",
+            position=position,
+            total=len(action.keys),
+            keys=resolved.keys,
+        )
+        return resolved
 
     async def _run_predefined_command(
         self,

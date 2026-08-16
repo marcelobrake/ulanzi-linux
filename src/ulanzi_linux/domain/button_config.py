@@ -39,6 +39,33 @@ class ShortcutAction:
 
 
 @dataclass(frozen=True, slots=True)
+class CycleShortcutAction:
+    """Emit a different shortcut on each press, looping over ``keys``.
+
+    Press 1 emits ``keys[0]``, press 2 ``keys[1]``, and after the last entry
+    the cursor wraps back to the first — so ``["F23", "F24"]`` alternates
+    forever. The action itself is stateless; whoever dispatches it owns the
+    cursor (the daemon keys it per page + button index).
+    """
+
+    type: Literal["cycle_shortcut"]
+    keys: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        cleaned = tuple(str(key).strip() for key in self.keys if str(key).strip())
+        if len(cleaned) < 2:
+            raise ValueError(
+                "cycle_shortcut requires at least two shortcuts; use a plain "
+                "shortcut action for a single one"
+            )
+        object.__setattr__(self, "keys", cleaned)
+
+    def shortcut_at(self, cursor: int) -> ShortcutAction:
+        """Resolve the chord for press number ``cursor`` (0-based, wrapping)."""
+        return ShortcutAction(type="shortcut", keys=self.keys[cursor % len(self.keys)])
+
+
+@dataclass(frozen=True, slots=True)
 class UrlAction:
     """Open a URL in the default browser."""
 
@@ -69,6 +96,7 @@ class PredefinedCommandAction:
 Action = (
     ShellAction
     | ShortcutAction
+    | CycleShortcutAction
     | UrlAction
     | SwitchPageAction
     | PredefinedCommandAction
@@ -321,6 +349,7 @@ __all__ = [
     "SMALL_WINDOW_MIN_INTERVAL_S",
     "Action",
     "ButtonConfig",
+    "CycleShortcutAction",
     "DeckConfig",
     "Page",
     "PredefinedCommandAction",

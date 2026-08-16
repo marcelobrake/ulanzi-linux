@@ -80,11 +80,15 @@ class EditorActionModel(BaseModel):
         "none",
         "shell",
         "shortcut",
+        "cycle_shortcut",
         "predefined_command",
         "url",
         "switch_page",
     ] = "none"
     cmd: str = ""
+    #: One chord for ``shortcut``; a comma-separated list for
+    #: ``cycle_shortcut`` (``"F23, F24"``), kept as one field so the editor
+    #: needs a single text input either way.
     keys: str = ""
     command_id: str = ""
     url: str = ""

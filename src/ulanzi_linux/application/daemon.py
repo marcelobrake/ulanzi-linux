@@ -30,6 +30,7 @@ from ulanzi_linux.application.config_watcher import ConfigWatcher
 from ulanzi_linux.application.deck_service import DeckService
 from ulanzi_linux.domain.button_config import (
     ButtonConfig,
+    CycleShortcutAction,
     DeckConfig,
     PredefinedCommandAction,
     ShellAction,
@@ -61,6 +62,12 @@ INFO_WINDOW_INDEX = 13
 # tolerate scheduling jitter and USB latency.
 DEFAULT_HEARTBEAT_INTERVAL_S: float = 2.0
 
+#: Identity of a cycling shortcut's cursor: the page it lives on (empty for a
+#: fixed button, which is the same physical button on every page), the button
+#: index, and the chord list itself. Including the chords means editing them
+#: restarts the cycle, while an unrelated config edit keeps the position.
+CycleCursorKey = tuple[str, int, tuple[str, ...]]
+
 
 def _looks_like_hhmm(value: str) -> bool:
     return len(value) == 5 and value[2] == ":" and value[:2].isdigit() and value[3:].isdigit()
@@ -74,6 +81,8 @@ def _action_log_fields(action: object) -> dict[str, object]:
         fields["cmd"] = action.cmd
     elif isinstance(action, ShortcutAction):
         fields["keys"] = action.keys
+    elif isinstance(action, CycleShortcutAction):
+        fields["keys"] = list(action.keys)
     elif isinstance(action, UrlAction):
         fields["url"] = action.url
     elif isinstance(action, PredefinedCommandAction):
@@ -180,6 +189,9 @@ class DeckDaemon:
         # Guards reload_config / switch_to against racing the event loop
         # uploading a stale layout mid-swap.
         self._state_lock = asyncio.Lock()
+        # Where each cycling shortcut is in its sequence. Written only from
+        # the event loop, so it needs no lock of its own.
+        self._cycle_cursors: dict[CycleCursorKey, int] = {}
 
     # ------------------------------------------------------------------ #
     # Public API                                                         #
@@ -253,6 +265,7 @@ class DeckDaemon:
                 )
             self._config = new_config
             self._current_page = next_page
+            self._prune_cycle_cursors(new_config)
             await self._push_page(next_page)
             logger.info(
                 "config_reloaded",
@@ -375,6 +388,55 @@ class DeckDaemon:
             action_only_buttons=len(buttons) - len(visible_buttons),
             small_window_background_color=self._config.small_window.background_color,
         )
+
+    # ------------------------------------------------------------------ #
+    # Cycling shortcuts                                                  #
+    # ------------------------------------------------------------------ #
+
+    def _cycle_cursor_key(
+        self,
+        index: int,
+        action: CycleShortcutAction,
+    ) -> CycleCursorKey:
+        is_fixed = any(button.index == index for button in self._config.fixed_buttons)
+        scope = "" if is_fixed else self._current_page
+        return (scope, index, action.keys)
+
+    def _next_cycle_shortcut(
+        self,
+        index: int,
+        action: CycleShortcutAction,
+    ) -> ShortcutAction:
+        """Take the chord for this press and advance the button's cursor."""
+        key = self._cycle_cursor_key(index, action)
+        position = self._cycle_cursors.get(key, 0)
+        self._cycle_cursors[key] = (position + 1) % len(action.keys)
+        resolved = action.shortcut_at(position)
+        logger.info(
+            "cycle_shortcut_advanced",
+            index=index,
+            page=self._current_page,
+            position=position,
+            total=len(action.keys),
+            keys=resolved.keys,
+        )
+        return resolved
+
+    def _prune_cycle_cursors(self, config: DeckConfig) -> None:
+        """Drop cursors for buttons the new config no longer defines."""
+        live: set[CycleCursorKey] = set()
+        for button in config.fixed_buttons:
+            if isinstance(button.action, CycleShortcutAction):
+                live.add(("", button.index, button.action.keys))
+        for page in config.pages.values():
+            for button in page.buttons:
+                if isinstance(button.action, CycleShortcutAction):
+                    live.add((page.name, button.index, button.action.keys))
+        self._cycle_cursors = {
+            key: position
+            for key, position in self._cycle_cursors.items()
+            if key in live
+        }
 
     def _wire_time_string(self, configured_format: str) -> str:
         rendered = self._metrics_reader.format_time(configured_format)
@@ -577,7 +639,13 @@ class DeckDaemon:
                     page=self._current_page,
                 )
                 continue
-            action_fields = _action_log_fields(button.action)
+            # Cycling shortcuts are resolved here for the same reason paging
+            # is: the cursor is deck state (page + button), which the runner
+            # has no business knowing about.
+            action = button.action
+            if isinstance(action, CycleShortcutAction):
+                action = self._next_cycle_shortcut(event.index, action)
+            action_fields = _action_log_fields(action)
             logger.info(
                 "button_action_dispatch",
                 index=event.index,
@@ -587,8 +655,8 @@ class DeckDaemon:
             # Paging is handled by the daemon, not the runner — keeps the
             # runner ignorant of deck-internal state and prevents a
             # subprocess from being spawned for a page switch.
-            if isinstance(button.action, SwitchPageAction):
-                await self.switch_to(button.action.page)
+            if isinstance(action, SwitchPageAction):
+                await self.switch_to(action.page)
                 logger.info(
                     "button_action_completed",
                     index=event.index,
@@ -598,7 +666,7 @@ class DeckDaemon:
                 )
                 continue
             try:
-                await self._runner.run(button.action)
+                await self._runner.run(action)
                 logger.info(
                     "button_action_accepted",
                     index=event.index,
@@ -611,7 +679,7 @@ class DeckDaemon:
                     index=event.index,
                     page=self._current_page,
                     **action_fields,
-                    action=repr(button.action),
+                    action=repr(action),
                     error=str(exc),
                 )
 

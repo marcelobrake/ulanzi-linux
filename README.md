@@ -25,6 +25,7 @@ HID, with no dependency on the proprietary app.
 | Icon + label upload (ZIP protocol) | ✅ | `ulanzi-linux push-config deck.yaml` |
 | Multi-page layouts + page switchers | ✅ | `fixed_buttons` + `switch_page` action |
 | Daemon with action runner (shell / shortcut / url / switch_page) | ✅ | `ulanzi-linux daemon deck.yaml` |
+| Alternating shortcut on one button (`F23`, then `F24`, …) | ✅ | `cycle_shortcut` action |
 | YAML hot-reload (no restart) | ✅ | on by default in daemon |
 | Small-window panel (clock, native stats, or up to 3 custom Linux metrics) | ✅ | `small_window:` in YAML |
 | Configurable small-window background strip | ✅ | `small_window.background_color` |
