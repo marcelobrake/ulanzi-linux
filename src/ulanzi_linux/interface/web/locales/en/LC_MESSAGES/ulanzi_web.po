@@ -162,6 +162,18 @@ msgstr ""
 "Separate the shortcuts with commas. Each press sends the next one in the "
 "list, wrapping back to the first after the last."
 
+msgid ""
+"Cada passo pode ter o seu próprio ícone. O botão mostra sempre o ícone do "
+"atalho que o próximo toque vai enviar; sem ícone, o passo usa a imagem do "
+"botão."
+msgstr ""
+"Each step can carry its own icon. The button always shows the icon of the "
+"shortcut the next press will send; with no icon, a step falls back to the "
+"button's own image."
+
+msgid "Aplicando ao passo {0}"
+msgstr "Applying to step {0}"
+
 msgid "Comando pré-definido"
 msgstr "Predefined command"
 

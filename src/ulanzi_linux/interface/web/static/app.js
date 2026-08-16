@@ -72,11 +72,17 @@ function emptyAction() {
         type: "none",
         cmd: "",
         keys: "",
+        // Positional against the chords in `keys`, for cycle_shortcut only.
+        cycle_icons: [],
+        cycle_icon_previews: [],
         command_id: "",
         url: "",
         page: "",
     };
 }
+
+//: Where the next picked icon lands: the button's own face.
+const BUTTON_ICON_TARGET = null;
 
 function emptyTextStyle() {
     return {
@@ -152,6 +158,10 @@ window.editorApp = function editorApp() {
         builtinIconQuery: "",
         builtinIconStyle: "all",
         showBuiltinIconBrowser: false,
+        // null = the button's own icon; a number = that cycle step's icon.
+        // Both the file picker and the built-in catalogue write here, so one
+        // set of controls serves every icon slot on the inspector.
+        iconTarget: BUTTON_ICON_TARGET,
 
         async init() {
             await this.refreshHealth();
@@ -356,6 +366,7 @@ window.editorApp = function editorApp() {
             this.buttonForm = this.formForIndex(index);
             this.validationError = "";
             this.showBuiltinIconBrowser = false;
+            this.iconTarget = BUTTON_ICON_TARGET;
         },
 
         formForIndex(index) {
@@ -384,7 +395,13 @@ window.editorApp = function editorApp() {
             case "shortcut":
                 return { ...emptyAction(), type: "shortcut", keys: action.keys || "" };
             case "cycle_shortcut":
-                return { ...emptyAction(), type: "cycle_shortcut", keys: action.keys || "" };
+                return {
+                    ...emptyAction(),
+                    type: "cycle_shortcut",
+                    keys: action.keys || "",
+                    cycle_icons: [...(action.cycle_icons || [])],
+                    cycle_icon_previews: [...(action.cycle_icon_previews || [])],
+                };
             case "predefined_command":
                 return {
                     ...emptyAction(),
@@ -473,6 +490,79 @@ window.editorApp = function editorApp() {
             this.showBuiltinIconBrowser = !this.showBuiltinIconBrowser;
         },
 
+        // --- icon slots -------------------------------------------------- //
+
+        /** One row per chord, so the icons line up with what they send. */
+        get cycleSteps() {
+            const action = this.buttonForm?.action || {};
+            const icons = action.cycle_icons || [];
+            const previews = action.cycle_icon_previews || [];
+            return (action.keys || "")
+                .split(",")
+                .map((chord) => chord.trim())
+                .filter(Boolean)
+                .map((chord, index) => ({
+                    index,
+                    keys: chord,
+                    icon_path: icons[index] || "",
+                    preview_url: previews[index] || this.assetUrl(icons[index] || ""),
+                }));
+        },
+
+        setCycleIcon(index, path, previewUrl) {
+            const action = this.buttonForm.action;
+            const icons = [...(action.cycle_icons || [])];
+            const previews = [...(action.cycle_icon_previews || [])];
+            while (icons.length <= index) {
+                icons.push("");
+            }
+            while (previews.length <= index) {
+                previews.push("");
+            }
+            icons[index] = path;
+            previews[index] = previewUrl || this.assetUrl(path);
+            action.cycle_icons = icons;
+            action.cycle_icon_previews = previews;
+            this.syncSelectedButton();
+        },
+
+        clearCycleIcon(index) {
+            this.setCycleIcon(index, "", "");
+        },
+
+        pickIconFor(target) {
+            this.iconTarget = target;
+            this.$refs.iconPicker.click();
+        },
+
+        browseIconsFor(target) {
+            const reopening = !this.showBuiltinIconBrowser || this.iconTarget !== target;
+            this.iconTarget = target;
+            this.showBuiltinIconBrowser = reopening;
+            if (!reopening) {
+                return;
+            }
+            // The catalogue lives up in the Image section, so a step further
+            // down the inspector would otherwise open it off-screen.
+            this.$nextTick(() => {
+                this.$refs.builtinBrowser?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "nearest",
+                });
+            });
+        },
+
+        /** Route a freshly chosen icon to whichever slot asked for it. */
+        applyIcon(path, previewUrl) {
+            if (this.iconTarget === BUTTON_ICON_TARGET) {
+                this.buttonForm.icon_path = path;
+                this.buttonForm.preview_url = previewUrl;
+                this.syncSelectedButton();
+                return;
+            }
+            this.setCycleIcon(this.iconTarget, path, previewUrl);
+        },
+
         async uploadIcon(event) {
             const file = event.target.files?.[0];
             if (!file) {
@@ -490,9 +580,7 @@ window.editorApp = function editorApp() {
                 if (!response.ok) {
                     throw new Error(payload.detail || payload.error || t("Falha no upload da imagem"));
                 }
-                this.buttonForm.icon_path = payload.path;
-                this.buttonForm.preview_url = payload.preview_url;
-                this.syncSelectedButton();
+                this.applyIcon(payload.path, payload.preview_url);
                 this.setStatus(t("Imagem enviada: {0}", file.name), "ok");
             } catch (error) {
                 this.setStatus(t("Falha no upload: {0}", error.message), "err");
@@ -514,9 +602,7 @@ window.editorApp = function editorApp() {
                 if (!response.ok) {
                     throw new Error(payload.detail || payload.error || t("Falha ao importar ícone embutido"));
                 }
-                this.buttonForm.icon_path = payload.path;
-                this.buttonForm.preview_url = payload.preview_url;
-                this.syncSelectedButton();
+                this.applyIcon(payload.path, payload.preview_url);
                 this.showBuiltinIconBrowser = false;
                 this.setStatus(t("Ícone embutido aplicado: {0}", icon.name), "ok");
             } catch (error) {
@@ -812,7 +898,7 @@ window.editorApp = function editorApp() {
                     fixed: Boolean(fixedButton),
                     empty: !button,
                     label: button?.label || "",
-                    preview_url: button?.preview_url || this.assetUrl(button?.icon_path),
+                    preview_url: this.buttonPreviewUrl(button),
                     textOnly: this.hasTextOnlyPreview(button),
                     text_style: this.normalizeTextStyle(button?.text_style),
                     actionLabel: this.actionLabel(button?.action?.type || "none"),
@@ -823,8 +909,19 @@ window.editorApp = function editorApp() {
             });
         },
 
+        /** What the deck shows at rest: the button's icon, else step 1's. */
+        buttonPreviewUrl(button) {
+            const own = button?.preview_url || this.assetUrl(button?.icon_path);
+            if (own || button?.action?.type !== "cycle_shortcut") {
+                return own;
+            }
+            const previews = button.action.cycle_icon_previews || [];
+            const icons = button.action.cycle_icons || [];
+            return previews[0] || this.assetUrl(icons[0] || "");
+        },
+
         get currentPreviewUrl() {
-            return this.buttonForm?.preview_url || this.assetUrl(this.buttonForm?.icon_path);
+            return this.buttonPreviewUrl(this.buttonForm);
         },
 
         get filteredBuiltinIcons() {

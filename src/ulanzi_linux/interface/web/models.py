@@ -90,6 +90,12 @@ class EditorActionModel(BaseModel):
     #: ``cycle_shortcut`` (``"F23, F24"``), kept as one field so the editor
     #: needs a single text input either way.
     keys: str = ""
+    #: Optional per-step icon paths for ``cycle_shortcut``, positional against
+    #: the chords in ``keys``. Shorter than ``keys`` means the trailing steps
+    #: simply have no icon of their own.
+    cycle_icons: list[str] = Field(default_factory=list)
+    #: Read-only preview URLs for ``cycle_icons``; ignored on save.
+    cycle_icon_previews: list[str] = Field(default_factory=list)
     command_id: str = ""
     url: str = ""
     page: str = ""

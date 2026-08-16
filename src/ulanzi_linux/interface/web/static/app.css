@@ -677,6 +677,56 @@ textarea {
     gap: 0.7rem;
 }
 
+.cycle-steps {
+    display: grid;
+    gap: 0.6rem;
+    margin-top: 0.6rem;
+}
+
+.cycle-step {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 0.7rem;
+    align-items: center;
+    padding: 0.6rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.cycle-step-preview {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-sm);
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+}
+
+.cycle-step-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.cycle-step-preview.empty {
+    color: var(--muted);
+    font-size: 1.1rem;
+}
+
+.cycle-step-body {
+    display: grid;
+    gap: 0.45rem;
+    min-width: 0;
+}
+
+.cycle-step-body strong {
+    font-family: var(--font-mono);
+    word-break: break-word;
+}
+
 .builtin-browser {
     display: grid;
     gap: 0.7rem;

@@ -46,6 +46,7 @@ from ulanzi_linux.domain.button_config import (
     Action,
     ButtonConfig,
     CycleShortcutAction,
+    CycleStep,
     DeckConfig,
     Page,
     PredefinedCommandAction,
@@ -79,6 +80,44 @@ def _parse_cycle_keys(raw: Any) -> tuple[str, ...]:
     )
 
 
+def _parse_cycle_steps(raw: Any) -> tuple[CycleStep, ...]:
+    """Parse the ``steps:`` form, where each entry may carry its own icon."""
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError("cycle_shortcut 'steps' must be a list")
+    steps: list[CycleStep] = []
+    for entry in raw:
+        if isinstance(entry, str):
+            steps.append(CycleStep(keys=entry))
+            continue
+        if not isinstance(entry, dict):
+            raise ValueError(
+                "each cycle_shortcut step must be a mapping with 'keys', "
+                "optionally 'icon'"
+            )
+        icon_raw = entry.get("icon")
+        steps.append(
+            CycleStep(
+                keys=str(entry["keys"]),
+                icon_path=Path(str(icon_raw)).expanduser() if icon_raw else None,
+            )
+        )
+    return tuple(steps)
+
+
+def _parse_cycle_shortcut(raw: dict[str, Any]) -> CycleShortcutAction:
+    """Build the action from whichever of the two spellings is present.
+
+    ``steps:`` wins when both appear — it is the strictly richer form, and
+    silently preferring the one that can express icons beats guessing.
+    """
+    if raw.get("steps") is not None:
+        return CycleShortcutAction(
+            type="cycle_shortcut",
+            steps=_parse_cycle_steps(raw["steps"]),
+        )
+    return CycleShortcutAction.from_keys(_parse_cycle_keys(raw.get("keys")))
+
+
 def _parse_action(raw: dict[str, Any] | None) -> Action | None:
     if raw is None:
         return None
@@ -88,10 +127,7 @@ def _parse_action(raw: dict[str, Any] | None) -> Action | None:
     if kind == "shortcut":
         return ShortcutAction(type="shortcut", keys=str(raw["keys"]))
     if kind == "cycle_shortcut":
-        return CycleShortcutAction(
-            type="cycle_shortcut",
-            keys=_parse_cycle_keys(raw.get("keys")),
-        )
+        return _parse_cycle_shortcut(raw)
     if kind == "url":
         return UrlAction(type="url", url=str(raw["url"]))
     if kind == "switch_page":

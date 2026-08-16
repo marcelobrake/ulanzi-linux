@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import time
 from contextlib import suppress
+from dataclasses import replace
 from pathlib import Path
 
 import structlog
@@ -365,7 +366,7 @@ class DeckDaemon:
     async def _push_page(self, page_name: str) -> None:
         buttons = self._config.buttons_for(page_name)
         visible_buttons = tuple(
-            button
+            self._rendered_button(button, page_name)
             for button in buttons
             if button.index < self._service.spec.button_count
         )
@@ -397,10 +398,59 @@ class DeckDaemon:
         self,
         index: int,
         action: CycleShortcutAction,
+        page_name: str | None = None,
     ) -> CycleCursorKey:
         is_fixed = any(button.index == index for button in self._config.fixed_buttons)
-        scope = "" if is_fixed else self._current_page
+        scope = "" if is_fixed else (page_name or self._current_page)
         return (scope, index, action.keys)
+
+    def _cycle_position(
+        self,
+        index: int,
+        action: CycleShortcutAction,
+        page_name: str | None = None,
+    ) -> int:
+        return self._cycle_cursors.get(
+            self._cycle_cursor_key(index, action, page_name), 0
+        )
+
+    def _rendered_button(
+        self,
+        button: ButtonConfig,
+        page_name: str | None = None,
+    ) -> ButtonConfig:
+        """Swap in the icon of the step the next press will send.
+
+        Buttons without a cycling action, or whose steps carry no icons, are
+        returned untouched so nothing else in the layout pays for this.
+        """
+        action = button.action
+        if not isinstance(action, CycleShortcutAction) or not action.has_icons():
+            return button
+        step = action.step_at(self._cycle_position(button.index, action, page_name))
+        if step.icon_path is None:
+            return button
+        return replace(button, icon_path=step.icon_path, icon_data=None)
+
+    async def _repaint_cycle_button(
+        self,
+        index: int,
+        action: CycleShortcutAction,
+    ) -> None:
+        """Push just this button, now wearing its next step's icon."""
+        button = self._config.button_at(self._current_page, index)
+        if button is None:
+            return
+        await self._service._device.set_buttons(
+            (self._rendered_button(button),),
+            partial=True,
+        )
+        logger.info(
+            "cycle_shortcut_repainted",
+            index=index,
+            page=self._current_page,
+            position=self._cycle_position(index, action),
+        )
 
     def _next_cycle_shortcut(
         self,
@@ -644,7 +694,25 @@ class DeckDaemon:
             # has no business knowing about.
             action = button.action
             if isinstance(action, CycleShortcutAction):
-                action = self._next_cycle_shortcut(event.index, action)
+                cycle = action
+                action = self._next_cycle_shortcut(event.index, cycle)
+                if cycle.has_icons():
+                    # Repaint before dispatching: the face should already show
+                    # what the *next* press will do, and the shortcut itself
+                    # may hand focus to another window for a while.
+                    try:
+                        await self._repaint_cycle_button(event.index, cycle)
+                    except TransportReconnectExhaustedError:
+                        raise  # deck is gone; let the daemon die and restart
+                    except Exception as exc:
+                        # A failed repaint must not swallow the keystroke —
+                        # the wrong icon is a nuisance, a dead button is not.
+                        logger.warning(
+                            "cycle_shortcut_repaint_failed",
+                            index=event.index,
+                            page=self._current_page,
+                            error=str(exc),
+                        )
             action_fields = _action_log_fields(action)
             logger.info(
                 "button_action_dispatch",

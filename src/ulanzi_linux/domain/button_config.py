@@ -13,6 +13,7 @@ touching the core dispatch logic.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -39,30 +40,71 @@ class ShortcutAction:
 
 
 @dataclass(frozen=True, slots=True)
-class CycleShortcutAction:
-    """Emit a different shortcut on each press, looping over ``keys``.
+class CycleStep:
+    """One position in a cycling shortcut: a chord and the face it wears.
 
-    Press 1 emits ``keys[0]``, press 2 ``keys[1]``, and after the last entry
-    the cursor wraps back to the first — so ``["F23", "F24"]`` alternates
-    forever. The action itself is stateless; whoever dispatches it owns the
-    cursor (the daemon keys it per page + button index).
+    ``icon_path`` is optional — a step without one leaves the button showing
+    whatever icon the button itself carries.
+    """
+
+    keys: str
+    icon_path: Path | None = None
+
+    def __post_init__(self) -> None:
+        cleaned = str(self.keys).strip()
+        if not cleaned:
+            raise ValueError("a cycle step needs a shortcut")
+        object.__setattr__(self, "keys", cleaned)
+
+
+@dataclass(frozen=True, slots=True)
+class CycleShortcutAction:
+    """Emit a different shortcut on each press, looping over ``steps``.
+
+    Press 1 emits ``steps[0]``, press 2 ``steps[1]``, and after the last one
+    the cursor wraps back to the first — so two steps alternate forever. The
+    action itself is stateless; whoever dispatches it owns the cursor (the
+    daemon keys it per page + button index).
+
+    When steps carry icons, the button always shows the icon of the step that
+    the *next* press will send, so the deck reads as "what happens if I press
+    this" rather than "what happened last time".
     """
 
     type: Literal["cycle_shortcut"]
-    keys: tuple[str, ...]
+    steps: tuple[CycleStep, ...]
 
     def __post_init__(self) -> None:
-        cleaned = tuple(str(key).strip() for key in self.keys if str(key).strip())
-        if len(cleaned) < 2:
+        if len(self.steps) < 2:
             raise ValueError(
                 "cycle_shortcut requires at least two shortcuts; use a plain "
                 "shortcut action for a single one"
             )
-        object.__setattr__(self, "keys", cleaned)
+
+    @classmethod
+    def from_keys(cls, keys: Iterable[str]) -> CycleShortcutAction:
+        """Build an icon-less cycle from bare chords."""
+        return cls(
+            type="cycle_shortcut",
+            steps=tuple(
+                CycleStep(keys=str(key)) for key in keys if str(key).strip()
+            ),
+        )
+
+    @property
+    def keys(self) -> tuple[str, ...]:
+        """Just the chords — the cycle's identity, independent of its icons."""
+        return tuple(step.keys for step in self.steps)
+
+    def step_at(self, cursor: int) -> CycleStep:
+        return self.steps[cursor % len(self.steps)]
 
     def shortcut_at(self, cursor: int) -> ShortcutAction:
         """Resolve the chord for press number ``cursor`` (0-based, wrapping)."""
-        return ShortcutAction(type="shortcut", keys=self.keys[cursor % len(self.keys)])
+        return ShortcutAction(type="shortcut", keys=self.step_at(cursor).keys)
+
+    def has_icons(self) -> bool:
+        return any(step.icon_path is not None for step in self.steps)
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,6 +392,7 @@ __all__ = [
     "Action",
     "ButtonConfig",
     "CycleShortcutAction",
+    "CycleStep",
     "DeckConfig",
     "Page",
     "PredefinedCommandAction",

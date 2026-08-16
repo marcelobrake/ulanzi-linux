@@ -227,8 +227,8 @@
 
           <div class="image-actions">
             <div class="inline-actions">
-              <button @click="$refs.iconPicker.click()" :disabled="busy">Escolher imagem</button>
-              <button @click="toggleBuiltinIconBrowser()"
+              <button @click="pickIconFor(null)" :disabled="busy">Escolher imagem</button>
+              <button @click="browseIconsFor(null)"
                       title="Abrir ou fechar o catálogo de ícones embutidos"
                       :disabled="busy"
                       x-text="showBuiltinIconBrowser ? t('Fechar catálogo') : t('Catálogo embutido')"></button>
@@ -246,7 +246,10 @@
                    @input="handleIconPathInput()"
                    placeholder="~/.config/ulanzi/icons/meu-icone.png" />
 
-            <div class="builtin-browser" x-show="showBuiltinIconBrowser">
+            <div class="builtin-browser" x-ref="builtinBrowser" x-show="showBuiltinIconBrowser">
+              <p class="muted compact-copy"
+                 x-show="iconTarget !== null"
+                 x-text="t('Aplicando ao passo {0}', iconTarget + 1)"></p>
               <div class="builtin-toolbar">
                 <input type="text"
                        x-model="builtinIconQuery"
@@ -309,14 +312,39 @@
       </template>
 
       <template x-if="buttonForm.action.type === 'cycle_shortcut'">
-        <label class="field">
+        <div class="field">
           <span>Atalhos alternados</span>
           <input type="text"
                  x-model="buttonForm.action.keys"
                  @input="syncSelectedButton()"
                  placeholder="F23, F24" />
           <small>Separe os atalhos por vírgula. Cada toque envia o próximo da lista e volta ao primeiro depois do último.</small>
-        </label>
+
+          <div class="cycle-steps" x-show="selectedIndex !== 13 && cycleSteps.length">
+            <small>Cada passo pode ter o seu próprio ícone. O botão mostra sempre o ícone do atalho que o próximo toque vai enviar; sem ícone, o passo usa a imagem do botão.</small>
+            <template x-for="step in cycleSteps" :key="step.index">
+              <div class="cycle-step">
+                <div class="cycle-step-preview" :class="step.preview_url ? '' : 'empty'">
+                  <template x-if="step.preview_url">
+                    <img :src="step.preview_url" alt="Prévia do ícone" />
+                  </template>
+                  <template x-if="!step.preview_url">
+                    <span x-text="step.index + 1"></span>
+                  </template>
+                </div>
+                <div class="cycle-step-body">
+                  <strong x-text="step.keys"></strong>
+                  <div class="inline-actions">
+                    <button @click="pickIconFor(step.index)" :disabled="busy">Escolher imagem</button>
+                    <button @click="browseIconsFor(step.index)" :disabled="busy">Catálogo embutido</button>
+                    <button @click="clearCycleIcon(step.index)"
+                            :disabled="busy || !step.icon_path">Remover</button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
       </template>
 
       <template x-if="buttonForm.action.type === 'predefined_command'">

@@ -298,6 +298,36 @@ what the web editor writes when you type into its one-line field.
 Each chord follows the exact same rules as `shortcut` above — same
 grammar, same backend selection, same keysym translation.
 
+#### Per-step icons
+
+To give each step its own face on the deck, use the longer `steps:`
+spelling instead of `keys:`:
+
+```yaml
+action:
+  type: cycle_shortcut
+  steps:
+    - keys: F23
+      icon: ~/.config/ulanzi/icons/mic-on.png
+    - keys: F24
+      icon: ~/.config/ulanzi/icons/mic-off.png
+```
+
+The button always shows the icon of the step that the **next** press will
+send, so the deck reads as "what happens if I press this" rather than
+"what happened last time". Before any press it shows step 1's icon;
+pressing sends step 1 and repaints to step 2.
+
+`icon` is optional per step — a step without one leaves the button showing
+its own `icon:`, so you can give a face to only the steps that need one.
+When no step has an icon the daemon never repaints, and the button costs
+exactly what it did before.
+
+The repaint is a single-button partial upload, and the device remembers
+it, so a deck power-cycle restores the face the cursor is actually on.
+Both spellings may not be mixed on one action: if `steps:` is present it
+wins and `keys:` is ignored.
+
 The cursor lives in the daemon, not in the file: nothing is written back
 to `deck.yaml` as you press, and restarting the daemon starts the
 sequence over at the first entry. It is tracked per page and button

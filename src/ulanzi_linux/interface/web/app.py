@@ -177,6 +177,11 @@ def _action_to_editor(action: object | None) -> EditorActionModel:
         return EditorActionModel(
             type="cycle_shortcut",
             keys=CYCLE_KEYS_SEPARATOR.join(action.keys),
+            cycle_icons=[_compact_path(step.icon_path) or "" for step in action.steps],
+            cycle_icon_previews=[
+                _asset_preview_url(_compact_path(step.icon_path)) or ""
+                for step in action.steps
+            ],
         )
     if isinstance(action, PredefinedCommandAction):
         return EditorActionModel(
@@ -298,7 +303,18 @@ def _editor_action_to_doc(action: EditorActionModel) -> dict[str, Any] | None:
                 "cycle_shortcut action requires at least two shortcuts "
                 "separated by commas"
             )
-        return {"type": "cycle_shortcut", "keys": keys}
+        icons = [icon.strip() for icon in action.cycle_icons[: len(keys)]]
+        icons += [""] * (len(keys) - len(icons))
+        if not any(icons):
+            # Nothing to say per step — keep the compact spelling.
+            return {"type": "cycle_shortcut", "keys": keys}
+        steps: list[dict[str, str]] = []
+        for chord, icon in zip(keys, icons, strict=True):
+            step = {"keys": chord}
+            if icon:
+                step["icon"] = icon
+            steps.append(step)
+        return {"type": "cycle_shortcut", "steps": steps}
     if action.type == "predefined_command":
         if not action.command_id.strip():
             raise ValueError("predefined_command action requires command_id")

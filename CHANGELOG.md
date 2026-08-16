@@ -7,6 +7,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] — 2026-08-16
+
+### Added
+
+- A cycling shortcut can now give each step its own icon, and the deck
+  repaints the button as it advances. The button always shows the icon of the
+  step the *next* press will send, so it reads as "what happens if I press
+  this" rather than "what happened last time".
+- New `steps:` spelling for `cycle_shortcut`, where each entry is
+  `{keys, icon}` and `icon` is optional — a step without one leaves the button
+  wearing its own image:
+
+  ```yaml
+  action:
+    type: cycle_shortcut
+    steps:
+      - { keys: F23, icon: ~/.config/ulanzi/icons/mic-on.png }
+      - { keys: F24, icon: ~/.config/ulanzi/icons/mic-off.png }
+  ```
+
+- The web editor grows one icon slot per chord under the shortcut field, fed
+  by the same upload and built-in-catalogue controls as the button's own
+  image. The catalogue now says which slot it is filling and scrolls itself
+  into view when opened from a step further down the inspector.
+
+### Changed
+
+- `keys: [F23, F24]` keeps working exactly as before and is still what the
+  editor saves when no step has an icon, so a config gains no noise from a
+  feature it does not use. When both spellings appear, `steps:` wins.
+- The repaint is a single-button partial upload, which the device already
+  remembers, so a deck power-cycle restores the face the cursor is on rather
+  than the first step. A repaint that fails is logged and skipped — a wrong
+  icon must never swallow the keystroke.
+
 ## [0.13.2] — 2026-08-16
 
 ### Fixed

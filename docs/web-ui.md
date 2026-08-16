@@ -100,6 +100,15 @@ next chord and wraps back to the first after the last. See
 [configuration.md](configuration.md) §5.3 for where the cursor lives and when
 it resets.
 
+Below that field the inspector grows one row per chord, each with its own
+icon slot — upload a file or pick from the built-in catalogue, exactly like
+the button's own image. Choosing an icon for a step switches the save format
+to the `steps:` spelling; with every slot left empty the compact `keys:` list
+is written instead, so a config gains no noise from a feature it does not
+use. Icons are positional: editing the chord field re-derives the rows and
+keeps each icon on its slot number. The deck simulator shows step 1's icon
+for a button that has no image of its own.
+
 ## Language
 
 The editor ships in Portuguese (pt-BR) and English. Language is resolved
