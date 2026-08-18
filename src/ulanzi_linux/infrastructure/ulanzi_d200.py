@@ -667,7 +667,13 @@ class UlanziD200Device(DeckDevice):
 
     @staticmethod
     def _build_small_window_mode_payload(mode: SmallWindowMode) -> bytes:
-        return bytes([int(mode)])
+        return UlanziD200Device._build_small_window_payload(
+            mode=mode,
+            cpu=0,
+            mem=0,
+            gpu=0,
+            time_str="00:00:00",
+        )
 
     async def _event_iterator(
         self,

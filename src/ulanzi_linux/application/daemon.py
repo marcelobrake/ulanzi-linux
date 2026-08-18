@@ -92,32 +92,6 @@ def _uses_custom_small_window(sw_cfg: object) -> bool:
     return bool(getattr(sw_cfg, "metrics_items", ()))
 
 
-async def _scrub_native_small_window_cache(device: DeckService) -> None:
-    """Overwrite the firmware-native clock/stats cache with blank payloads.
-
-    Some D200 firmware builds keep resurrecting the most recent native
-    CLOCK/STATS frame even after the host pins the strip to BACKGROUND.
-    Priming both native layouts with empty values makes that fallback blank
-    instead of reviving stale CPU/RAM/GPU content.
-    """
-
-    await device._device.set_small_window_mode(SmallWindowMode.CLOCK)
-    await device._device.set_small_window_data(
-        cpu="",
-        mem="",
-        gpu="",
-        time_str="",
-    )
-    await device._device.set_small_window_mode(SmallWindowMode.STATS)
-    await device._device.set_small_window_data(
-        cpu="",
-        mem="",
-        gpu="",
-        time_str="",
-    )
-    await device._device.set_small_window_mode(SmallWindowMode.BACKGROUND)
-
-
 def _small_window_clock_button(*, background_color: str, time_str: str) -> ButtonConfig:
     return ButtonConfig(
         index=INFO_WINDOW_INDEX,
@@ -370,7 +344,6 @@ class DeckDaemon:
         device_mode: SmallWindowMode | None = None
         mode_started_at: float | None = None
         metrics_primed = False
-        native_cache_scrubbed = False
         strategy_key: tuple[bool, bool, float | None, tuple[str, ...]] | None = None
         try:
             while not stop_event.is_set():
@@ -387,7 +360,6 @@ class DeckDaemon:
                         device_mode = None
                         mode_started_at = None
                         metrics_primed = False
-                        native_cache_scrubbed = False
                         strategy_key = current_strategy
                     if sw_cfg.enabled:
                         now = time.monotonic()
@@ -422,10 +394,6 @@ class DeckDaemon:
                         else:
                             desired_mode = SmallWindowMode.CLOCK
                         if _uses_custom_small_window(sw_cfg):
-                            if not native_cache_scrubbed:
-                                await _scrub_native_small_window_cache(self._service)
-                                device_mode = SmallWindowMode.BACKGROUND
-                                native_cache_scrubbed = True
                             if device_mode != SmallWindowMode.BACKGROUND:
                                 await self._service._device.set_small_window_mode(
                                     SmallWindowMode.BACKGROUND
@@ -459,8 +427,8 @@ class DeckDaemon:
                                     (
                                         _small_window_clock_button(
                                             background_color=sw_cfg.background_color,
-                                            time_str=self._wire_time_string(
-                                                sw_cfg.time_format
+                                            time_str=self._metrics_reader.format_time(
+                                                "%H:%M:%S"
                                             ),
                                         ),
                                     ),
@@ -510,7 +478,6 @@ class DeckDaemon:
                             active_mode = SmallWindowMode.BACKGROUND
                             mode_started_at = None
                             metrics_primed = False
-                            native_cache_scrubbed = False
                         await self._service._device.keep_alive()
                         timeout = self._heartbeat_interval_s
                 except Exception as exc:

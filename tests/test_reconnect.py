@@ -155,6 +155,25 @@ async def test_write_failure_reconnects_and_replays_cached_clock_state() -> None
 
 
 @pytest.mark.asyncio
+async def test_background_mode_uses_ascii_payload_and_restores_after_reconnect() -> None:
+    first = FakeTransport()
+    second = FakeTransport()
+    device = UlanziD200Device(
+        first,
+        transport_factory=lambda: second,
+        reconnect_poll_interval_s=0.001,
+    )
+
+    await device.set_small_window_mode(SmallWindowMode.BACKGROUND)
+    first.write_failures = 1
+    await device.keep_alive()
+    await device.close()
+
+    assert b"2|0|0|00:00:00|0" in _raw_small_window_payloads(first.writes)
+    assert b"2|0|0|00:00:00|0" in _raw_small_window_payloads(second.writes)
+
+
+@pytest.mark.asyncio
 async def test_first_button_upload_applies_default_label_style() -> None:
     transport = FakeTransport()
     device = UlanziD200Device(transport)

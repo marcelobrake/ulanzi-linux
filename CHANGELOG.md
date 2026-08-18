@@ -7,6 +7,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.6] — 2026-08-18
+
+### Fixed
+
+- The host-rendered small-window clock now receives a canonical `HH:MM:SS`
+  value, so date-prefixed display formats no longer make its analog face fall
+  back to `00:00`.
+- Custom small-window metrics no longer activate the firmware-native CLOCK or
+  STATS layers while clearing their cache. The strip remains exclusively in
+  BACKGROUND mode using the firmware's complete ASCII wire payload, preventing
+  the native `CPU/RAM/GPU 0%` panel from appearing behind the host-rendered
+  `CPU/MEM/TEMP` page.
+
 ## [0.10.5] — 2026-08-18
 
 ### Fixed
