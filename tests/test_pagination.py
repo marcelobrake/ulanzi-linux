@@ -10,7 +10,7 @@ from typing import cast
 import pytest
 
 from ulanzi_linux.application.config_loader import load_deck_config
-from ulanzi_linux.application.daemon import DeckDaemon
+from ulanzi_linux.application.daemon import INFO_WINDOW_INDEX, DeckDaemon
 from ulanzi_linux.application.deck_service import DeckService
 from ulanzi_linux.domain.button_config import (
     ButtonConfig,
@@ -216,8 +216,13 @@ class FakeDeck(DeckDevice):
             icon_width=196,
             icon_height=196,
         )
+        # Full layout pushes only. Every page sync is followed by a partial
+        # push that just paints the small-window background strip; lumping
+        # the two together would make "how many layouts were uploaded?"
+        # answer two per page, which is not what these tests are asking.
         self.button_uploads: list[tuple[ButtonConfig, ...]] = []
         self.brightness_calls: list[int] = []
+        self.partial_uploads: list[tuple[ButtonConfig, ...]] = []
         self.closed = False
         self.keep_alive_calls = 0
         self._queue: asyncio.Queue[ButtonEvent | DeviceInfoEvent] = asyncio.Queue()
@@ -249,7 +254,8 @@ class FakeDeck(DeckDevice):
         pass
 
     async def set_buttons(self, configs, *, partial: bool = False) -> None:  # type: ignore[override]
-        self.button_uploads.append(tuple(configs))
+        target = self.partial_uploads if partial else self.button_uploads
+        target.append(tuple(configs))
 
     def events(self) -> AsyncIterator[ButtonEvent | DeviceInfoEvent]:
         async def _iter() -> AsyncIterator[ButtonEvent | DeviceInfoEvent]:
@@ -325,11 +331,12 @@ async def test_sync_layout_pushes_default_page_with_fixed_buttons() -> None:
 
     assert daemon.current_page == "main"
     assert fake.brightness_calls == [50]
-    # _push_page makes 2 set_buttons calls: visible buttons + partial INFO_WINDOW
-    assert len(fake.button_uploads) == 2
+    assert len(fake.button_uploads) == 1
     uploaded_indices = [b.index for b in fake.button_uploads[0]]
     # main page button (0) + fixed buttons (10, 11)
     assert uploaded_indices == [0, 10, 11]
+    # ...followed by the partial push that paints the small-window strip.
+    assert [b.index for b in fake.partial_uploads[0]] == [INFO_WINDOW_INDEX]
 
 
 @pytest.mark.asyncio
@@ -371,8 +378,8 @@ async def test_switch_to_changes_page_and_reuploads() -> None:
 
     assert daemon.current_page == "media"
     # 2 calls from sync_layout + 2 calls from switch_to = 4 total
-    assert len(fake.button_uploads) == 4
-    second_labels = [b.label for b in fake.button_uploads[2]]
+    assert len(fake.button_uploads) == 2
+    second_labels = [b.label for b in fake.button_uploads[1]]
     assert "P" in second_labels  # media page button
     assert "SwMain" in second_labels  # fixed stayed
     assert "SwMedia" in second_labels
@@ -389,7 +396,7 @@ async def test_switch_to_same_page_is_noop() -> None:
         await daemon.switch_to("main")
 
     # Only the initial sync (2 calls: page buttons + partial INFO_WINDOW) — no redundant upload.
-    assert len(fake.button_uploads) == 2
+    assert len(fake.button_uploads) == 1
 
 
 @pytest.mark.asyncio
@@ -404,7 +411,7 @@ async def test_switch_to_unknown_page_is_ignored() -> None:
 
     assert daemon.current_page == "main"
     # 2 calls from sync_layout only; unknown page was silently ignored
-    assert len(fake.button_uploads) == 2
+    assert len(fake.button_uploads) == 1
 
 
 @pytest.mark.asyncio
@@ -428,7 +435,7 @@ async def test_event_loop_switches_page_on_fixed_button_press() -> None:
 
     assert daemon.current_page == "media"
     # 2 from sync_layout + 2 from switch_to triggered by button press = 4
-    assert len(fake.button_uploads) == 4
+    assert len(fake.button_uploads) == 2
 
 
 @pytest.mark.asyncio
