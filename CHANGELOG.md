@@ -7,6 +7,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] — 2026-08-18
+
+### Added
+
+- Selecting `Temperatura` in the visual editor now exposes the Linux thermal
+  zones detected on the host. Up to three sensors can be selected, reordered,
+  and displayed on one `TEMP` line separated by spaces or `|`.
+- `small_window.temperature_sensors` and `temperature_separator` persist the
+  selected sensor order and formatting while preserving first-valid-sensor
+  behavior for existing configurations.
+
 ## [0.10.7] — 2026-08-18
 
 ### Fixed

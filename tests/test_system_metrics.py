@@ -91,6 +91,10 @@ def test_metric_value_formats_human_readable_strings(tmp_path: Path) -> None:
     thermal = tmp_path / "thermal"
     (thermal / "thermal_zone0").mkdir(parents=True)
     (thermal / "thermal_zone0" / "temp").write_text("55000")
+    (thermal / "thermal_zone0" / "type").write_text("board")
+    (thermal / "thermal_zone1").mkdir(parents=True)
+    (thermal / "thermal_zone1" / "temp").write_text("81000")
+    (thermal / "thermal_zone1" / "type").write_text("TCPU")
     power = tmp_path / "power"
     (power / "BAT0").mkdir(parents=True)
     (power / "BAT0" / "capacity").write_text("82")
@@ -114,3 +118,10 @@ def test_metric_value_formats_human_readable_strings(tmp_path: Path) -> None:
     assert reader.read_metric_value("battery") == "82%"
     assert reader.read_metric_value("gpu") == "41%"
     assert reader.read_metric_value("network").endswith("/s")
+    assert [sensor.id for sensor in reader.list_temperature_sensors()] == [
+        "thermal_zone0",
+        "thermal_zone1",
+    ]
+    assert reader.read_temperature_value(
+        ("thermal_zone1", "thermal_zone0"), "|"
+    ) == "81C | 55C"

@@ -99,6 +99,8 @@ function makeResetEditor(defaultPage = "main") {
             rotate_every_s: null,
             background_color: "#000000",
             metrics_items: [],
+            temperature_sensors: [],
+            temperature_separator: " ",
         },
     };
 }
@@ -127,6 +129,7 @@ window.editorApp = function editorApp() {
         fontOptions: FONT_OPTIONS,
         builtinIconStyles: BUILTIN_ICON_STYLES,
         smallWindowMetricOptions: SMALL_WINDOW_METRICS,
+        temperatureSensors: [],
         builtinIcons: [],
         builtinIconQuery: "",
         builtinIconStyle: "all",
@@ -135,6 +138,7 @@ window.editorApp = function editorApp() {
         async init() {
             await this.refreshHealth();
             await this.loadBuiltinIcons();
+            await this.loadTemperatureSensors();
             await this.loadEditor();
             await this.refreshSmallWindowPreview();
             setInterval(() => this.refreshHealth(), 5000);
@@ -171,6 +175,19 @@ window.editorApp = function editorApp() {
             } catch (error) {
                 this.builtinIcons = [];
                 this.setStatus(`Catálogo embutido indisponível: ${error.message}`, "warn");
+            }
+        },
+
+        async loadTemperatureSensors() {
+            try {
+                const response = await fetch("/api/temperature-sensors");
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.detail || "Falha ao detectar sensores");
+                }
+                this.temperatureSensors = Array.isArray(payload.items) ? payload.items : [];
+            } catch (_error) {
+                this.temperatureSensors = [];
             }
         },
 
@@ -213,6 +230,8 @@ window.editorApp = function editorApp() {
                     `/api/small-window/preview?${new URLSearchParams([
                         ["time_format", timeFormat],
                         ...((this.editor.small_window?.metrics_items || []).map((item) => ["metrics_items", item])),
+                        ...((this.editor.small_window?.temperature_sensors || []).map((item) => ["temperature_sensors", item])),
+                        ["temperature_separator", this.editor.small_window?.temperature_separator || " "],
                     ]).toString()}`,
                 );
                 const payload = await response.json();
@@ -253,6 +272,8 @@ window.editorApp = function editorApp() {
                 rotate_every_s: null,
                 background_color: "#000000",
                 metrics_items: [],
+                temperature_sensors: [],
+                temperature_separator: " ",
             };
             editor.small_window.show_metrics = editor.small_window.show_metrics !== false;
             editor.small_window.rotate_every_s = this.parseOptionalNumber(editor.small_window.rotate_every_s);
@@ -260,6 +281,12 @@ window.editorApp = function editorApp() {
             editor.small_window.metrics_items = Array.isArray(editor.small_window.metrics_items)
                 ? editor.small_window.metrics_items.slice(0, 3)
                 : [];
+            editor.small_window.temperature_sensors = Array.isArray(editor.small_window.temperature_sensors)
+                ? editor.small_window.temperature_sensors.slice(0, 3)
+                : [];
+            editor.small_window.temperature_separator = editor.small_window.temperature_separator === "|"
+                ? "|"
+                : " ";
             return editor;
         },
 
@@ -557,6 +584,8 @@ window.editorApp = function editorApp() {
                     rotate_every_s: this.parseOptionalNumber(this.editor.small_window.rotate_every_s),
                     background_color: this.editor.small_window.background_color || "#000000",
                     metrics_items: (this.editor.small_window.metrics_items || []).slice(0, 3),
+                    temperature_sensors: (this.editor.small_window.temperature_sensors || []).slice(0, 3),
+                    temperature_separator: this.editor.small_window.temperature_separator === "|" ? "|" : " ",
                 },
                 save_firmware_bundle: Boolean(this.saveFirmwareBundle),
             };
@@ -580,6 +609,48 @@ window.editorApp = function editorApp() {
         smallWindowMetricDisabled(metric) {
             return !this.smallWindowMetricSelected(metric)
                 && (this.editor.small_window.metrics_items || []).length >= 3;
+        },
+
+        temperatureSensorSelected(sensorId) {
+            return (this.editor.small_window.temperature_sensors || []).includes(sensorId);
+        },
+
+        temperatureSensorDisabled(sensorId) {
+            return !this.temperatureSensorSelected(sensorId)
+                && (this.editor.small_window.temperature_sensors || []).length >= 3;
+        },
+
+        toggleTemperatureSensor(sensorId) {
+            const current = this.editor.small_window.temperature_sensors || [];
+            this.editor.small_window.temperature_sensors = current.includes(sensorId)
+                ? current.filter((item) => item !== sensorId)
+                : [...current, sensorId].slice(0, 3);
+            this.dirty = true;
+            void this.refreshSmallWindowPreview();
+        },
+
+        moveTemperatureSensor(sensorId, direction) {
+            const current = [...(this.editor.small_window.temperature_sensors || [])];
+            const index = current.indexOf(sensorId);
+            const target = index + direction;
+            if (index < 0 || target < 0 || target >= current.length) {
+                return;
+            }
+            [current[index], current[target]] = [current[target], current[index]];
+            this.editor.small_window.temperature_sensors = current;
+            this.dirty = true;
+            void this.refreshSmallWindowPreview();
+        },
+
+        temperatureSensorById(sensorId) {
+            return this.temperatureSensors.find((sensor) => sensor.id === sensorId)
+                || { id: sensorId, name: sensorId, value_celsius: null };
+        },
+
+        setTemperatureSeparator(separator) {
+            this.editor.small_window.temperature_separator = separator === "|" ? "|" : " ";
+            this.dirty = true;
+            void this.refreshSmallWindowPreview();
         },
 
         smallWindowPreviewStyle() {

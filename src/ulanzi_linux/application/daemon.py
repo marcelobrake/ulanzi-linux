@@ -330,11 +330,17 @@ class DeckDaemon:
             return rendered
         return self._metrics_reader.format_time("%H:%M:%S")
 
-    def _custom_metric_lines(self, metrics_items: tuple[str, ...]) -> list[str]:
+    def _custom_metric_lines(self, sw_cfg: object) -> list[str]:
         lines: list[str] = []
-        for metric in metrics_items:
+        for metric in getattr(sw_cfg, "metrics_items", ()):
             label = SMALL_WINDOW_METRIC_LABELS.get(metric, metric.upper())
-            value = self._metrics_reader.read_metric_value(metric)
+            if metric == "temperature":
+                value = self._metrics_reader.read_temperature_value(
+                    tuple(getattr(sw_cfg, "temperature_sensors", ())),
+                    str(getattr(sw_cfg, "temperature_separator", " ")),
+                )
+            else:
+                value = self._metrics_reader.read_metric_value(metric)
             lines.append(f"{label:<4} {value}")
         return lines
 
@@ -416,7 +422,7 @@ class DeckDaemon:
                                         _small_window_metrics_button(
                                             background_color=sw_cfg.background_color,
                                             metric_lines=self._custom_metric_lines(
-                                                sw_cfg.metrics_items
+                                                sw_cfg
                                             ),
                                         ),
                                     ),

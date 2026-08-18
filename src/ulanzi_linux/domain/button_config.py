@@ -178,6 +178,8 @@ DEFAULT_TIME_FORMAT = "%H:%M"
 # mean "push as fast as possible" and blow the USB bus).
 SMALL_WINDOW_MIN_INTERVAL_S = 0.05
 SMALL_WINDOW_MAX_INTERVAL_S = 4.5
+SMALL_WINDOW_TEMPERATURE_SEPARATORS = (" ", "|")
+SMALL_WINDOW_MAX_TEMPERATURE_SENSORS = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +203,8 @@ class SmallWindowConfig:
     rotate_every_s: float | None = None
     background_color: str = DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR
     metrics_items: tuple[str, ...] = field(default_factory=tuple)
+    temperature_sensors: tuple[str, ...] = field(default_factory=tuple)
+    temperature_separator: str = " "
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -239,6 +243,21 @@ class SmallWindowConfig:
         if normalized_metrics and not 1 <= len(normalized_metrics) <= 3:
             raise ValueError("small_window.metrics_items must select between 1 and 3 items")
         object.__setattr__(self, "metrics_items", normalized_metrics)
+        normalized_sensors = tuple(
+            str(sensor).strip() for sensor in self.temperature_sensors if str(sensor).strip()
+        )
+        if len(set(normalized_sensors)) != len(normalized_sensors):
+            raise ValueError("small_window.temperature_sensors contains duplicates")
+        if len(normalized_sensors) > SMALL_WINDOW_MAX_TEMPERATURE_SENSORS:
+            raise ValueError(
+                "small_window.temperature_sensors must select at most "
+                f"{SMALL_WINDOW_MAX_TEMPERATURE_SENSORS} sensors"
+            )
+        if self.temperature_separator not in SMALL_WINDOW_TEMPERATURE_SEPARATORS:
+            raise ValueError(
+                "small_window.temperature_separator must be a space or pipe"
+            )
+        object.__setattr__(self, "temperature_sensors", normalized_sensors)
 
 
 @dataclass(frozen=True, slots=True)

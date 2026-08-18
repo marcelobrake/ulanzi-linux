@@ -141,6 +141,16 @@ class FakeMetrics(SystemMetricsReader):
         }
         return values[metric]
 
+    def read_temperature_value(
+        self, sensor_ids: tuple[str, ...], separator: str
+    ) -> str:
+        values = {
+            "thermal_zone5": "81C",
+            "thermal_zone8": "77C",
+        }
+        selected = [values.get(sensor_id, "n/a") for sensor_id in sensor_ids]
+        return (" | " if separator == "|" else " ").join(selected) or "55C"
+
 
 def _cfg_with_small_window(
     *,
@@ -259,6 +269,8 @@ def test_loader_parses_small_window_block(tmp_path: Path) -> None:
         "  time_format: \"%H:%M\"\n"
         "  background_color: \"#123456\"\n"
         "  metrics_items: [cpu, temperature, disk]\n"
+        "  temperature_sensors: [thermal_zone5, thermal_zone8]\n"
+        "  temperature_separator: '|'\n"
         "pages:\n"
         "  main:\n"
         "    buttons:\n"
@@ -274,6 +286,11 @@ def test_loader_parses_small_window_block(tmp_path: Path) -> None:
     assert cfg.small_window.time_format == "%H:%M"
     assert cfg.small_window.background_color == "#123456"
     assert cfg.small_window.metrics_items == ("cpu", "temperature", "disk")
+    assert cfg.small_window.temperature_sensors == (
+        "thermal_zone5",
+        "thermal_zone8",
+    )
+    assert cfg.small_window.temperature_separator == "|"
 
 
 def test_loader_small_window_block_on_legacy_schema(tmp_path: Path) -> None:
@@ -484,6 +501,31 @@ async def test_small_window_custom_metrics_render_as_partial_info_window() -> No
         and upload[0].icon_data is not None
         for upload in fake.button_uploads
     )
+
+
+def test_custom_temperature_sensors_preserve_order_and_separator() -> None:
+    fake = RecordingFakeDeck()
+    metrics = FakeMetrics()
+    cfg = _cfg_with_small_window(
+        enabled=True,
+        metrics_items=("temperature",),
+    )
+    cfg = DeckConfig(
+        pages=cfg.pages,
+        default_page=cfg.default_page,
+        small_window=SmallWindowConfig(
+            enabled=True,
+            metrics_items=("temperature",),
+            temperature_sensors=("thermal_zone5", "thermal_zone8"),
+            temperature_separator="|",
+        ),
+    )
+
+    daemon = DeckDaemon(cast(DeckService, fake), cfg, metrics_reader=metrics)
+
+    assert daemon._custom_metric_lines(cfg.small_window) == [
+        "TEMP 81C | 77C"
+    ]
 
 
 @pytest.mark.asyncio
