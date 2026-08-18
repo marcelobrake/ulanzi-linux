@@ -217,6 +217,7 @@ class FakeDeck(DeckDevice):
             icon_height=196,
         )
         self.button_uploads: list[tuple[ButtonConfig, ...]] = []
+        self.brightness_calls: list[int] = []
         self.closed = False
         self.keep_alive_calls = 0
         self._queue: asyncio.Queue[ButtonEvent | DeviceInfoEvent] = asyncio.Queue()
@@ -229,7 +230,7 @@ class FakeDeck(DeckDevice):
         self.closed = True
 
     async def set_brightness(self, brightness: int, *, force: bool = False) -> None:
-        pass
+        self.brightness_calls.append(brightness)
 
     async def keep_alive(self) -> None:
         self.keep_alive_calls += 1
@@ -323,7 +324,9 @@ async def test_sync_layout_pushes_default_page_with_fixed_buttons() -> None:
         await daemon.sync_layout()
 
     assert daemon.current_page == "main"
-    assert len(fake.button_uploads) == 1
+    assert fake.brightness_calls == [50]
+    # _push_page makes 2 set_buttons calls: visible buttons + partial INFO_WINDOW
+    assert len(fake.button_uploads) == 2
     uploaded_indices = [b.index for b in fake.button_uploads[0]]
     # main page button (0) + fixed buttons (10, 11)
     assert uploaded_indices == [0, 10, 11]
@@ -367,8 +370,9 @@ async def test_switch_to_changes_page_and_reuploads() -> None:
         await daemon.switch_to("media")
 
     assert daemon.current_page == "media"
-    assert len(fake.button_uploads) == 2
-    second_labels = [b.label for b in fake.button_uploads[1]]
+    # 2 calls from sync_layout + 2 calls from switch_to = 4 total
+    assert len(fake.button_uploads) == 4
+    second_labels = [b.label for b in fake.button_uploads[2]]
     assert "P" in second_labels  # media page button
     assert "SwMain" in second_labels  # fixed stayed
     assert "SwMedia" in second_labels
@@ -384,8 +388,8 @@ async def test_switch_to_same_page_is_noop() -> None:
         await daemon.sync_layout()
         await daemon.switch_to("main")
 
-    # Only the initial sync — no redundant upload.
-    assert len(fake.button_uploads) == 1
+    # Only the initial sync (2 calls: page buttons + partial INFO_WINDOW) — no redundant upload.
+    assert len(fake.button_uploads) == 2
 
 
 @pytest.mark.asyncio
@@ -399,7 +403,8 @@ async def test_switch_to_unknown_page_is_ignored() -> None:
         await daemon.switch_to("ghost")
 
     assert daemon.current_page == "main"
-    assert len(fake.button_uploads) == 1
+    # 2 calls from sync_layout only; unknown page was silently ignored
+    assert len(fake.button_uploads) == 2
 
 
 @pytest.mark.asyncio
@@ -422,7 +427,8 @@ async def test_event_loop_switches_page_on_fixed_button_press() -> None:
         await asyncio.gather(daemon.run(stop_event=stop), drive())
 
     assert daemon.current_page == "media"
-    assert len(fake.button_uploads) == 2
+    # 2 from sync_layout + 2 from switch_to triggered by button press = 4
+    assert len(fake.button_uploads) == 4
 
 
 @pytest.mark.asyncio

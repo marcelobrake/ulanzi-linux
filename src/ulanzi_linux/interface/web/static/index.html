@@ -466,6 +466,64 @@
         <small>Deixe vazio para continuar usando o visor nativo do firmware. Quando você selecionar itens aqui, o slot largo passa a ser renderizado pelo Linux.</small>
       </div>
 
+      <div class="temperature-config"
+           x-show="smallWindowMetricSelected('temperature')">
+        <div class="field">
+          <span>Sensores de temperatura (até 3)</span>
+          <div class="sensor-options">
+            <template x-for="sensor in temperatureSensors" :key="sensor.id">
+              <label class="sensor-option">
+                <span class="sr-only">Selecionar sensor de temperatura</span>
+                <input type="checkbox"
+                       :checked="temperatureSensorSelected(sensor.id)"
+                       :disabled="temperatureSensorDisabled(sensor.id)"
+                       @change="toggleTemperatureSensor(sensor.id)" />
+                <span class="sensor-copy">
+                  <strong x-text="sensor.name"></strong>
+                  <small x-text="`${sensor.id} · ${sensor.value_celsius ?? 'n/a'}°C`"></small>
+                </span>
+              </label>
+            </template>
+          </div>
+          <small x-show="!temperatureSensors.length">Nenhum sensor térmico foi detectado.</small>
+          <small x-show="temperatureSensors.length && !editor.small_window.temperature_sensors.length">Sem seleção, será usado o primeiro sensor válido do sistema.</small>
+        </div>
+
+        <div class="field" x-show="editor.small_window.temperature_sensors.length">
+          <span>Ordem no visor</span>
+          <div class="sensor-order">
+            <template x-for="(sensorId, index) in editor.small_window.temperature_sensors" :key="sensorId">
+              <div class="sensor-order-row">
+                <span class="sensor-rank" x-text="index + 1"></span>
+                <span class="sensor-order-name" x-text="temperatureSensorById(sensorId).name"></span>
+                <button type="button"
+                        class="icon-button"
+                        title="Mover sensor para cima"
+                        :disabled="index === 0"
+                        @click="moveTemperatureSensor(sensorId, -1)">↑</button>
+                <button type="button"
+                        class="icon-button"
+                        title="Mover sensor para baixo"
+                        :disabled="index === editor.small_window.temperature_sensors.length - 1"
+                        @click="moveTemperatureSensor(sensorId, 1)">↓</button>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div class="field" x-show="editor.small_window.temperature_sensors.length > 1">
+          <span>Separador</span>
+          <div class="segmented-control">
+            <button type="button"
+                    :class="editor.small_window.temperature_separator !== '|' ? 'active' : ''"
+                    @click="setTemperatureSeparator(' ')">Espaço</button>
+            <button type="button"
+                    :class="editor.small_window.temperature_separator === '|' ? 'active' : ''"
+                    @click="setTemperatureSeparator('|')">|</button>
+          </div>
+        </div>
+      </div>
+
       <label class="field">
         <span>Intervalo (s)</span>
         <input type="number"

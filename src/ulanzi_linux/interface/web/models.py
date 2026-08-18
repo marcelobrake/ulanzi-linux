@@ -131,6 +131,8 @@ class EditorSmallWindowModel(BaseModel):
     rotate_every_s: float | None = None
     background_color: str = DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR
     metrics_items: list[str] = Field(default_factory=list)
+    temperature_sensors: list[str] = Field(default_factory=list)
+    temperature_separator: Literal[" ", "|"] = " "
 
 
 class EditorConfigResponse(BaseModel):
@@ -209,6 +211,20 @@ class SmallWindowPreviewMetric(BaseModel):
     value: str
 
 
+class TemperatureSensorModel(BaseModel):
+    """One Linux thermal zone available for small-window selection."""
+
+    id: str
+    name: str
+    value_celsius: int | None = None
+
+
+class TemperatureSensorListResponse(BaseModel):
+    """Detected Linux thermal zones in kernel order."""
+
+    items: list[TemperatureSensorModel] = Field(default_factory=list)
+
+
 class DeviceSummary(BaseModel):
     """Enumerated D200 device info."""
 
@@ -249,5 +265,7 @@ __all__ = [
     "PageSummary",
     "SmallWindowPreviewMetric",
     "SmallWindowPreviewResponse",
+    "TemperatureSensorListResponse",
+    "TemperatureSensorModel",
     "ValidationSummary",
 ]

@@ -57,6 +57,7 @@ INFO_WINDOW_INDEX = 13
 # Firmware watchdog fires around the 5s mark; we ping well below that to
 # tolerate scheduling jitter and USB latency.
 DEFAULT_HEARTBEAT_INTERVAL_S: float = 2.0
+DEFAULT_DAEMON_BRIGHTNESS: int = 50
 
 
 def _looks_like_hhmm(value: str) -> bool:
@@ -89,32 +90,6 @@ def _rotates_small_window(sw_cfg: object) -> bool:
 
 def _uses_custom_small_window(sw_cfg: object) -> bool:
     return bool(getattr(sw_cfg, "metrics_items", ()))
-
-
-async def _scrub_native_small_window_cache(device: DeckService) -> None:
-    """Overwrite the firmware-native clock/stats cache with blank payloads.
-
-    Some D200 firmware builds keep resurrecting the most recent native
-    CLOCK/STATS frame even after the host pins the strip to BACKGROUND.
-    Priming both native layouts with empty values makes that fallback blank
-    instead of reviving stale CPU/RAM/GPU content.
-    """
-
-    await device._device.set_small_window_mode(SmallWindowMode.CLOCK)
-    await device._device.set_small_window_data(
-        cpu="",
-        mem="",
-        gpu="",
-        time_str="",
-    )
-    await device._device.set_small_window_mode(SmallWindowMode.STATS)
-    await device._device.set_small_window_data(
-        cpu="",
-        mem="",
-        gpu="",
-        time_str="",
-    )
-    await device._device.set_small_window_mode(SmallWindowMode.BACKGROUND)
 
 
 def _small_window_clock_button(*, background_color: str, time_str: str) -> ButtonConfig:
@@ -193,6 +168,7 @@ class DeckDaemon:
     async def sync_layout(self) -> None:
         """Push the current page's icons/labels to the device."""
         async with self._state_lock:
+            await self._service.set_brightness(DEFAULT_DAEMON_BRIGHTNESS)
             await self._push_page(self._current_page)
 
     async def switch_to(self, page_name: str) -> None:
@@ -354,13 +330,27 @@ class DeckDaemon:
             return rendered
         return self._metrics_reader.format_time("%H:%M:%S")
 
-    def _custom_metric_lines(self, metrics_items: tuple[str, ...]) -> list[str]:
+    def _custom_metric_lines(self, sw_cfg: object) -> list[str]:
         lines: list[str] = []
-        for metric in metrics_items:
+        for metric in getattr(sw_cfg, "metrics_items", ()):
             label = SMALL_WINDOW_METRIC_LABELS.get(metric, metric.upper())
-            value = self._metrics_reader.read_metric_value(metric)
+            if metric == "temperature":
+                value = self._metrics_reader.read_temperature_value(
+                    tuple(getattr(sw_cfg, "temperature_sensors", ())),
+                    str(getattr(sw_cfg, "temperature_separator", " ")),
+                )
+            else:
+                value = self._metrics_reader.read_metric_value(metric)
             lines.append(f"{label:<4} {value}")
         return lines
+
+    async def _push_custom_small_window(
+        self, sw_cfg: object, button: ButtonConfig
+    ) -> None:
+        async with self._state_lock:
+            if sw_cfg is not self._config.small_window:
+                return
+            await self._service._device.set_buttons((button,), partial=True)
 
     async def _status_loop(self, stop_event: asyncio.Event) -> None:
         logger.info("status_loop_started")
@@ -368,7 +358,6 @@ class DeckDaemon:
         device_mode: SmallWindowMode | None = None
         mode_started_at: float | None = None
         metrics_primed = False
-        native_cache_scrubbed = False
         strategy_key: tuple[bool, bool, float | None, tuple[str, ...]] | None = None
         try:
             while not stop_event.is_set():
@@ -385,7 +374,6 @@ class DeckDaemon:
                         device_mode = None
                         mode_started_at = None
                         metrics_primed = False
-                        native_cache_scrubbed = False
                         strategy_key = current_strategy
                     if sw_cfg.enabled:
                         now = time.monotonic()
@@ -420,10 +408,6 @@ class DeckDaemon:
                         else:
                             desired_mode = SmallWindowMode.CLOCK
                         if _uses_custom_small_window(sw_cfg):
-                            if not native_cache_scrubbed:
-                                await _scrub_native_small_window_cache(self._service)
-                                device_mode = SmallWindowMode.BACKGROUND
-                                native_cache_scrubbed = True
                             if device_mode != SmallWindowMode.BACKGROUND:
                                 await self._service._device.set_small_window_mode(
                                     SmallWindowMode.BACKGROUND
@@ -441,28 +425,22 @@ class DeckDaemon:
                                         if metric in {"cpu", "network"}:
                                             self._metrics_reader.read_metric_value(metric)
                                     metrics_primed = True
-                                await self._service._device.set_buttons(
-                                    (
-                                        _small_window_metrics_button(
-                                            background_color=sw_cfg.background_color,
-                                            metric_lines=self._custom_metric_lines(
-                                                sw_cfg.metrics_items
-                                            ),
-                                        ),
+                                await self._push_custom_small_window(
+                                    sw_cfg,
+                                    _small_window_metrics_button(
+                                        background_color=sw_cfg.background_color,
+                                        metric_lines=self._custom_metric_lines(sw_cfg),
                                     ),
-                                    partial=True,
                                 )
                             else:
-                                await self._service._device.set_buttons(
-                                    (
-                                        _small_window_clock_button(
-                                            background_color=sw_cfg.background_color,
-                                            time_str=self._wire_time_string(
-                                                sw_cfg.time_format
-                                            ),
+                                await self._push_custom_small_window(
+                                    sw_cfg,
+                                    _small_window_clock_button(
+                                        background_color=sw_cfg.background_color,
+                                        time_str=self._metrics_reader.format_time(
+                                            "%H:%M:%S"
                                         ),
                                     ),
-                                    partial=True,
                                 )
                         else:
                             if active_mode != desired_mode:
@@ -508,7 +486,6 @@ class DeckDaemon:
                             active_mode = SmallWindowMode.BACKGROUND
                             mode_started_at = None
                             metrics_primed = False
-                            native_cache_scrubbed = False
                         await self._service._device.keep_alive()
                         timeout = self._heartbeat_interval_s
                 except Exception as exc:

@@ -7,18 +7,80 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.10.5] — 2026-08-13
+## [0.11.3] — 2026-08-18
 
 ### Fixed
 
-- The `web` and `desktop` extras now declare `python-multipart`, which FastAPI
-  requires for the multipart upload endpoint used by the asset browser. A
-  clean `pip install -e ".[web]"` previously produced a working CLI but a
-  `ulanzi-linux gui` that aborted at startup with
-  `RuntimeError: Form data requires "python-multipart" to be installed`.
-  FastAPI raises this while registering routes, before the deck YAML is read,
-  so the failure surfaced as an import-time traceback with no reference to the
-  user's configuration.
+- The `web` and `desktop` extras now install `python-multipart`, which FastAPI
+  requires to register the asset upload endpoint on a clean installation.
+
+## [0.11.2] — 2026-08-18
+
+### Added
+
+- A versioned pre-commit hook now rejects local artifacts, unapproved root
+  paths, environment dumps, personal home paths, and common credential
+  formats, then scans staged changes with gitleaks.
+
+### Removed
+
+- Tracked shell/session environment dumps and temporary Copilot deck files
+  were removed. Equivalent local files, test output, tool state, and diagnostic
+  screenshots are now covered by `.gitignore`.
+
+## [0.11.1] — 2026-08-18
+
+### Fixed
+
+- Host-rendered small-window uploads are now serialized with page switches and
+  configuration reloads. Saving a button image can no longer insert a stale
+  small-window ZIP between the full layout upload and slot reset, which could
+  leave the small window blank and the device busy processing queued uploads.
+- Promoting a page button to fixed now removes that slot from every page, and
+  the editor backend canonicalizes stale overlapping payloads. Image saves no
+  longer fail with `reuses fixed_button indices` after changing button scope.
+
+## [0.11.0] — 2026-08-18
+
+### Added
+
+- Selecting `Temperatura` in the visual editor now exposes the Linux thermal
+  zones detected on the host. Up to three sensors can be selected, reordered,
+  and displayed on one `TEMP` line separated by spaces or `|`.
+- `small_window.temperature_sensors` and `temperature_separator` persist the
+  selected sensor order and formatting while preserving first-valid-sensor
+  behavior for existing configurations.
+
+## [0.10.7] — 2026-08-18
+
+### Fixed
+
+- HID writes are now serialized for the full duration of each command. Config
+  reloads can no longer interleave page ZIP frames with small-window mode or
+  image updates, which could leave only the small window black after saving
+  custom metrics such as battery in the desktop editor.
+
+## [0.10.6] — 2026-08-18
+
+### Fixed
+
+- The host-rendered small-window clock now receives a canonical `HH:MM:SS`
+  value, so date-prefixed display formats no longer make its analog face fall
+  back to `00:00`.
+- Custom small-window metrics no longer activate the firmware-native CLOCK or
+  STATS layers while clearing their cache. The strip remains exclusively in
+  BACKGROUND mode using the firmware's complete ASCII wire payload, preventing
+  the native `CPU/RAM/GPU 0%` panel from appearing behind the host-rendered
+  `CPU/MEM/TEMP` page.
+
+## [0.10.5] — 2026-08-18
+
+### Fixed
+
+- The daemon now restores the D200 display brightness to 50% before its first
+  layout upload. This recovers devices whose firmware retained zero brightness,
+  where button actions continued to work but all button images and the small
+  window remained black.
 
 ## [0.10.4] — 2026-05-17
 

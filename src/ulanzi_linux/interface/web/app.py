@@ -95,6 +95,8 @@ from ulanzi_linux.interface.web.models import (
     PageSummary,
     SmallWindowPreviewMetric,
     SmallWindowPreviewResponse,
+    TemperatureSensorListResponse,
+    TemperatureSensorModel,
     ValidationSummary,
 )
 
@@ -224,6 +226,8 @@ def _config_to_editor_response(
             rotate_every_s=cfg.small_window.rotate_every_s,
             background_color=cfg.small_window.background_color,
             metrics_items=list(cfg.small_window.metrics_items),
+            temperature_sensors=list(cfg.small_window.temperature_sensors),
+            temperature_separator=cfg.small_window.temperature_separator,
         ),
         versioned_config_path=versioned_config_path,
         saved_firmware_bundle_path=saved_firmware_bundle_path,
@@ -316,6 +320,8 @@ def _editor_button_to_doc(button: EditorButtonModel) -> dict[str, Any]:
 
 
 def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
+    _validate_button_indices(req.fixed_buttons, scope="fixed_buttons")
+    fixed_indices = {button.index for button in req.fixed_buttons}
     pages_doc: dict[str, Any] = {}
     page_names: list[str] = []
     for page in req.pages:
@@ -329,6 +335,7 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
             "buttons": [
                 _editor_button_to_doc(button)
                 for button in sorted(page.buttons, key=lambda item: item.index)
+                if button.index not in fixed_indices
             ]
         }
         page_names.append(page_name)
@@ -343,8 +350,6 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
         raise ValueError(
             f"default_page {default_page!r} is not in pages {page_names!r}"
         )
-
-    _validate_button_indices(req.fixed_buttons, scope="fixed_buttons")
 
     doc: dict[str, Any] = {
         "default_page": default_page,
@@ -364,6 +369,14 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
         doc["small_window"]["rotate_every_s"] = req.small_window.rotate_every_s
     if req.small_window.metrics_items:
         doc["small_window"]["metrics_items"] = req.small_window.metrics_items
+    if req.small_window.temperature_sensors:
+        doc["small_window"]["temperature_sensors"] = (
+            req.small_window.temperature_sensors
+        )
+    if req.small_window.temperature_separator != " ":
+        doc["small_window"]["temperature_separator"] = (
+            req.small_window.temperature_separator
+        )
     if req.fixed_buttons:
         doc["fixed_buttons"] = [
             _editor_button_to_doc(button)
@@ -615,6 +628,8 @@ def create_app(config_path: Path) -> FastAPI:
     def get_small_window_preview(
         time_format: str = DEFAULT_TIME_FORMAT,
         metrics_items: Annotated[list[str] | None, Query()] = None,
+        temperature_sensors: Annotated[list[str] | None, Query()] = None,
+        temperature_separator: str = " ",
     ) -> SmallWindowPreviewResponse:
         selected_metrics = [
             metric
@@ -630,10 +645,33 @@ def create_app(config_path: Path) -> FastAPI:
                 SmallWindowPreviewMetric(
                     id=metric,
                     label=SMALL_WINDOW_METRIC_LABELS.get(metric, metric.upper()),
-                    value=metrics_reader.read_metric_value(metric),
+                    value=(
+                        metrics_reader.read_temperature_value(
+                            tuple(temperature_sensors or ()),
+                            temperature_separator,
+                        )
+                        if metric == "temperature"
+                        else metrics_reader.read_metric_value(metric)
+                    ),
                 )
                 for metric in selected_metrics
             ],
+        )
+
+    @app.get(
+        "/api/temperature-sensors",
+        response_model=TemperatureSensorListResponse,
+    )
+    def get_temperature_sensors() -> TemperatureSensorListResponse:
+        return TemperatureSensorListResponse(
+            items=[
+                TemperatureSensorModel(
+                    id=sensor.id,
+                    name=sensor.name,
+                    value_celsius=sensor.value_celsius,
+                )
+                for sensor in metrics_reader.list_temperature_sensors()
+            ]
         )
 
     # ------------------------------------------------------------------ #
