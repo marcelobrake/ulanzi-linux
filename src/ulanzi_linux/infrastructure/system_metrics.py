@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -38,6 +39,13 @@ SMALL_WINDOW_METRIC_LABELS: dict[str, str] = {
     "network": "NET",
     "battery": "BAT",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class TemperatureSensor:
+    id: str
+    name: str
+    value_celsius: int | None
 
 
 @runtime_checkable
@@ -58,6 +66,12 @@ class SystemMetricsReader(Protocol):
 
     def read_metric_value(self, metric: str) -> str:
         """Return a human-readable metric value for the small window."""
+        ...
+
+    def read_temperature_value(
+        self, sensor_ids: tuple[str, ...], separator: str
+    ) -> str:
+        """Return selected temperatures in the requested order."""
         ...
 
 
@@ -194,19 +208,58 @@ class ProcSystemMetrics:
             return "n/a" if battery is None else f"{battery}%"
         raise ValueError(f"unsupported metric: {metric}")
 
-    def read_temperature_celsius(self) -> int | None:
+    @staticmethod
+    def _parse_temperature(candidate: Path) -> int | None:
+        try:
+            raw = candidate.read_text(encoding="utf-8").strip()
+            value = int(raw)
+        except (OSError, ValueError):
+            return None
+        if 1_000 <= value <= 200_000:
+            return max(0, round(value / 1000.0))
+        if 1 <= value <= 200:
+            return value
+        return None
+
+    def list_temperature_sensors(self) -> tuple[TemperatureSensor, ...]:
+        sensors: list[TemperatureSensor] = []
+        for candidate in sorted(self.sys_thermal.glob("thermal_zone*/temp")):
+            zone = candidate.parent
+            try:
+                name = (zone / "type").read_text(encoding="utf-8").strip()
+            except OSError:
+                name = zone.name
+            sensors.append(
+                TemperatureSensor(
+                    id=zone.name,
+                    name=name or zone.name,
+                    value_celsius=self._parse_temperature(candidate),
+                )
+            )
+        return tuple(sensors)
+
+    def read_temperature_celsius(self, sensor_id: str | None = None) -> int | None:
         candidates = sorted(self.sys_thermal.glob("thermal_zone*/temp"))
         for candidate in candidates:
-            try:
-                raw = candidate.read_text(encoding="utf-8").strip()
-                value = int(raw)
-            except (OSError, ValueError):
+            if sensor_id is not None and candidate.parent.name != sensor_id:
                 continue
-            if 1_000 <= value <= 200_000:
-                return max(0, round(value / 1000.0))
-            if 1 <= value <= 200:
+            value = self._parse_temperature(candidate)
+            if value is not None:
                 return value
         return None
+
+    def read_temperature_value(
+        self, sensor_ids: tuple[str, ...], separator: str
+    ) -> str:
+        if not sensor_ids:
+            value = self.read_temperature_celsius()
+            return "n/a" if value is None else f"{value}C"
+        values = [
+            "n/a" if (value := self.read_temperature_celsius(sensor_id)) is None else f"{value}C"
+            for sensor_id in sensor_ids
+        ]
+        joiner = " | " if separator == "|" else " "
+        return joiner.join(values)
 
     def read_disk_percent(self, path: Path = Path("/")) -> int:
         try:
@@ -300,4 +353,9 @@ def _format_bytes(value: float) -> str:
         amount /= 1024.0
 
 
-__all__ = ["SMALL_WINDOW_METRIC_LABELS", "ProcSystemMetrics", "SystemMetricsReader"]
+__all__ = [
+    "SMALL_WINDOW_METRIC_LABELS",
+    "ProcSystemMetrics",
+    "SystemMetricsReader",
+    "TemperatureSensor",
+]

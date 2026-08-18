@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+python3 scripts/check_repository_hygiene.py --staged
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "pre-commit: gitleaks is required (https://github.com/gitleaks/gitleaks)" >&2
+    exit 1
+fi
+
+exec gitleaks git --staged --redact --no-banner

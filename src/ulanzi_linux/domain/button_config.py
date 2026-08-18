@@ -13,7 +13,6 @@ touching the core dispatch logic.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -37,74 +36,6 @@ class ShortcutAction:
 
     type: Literal["shortcut"]
     keys: str
-
-
-@dataclass(frozen=True, slots=True)
-class CycleStep:
-    """One position in a cycling shortcut: a chord and the face it wears.
-
-    ``icon_path`` is optional — a step without one leaves the button showing
-    whatever icon the button itself carries.
-    """
-
-    keys: str
-    icon_path: Path | None = None
-
-    def __post_init__(self) -> None:
-        cleaned = str(self.keys).strip()
-        if not cleaned:
-            raise ValueError("a cycle step needs a shortcut")
-        object.__setattr__(self, "keys", cleaned)
-
-
-@dataclass(frozen=True, slots=True)
-class CycleShortcutAction:
-    """Emit a different shortcut on each press, looping over ``steps``.
-
-    Press 1 emits ``steps[0]``, press 2 ``steps[1]``, and after the last one
-    the cursor wraps back to the first — so two steps alternate forever. The
-    action itself is stateless; whoever dispatches it owns the cursor (the
-    daemon keys it per page + button index).
-
-    When steps carry icons, the button always shows the icon of the step that
-    the *next* press will send, so the deck reads as "what happens if I press
-    this" rather than "what happened last time".
-    """
-
-    type: Literal["cycle_shortcut"]
-    steps: tuple[CycleStep, ...]
-
-    def __post_init__(self) -> None:
-        if len(self.steps) < 2:
-            raise ValueError(
-                "cycle_shortcut requires at least two shortcuts; use a plain "
-                "shortcut action for a single one"
-            )
-
-    @classmethod
-    def from_keys(cls, keys: Iterable[str]) -> CycleShortcutAction:
-        """Build an icon-less cycle from bare chords."""
-        return cls(
-            type="cycle_shortcut",
-            steps=tuple(
-                CycleStep(keys=str(key)) for key in keys if str(key).strip()
-            ),
-        )
-
-    @property
-    def keys(self) -> tuple[str, ...]:
-        """Just the chords — the cycle's identity, independent of its icons."""
-        return tuple(step.keys for step in self.steps)
-
-    def step_at(self, cursor: int) -> CycleStep:
-        return self.steps[cursor % len(self.steps)]
-
-    def shortcut_at(self, cursor: int) -> ShortcutAction:
-        """Resolve the chord for press number ``cursor`` (0-based, wrapping)."""
-        return ShortcutAction(type="shortcut", keys=self.step_at(cursor).keys)
-
-    def has_icons(self) -> bool:
-        return any(step.icon_path is not None for step in self.steps)
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,7 +69,6 @@ class PredefinedCommandAction:
 Action = (
     ShellAction
     | ShortcutAction
-    | CycleShortcutAction
     | UrlAction
     | SwitchPageAction
     | PredefinedCommandAction
@@ -248,6 +178,8 @@ DEFAULT_TIME_FORMAT = "%H:%M"
 # mean "push as fast as possible" and blow the USB bus).
 SMALL_WINDOW_MIN_INTERVAL_S = 0.05
 SMALL_WINDOW_MAX_INTERVAL_S = 4.5
+SMALL_WINDOW_TEMPERATURE_SEPARATORS = (" ", "|")
+SMALL_WINDOW_MAX_TEMPERATURE_SENSORS = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,6 +203,8 @@ class SmallWindowConfig:
     rotate_every_s: float | None = None
     background_color: str = DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR
     metrics_items: tuple[str, ...] = field(default_factory=tuple)
+    temperature_sensors: tuple[str, ...] = field(default_factory=tuple)
+    temperature_separator: str = " "
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -309,6 +243,21 @@ class SmallWindowConfig:
         if normalized_metrics and not 1 <= len(normalized_metrics) <= 3:
             raise ValueError("small_window.metrics_items must select between 1 and 3 items")
         object.__setattr__(self, "metrics_items", normalized_metrics)
+        normalized_sensors = tuple(
+            str(sensor).strip() for sensor in self.temperature_sensors if str(sensor).strip()
+        )
+        if len(set(normalized_sensors)) != len(normalized_sensors):
+            raise ValueError("small_window.temperature_sensors contains duplicates")
+        if len(normalized_sensors) > SMALL_WINDOW_MAX_TEMPERATURE_SENSORS:
+            raise ValueError(
+                "small_window.temperature_sensors must select at most "
+                f"{SMALL_WINDOW_MAX_TEMPERATURE_SENSORS} sensors"
+            )
+        if self.temperature_separator not in SMALL_WINDOW_TEMPERATURE_SEPARATORS:
+            raise ValueError(
+                "small_window.temperature_separator must be a space or pipe"
+            )
+        object.__setattr__(self, "temperature_sensors", normalized_sensors)
 
 
 @dataclass(frozen=True, slots=True)
@@ -391,8 +340,6 @@ __all__ = [
     "SMALL_WINDOW_MIN_INTERVAL_S",
     "Action",
     "ButtonConfig",
-    "CycleShortcutAction",
-    "CycleStep",
     "DeckConfig",
     "Page",
     "PredefinedCommandAction",

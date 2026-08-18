@@ -45,8 +45,6 @@ from ulanzi_linux.domain.button_config import (
     DEFAULT_TIME_FORMAT,
     Action,
     ButtonConfig,
-    CycleShortcutAction,
-    CycleStep,
     DeckConfig,
     Page,
     PredefinedCommandAction,
@@ -65,59 +63,6 @@ SUPPORTED_BUTTON_INDICES = frozenset(range(14))
 INFO_WINDOW_INDEX = 13
 
 
-def _parse_cycle_keys(raw: Any) -> tuple[str, ...]:
-    """Accept either a YAML list or a comma-separated string of chords.
-
-    The editor writes a list; the string form exists so a hand-edited
-    ``keys: F23, F24`` behaves the way the person typing it expects.
-    """
-    if isinstance(raw, str):
-        return tuple(part.strip() for part in raw.split(",") if part.strip())
-    if isinstance(raw, (list, tuple)):
-        return tuple(str(part).strip() for part in raw if str(part).strip())
-    raise ValueError(
-        "cycle_shortcut action requires 'keys' as a list or comma-separated string"
-    )
-
-
-def _parse_cycle_steps(raw: Any) -> tuple[CycleStep, ...]:
-    """Parse the ``steps:`` form, where each entry may carry its own icon."""
-    if not isinstance(raw, (list, tuple)):
-        raise ValueError("cycle_shortcut 'steps' must be a list")
-    steps: list[CycleStep] = []
-    for entry in raw:
-        if isinstance(entry, str):
-            steps.append(CycleStep(keys=entry))
-            continue
-        if not isinstance(entry, dict):
-            raise ValueError(
-                "each cycle_shortcut step must be a mapping with 'keys', "
-                "optionally 'icon'"
-            )
-        icon_raw = entry.get("icon")
-        steps.append(
-            CycleStep(
-                keys=str(entry["keys"]),
-                icon_path=Path(str(icon_raw)).expanduser() if icon_raw else None,
-            )
-        )
-    return tuple(steps)
-
-
-def _parse_cycle_shortcut(raw: dict[str, Any]) -> CycleShortcutAction:
-    """Build the action from whichever of the two spellings is present.
-
-    ``steps:`` wins when both appear — it is the strictly richer form, and
-    silently preferring the one that can express icons beats guessing.
-    """
-    if raw.get("steps") is not None:
-        return CycleShortcutAction(
-            type="cycle_shortcut",
-            steps=_parse_cycle_steps(raw["steps"]),
-        )
-    return CycleShortcutAction.from_keys(_parse_cycle_keys(raw.get("keys")))
-
-
 def _parse_action(raw: dict[str, Any] | None) -> Action | None:
     if raw is None:
         return None
@@ -126,8 +71,6 @@ def _parse_action(raw: dict[str, Any] | None) -> Action | None:
         return ShellAction(type="shell", cmd=str(raw["cmd"]))
     if kind == "shortcut":
         return ShortcutAction(type="shortcut", keys=str(raw["keys"]))
-    if kind == "cycle_shortcut":
-        return _parse_cycle_shortcut(raw)
     if kind == "url":
         return UrlAction(type="url", url=str(raw["url"]))
     if kind == "switch_page":
@@ -232,6 +175,8 @@ def _parse_small_window(raw: dict[str, Any] | None) -> SmallWindowConfig:
             )
         ),
         metrics_items=tuple(raw.get("metrics_items") or ()),
+        temperature_sensors=tuple(raw.get("temperature_sensors") or ()),
+        temperature_separator=str(raw.get("temperature_separator", " ")),
     )
 
 

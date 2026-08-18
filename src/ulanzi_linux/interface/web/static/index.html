@@ -21,7 +21,7 @@
       <span class="thin">v<span x-text="health.version || '?'">?</span></span>
     </span>
     <span class="pill" :class="health.devices_found ? 'pill-ok' : 'pill-warn'">
-      <span x-text="t('{0} dispositivo(s)', health.devices_found)"></span>
+      <span x-text="health.devices_found + ' device(s)'"></span>
     </span>
     <span class="pill thin" :title="health.config_path" x-text="shortPath"></span>
   </div>
@@ -98,8 +98,8 @@
                       <span class="small-window-badge">alternando</span>
                       <strong x-text="smallWindowTimeLabel"></strong>
                       <small x-text="usesCustomSmallWindowMetrics
-                        ? t('relógio ↔ métricas · {0}s', smallWindowRotateLabel)
-                        : t('relógio ↔ CPU/MEM · {0}s', smallWindowRotateLabel)"></small>
+                        ? 'relógio ↔ métricas · ' + smallWindowRotateLabel + 's'
+                        : 'relógio ↔ CPU/MEM · ' + smallWindowRotateLabel + 's'"></small>
                     </div>
                   </template>
                   <template x-if="editor?.small_window?.enabled && !smallWindowAlternates && editor?.small_window?.show_metrics === false">
@@ -185,7 +185,7 @@
           <h2 x-text="selectedSlotTitle"></h2>
         </div>
         <span class="pill" :class="buttonForm?.fixed ? 'pill-ok' : 'pill-warn'"
-              x-text="buttonForm?.fixed ? t('fixo') : selectedPage"></span>
+              x-text="buttonForm?.fixed ? 'fixo' : selectedPage"></span>
       </div>
 
       <label class="toggle-row">
@@ -227,11 +227,11 @@
 
           <div class="image-actions">
             <div class="inline-actions">
-              <button @click="pickIconFor(null)" :disabled="busy">Escolher imagem</button>
-              <button @click="browseIconsFor(null)"
+              <button @click="$refs.iconPicker.click()" :disabled="busy">Escolher imagem</button>
+              <button @click="toggleBuiltinIconBrowser()"
                       title="Abrir ou fechar o catálogo de ícones embutidos"
                       :disabled="busy"
-                      x-text="showBuiltinIconBrowser ? t('Fechar catálogo') : t('Catálogo embutido')"></button>
+                      x-text="showBuiltinIconBrowser ? 'Fechar catálogo' : 'Catálogo embutido'"></button>
               <button @click="clearIcon()" :disabled="busy || !buttonForm.icon_path">Remover</button>
             </div>
 
@@ -251,9 +251,6 @@
                column the grid had ~250px to split four ways, which left the
                icons unreadably small. -->
           <div class="builtin-browser" x-ref="builtinBrowser" x-show="showBuiltinIconBrowser">
-            <p class="muted compact-copy"
-               x-show="iconTarget !== null"
-               x-text="t('Aplicando ao passo {0}', iconTarget + 1)"></p>
             <div class="builtin-toolbar">
               <input type="search"
                      x-ref="builtinSearch"
@@ -291,7 +288,6 @@
           <option value="none">Sem ação</option>
           <option value="shell">Comando</option>
           <option value="shortcut">Atalho</option>
-          <option value="cycle_shortcut">Atalho alternado</option>
           <option value="predefined_command">Comando pré-definido</option>
           <option value="url">Link</option>
           <option value="switch_page">Troca de página</option>
@@ -315,42 +311,6 @@
                  @input="syncSelectedButton()"
                  placeholder="ctrl+alt+t" />
         </label>
-      </template>
-
-      <template x-if="buttonForm.action.type === 'cycle_shortcut'">
-        <div class="field">
-          <span>Atalhos alternados</span>
-          <input type="text"
-                 x-model="buttonForm.action.keys"
-                 @input="syncSelectedButton()"
-                 placeholder="F23, F24" />
-          <small>Separe os atalhos por vírgula. Cada toque envia o próximo da lista e volta ao primeiro depois do último.</small>
-
-          <div class="cycle-steps" x-show="selectedIndex !== 13 && cycleSteps.length">
-            <small>Cada passo pode ter o seu próprio ícone. O botão mostra sempre o ícone do atalho que o próximo toque vai enviar; sem ícone, o passo usa a imagem do botão.</small>
-            <template x-for="step in cycleSteps" :key="step.index">
-              <div class="cycle-step">
-                <div class="cycle-step-preview" :class="step.preview_url ? '' : 'empty'">
-                  <template x-if="step.preview_url">
-                    <img :src="step.preview_url" alt="Prévia do ícone" />
-                  </template>
-                  <template x-if="!step.preview_url">
-                    <span x-text="step.index + 1"></span>
-                  </template>
-                </div>
-                <div class="cycle-step-body">
-                  <strong x-text="step.keys"></strong>
-                  <div class="inline-actions">
-                    <button @click="pickIconFor(step.index)" :disabled="busy">Escolher imagem</button>
-                    <button @click="browseIconsFor(step.index)" :disabled="busy">Catálogo embutido</button>
-                    <button @click="clearCycleIcon(step.index)"
-                            :disabled="busy || !step.icon_path">Remover</button>
-                  </div>
-                </div>
-              </div>
-            </template>
-          </div>
-        </div>
       </template>
 
       <template x-if="buttonForm.action.type === 'predefined_command'">
@@ -512,6 +472,64 @@
         <small>Deixe vazio para continuar usando o visor nativo do firmware. Quando você selecionar itens aqui, o slot largo passa a ser renderizado pelo Linux.</small>
       </div>
 
+      <div class="temperature-config"
+           x-show="smallWindowMetricSelected('temperature')">
+        <div class="field">
+          <span>Sensores de temperatura (até 3)</span>
+          <div class="sensor-options">
+            <template x-for="sensor in temperatureSensors" :key="sensor.id">
+              <label class="sensor-option">
+                <span class="sr-only">Selecionar sensor de temperatura</span>
+                <input type="checkbox"
+                       :checked="temperatureSensorSelected(sensor.id)"
+                       :disabled="temperatureSensorDisabled(sensor.id)"
+                       @change="toggleTemperatureSensor(sensor.id)" />
+                <span class="sensor-copy">
+                  <strong x-text="sensor.name"></strong>
+                  <small x-text="`${sensor.id} · ${sensor.value_celsius ?? 'n/a'}°C`"></small>
+                </span>
+              </label>
+            </template>
+          </div>
+          <small x-show="!temperatureSensors.length">Nenhum sensor térmico foi detectado.</small>
+          <small x-show="temperatureSensors.length && !editor.small_window.temperature_sensors.length">Sem seleção, será usado o primeiro sensor válido do sistema.</small>
+        </div>
+
+        <div class="field" x-show="editor.small_window.temperature_sensors.length">
+          <span>Ordem no visor</span>
+          <div class="sensor-order">
+            <template x-for="(sensorId, index) in editor.small_window.temperature_sensors" :key="sensorId">
+              <div class="sensor-order-row">
+                <span class="sensor-rank" x-text="index + 1"></span>
+                <span class="sensor-order-name" x-text="temperatureSensorById(sensorId).name"></span>
+                <button type="button"
+                        class="icon-button"
+                        title="Mover sensor para cima"
+                        :disabled="index === 0"
+                        @click="moveTemperatureSensor(sensorId, -1)">↑</button>
+                <button type="button"
+                        class="icon-button"
+                        title="Mover sensor para baixo"
+                        :disabled="index === editor.small_window.temperature_sensors.length - 1"
+                        @click="moveTemperatureSensor(sensorId, 1)">↓</button>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div class="field" x-show="editor.small_window.temperature_sensors.length > 1">
+          <span>Separador</span>
+          <div class="segmented-control">
+            <button type="button"
+                    :class="editor.small_window.temperature_separator !== '|' ? 'active' : ''"
+                    @click="setTemperatureSeparator(' ')">Espaço</button>
+            <button type="button"
+                    :class="editor.small_window.temperature_separator === '|' ? 'active' : ''"
+                    @click="setTemperatureSeparator('|')">|</button>
+          </div>
+        </div>
+      </div>
+
       <label class="field">
         <span>Intervalo (s)</span>
         <input type="number"
@@ -559,7 +577,7 @@
         </div>
       </div>
 
-      <p class="status-line" :class="statusClass" x-text="status || t('Pronto para editar')"></p>
+      <p class="status-line" :class="statusClass" x-text="status || 'Pronto para editar'"></p>
 
       <template x-if="validationError">
         <pre class="error-block" x-text="validationError"></pre>

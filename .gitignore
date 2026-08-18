@@ -18,6 +18,7 @@ ENV/
 
 # Testing & coverage
 .pytest_cache/
+pytest-of-*/
 .coverage
 .coverage.*
 htmlcov/
@@ -25,9 +26,14 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
+# Local agent and browser tooling
+.copilot-temp/
+.playwright-mcp/
+.mcp.json
+
 # IDE
-.vscode/
-.idea/
+.vscode
+.idea
 *.swp
 *.swo
 
@@ -35,13 +41,36 @@ htmlcov/
 .build/
 .cache/
 *.log
+*.tmp
+*.bak
+*~
 logs/
+temperature-sensors-*.png
 
 # Secrets & local config
 .env
-.env.local
+.env.*
+!.env.example
+!.env.*.example
 *.pem
 *.key
+*.p12
+*.pfx
+*.jks
+*credentials*
+*secrets*
+service_env.txt
+session_env.txt
+
+# User shell and Git configuration copied into the workspace
+.bash_profile
+.bashrc
+.gitconfig
+.gitmodules
+.profile
+.ripgreprc
+.zprofile
+.zshrc
 
 # OS
 .DS_Store
