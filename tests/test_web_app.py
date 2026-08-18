@@ -380,6 +380,24 @@ def test_put_editor_persists_fixed_info_window_placeholder(
     assert "- index: 13" in saved
 
 
+def test_put_editor_fixed_button_replaces_same_slot_on_every_page(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, path = client
+    payload = c.get("/api/editor").json()
+    original = payload["pages"][0]["buttons"][0]
+    payload["fixed_buttons"].append({**original, "label": "Fixed"})
+
+    r = c.put("/api/editor", json=payload)
+
+    assert r.status_code == 200
+    body = r.json()
+    assert all(page["buttons"] == [] for page in body["pages"])
+    assert body["fixed_buttons"][0]["label"] == "Fixed"
+    saved = path.read_text()
+    assert saved.count("index: 0") == 1
+
+
 def test_put_editor_persists_text_style_for_text_only_button(
     client: tuple[TestClient, Path],
 ) -> None:

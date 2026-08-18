@@ -320,6 +320,8 @@ def _editor_button_to_doc(button: EditorButtonModel) -> dict[str, Any]:
 
 
 def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
+    _validate_button_indices(req.fixed_buttons, scope="fixed_buttons")
+    fixed_indices = {button.index for button in req.fixed_buttons}
     pages_doc: dict[str, Any] = {}
     page_names: list[str] = []
     for page in req.pages:
@@ -333,6 +335,7 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
             "buttons": [
                 _editor_button_to_doc(button)
                 for button in sorted(page.buttons, key=lambda item: item.index)
+                if button.index not in fixed_indices
             ]
         }
         page_names.append(page_name)
@@ -347,8 +350,6 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
         raise ValueError(
             f"default_page {default_page!r} is not in pages {page_names!r}"
         )
-
-    _validate_button_indices(req.fixed_buttons, scope="fixed_buttons")
 
     doc: dict[str, Any] = {
         "default_page": default_page,

@@ -7,6 +7,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] — 2026-08-18
+
+### Fixed
+
+- Host-rendered small-window uploads are now serialized with page switches and
+  configuration reloads. Saving a button image can no longer insert a stale
+  small-window ZIP between the full layout upload and slot reset, which could
+  leave the small window blank and the device busy processing queued uploads.
+- Promoting a page button to fixed now removes that slot from every page, and
+  the editor backend canonicalizes stale overlapping payloads. Image saves no
+  longer fail with `reuses fixed_button indices` after changing button scope.
+
 ## [0.11.0] — 2026-08-18
 
 ### Added

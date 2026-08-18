@@ -344,6 +344,14 @@ class DeckDaemon:
             lines.append(f"{label:<4} {value}")
         return lines
 
+    async def _push_custom_small_window(
+        self, sw_cfg: object, button: ButtonConfig
+    ) -> None:
+        async with self._state_lock:
+            if sw_cfg is not self._config.small_window:
+                return
+            await self._service._device.set_buttons((button,), partial=True)
+
     async def _status_loop(self, stop_event: asyncio.Event) -> None:
         logger.info("status_loop_started")
         active_mode: SmallWindowMode | None = None
@@ -417,28 +425,22 @@ class DeckDaemon:
                                         if metric in {"cpu", "network"}:
                                             self._metrics_reader.read_metric_value(metric)
                                     metrics_primed = True
-                                await self._service._device.set_buttons(
-                                    (
-                                        _small_window_metrics_button(
-                                            background_color=sw_cfg.background_color,
-                                            metric_lines=self._custom_metric_lines(
-                                                sw_cfg
-                                            ),
-                                        ),
+                                await self._push_custom_small_window(
+                                    sw_cfg,
+                                    _small_window_metrics_button(
+                                        background_color=sw_cfg.background_color,
+                                        metric_lines=self._custom_metric_lines(sw_cfg),
                                     ),
-                                    partial=True,
                                 )
                             else:
-                                await self._service._device.set_buttons(
-                                    (
-                                        _small_window_clock_button(
-                                            background_color=sw_cfg.background_color,
-                                            time_str=self._metrics_reader.format_time(
-                                                "%H:%M:%S"
-                                            ),
+                                await self._push_custom_small_window(
+                                    sw_cfg,
+                                    _small_window_clock_button(
+                                        background_color=sw_cfg.background_color,
+                                        time_str=self._metrics_reader.format_time(
+                                            "%H:%M:%S"
                                         ),
                                     ),
-                                    partial=True,
                                 )
                         else:
                             if active_mode != desired_mode:

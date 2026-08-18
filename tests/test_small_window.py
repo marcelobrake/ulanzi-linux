@@ -88,6 +88,28 @@ class RecordingFakeDeck(DeckDevice):
         return _iter()
 
 
+class PausingSmallWindowDeck(RecordingFakeDeck):
+    def __init__(self) -> None:
+        super().__init__()
+        self.small_window_upload_started = asyncio.Event()
+        self.resume_small_window_upload = asyncio.Event()
+        self._paused = False
+
+    async def set_buttons(self, configs, *, partial: bool = False) -> None:  # type: ignore[override]
+        configs_tuple = tuple(configs)
+        if (
+            partial
+            and configs_tuple
+            and configs_tuple[0].index == 13
+            and configs_tuple[0].icon_data is not None
+            and not self._paused
+        ):
+            self._paused = True
+            self.small_window_upload_started.set()
+            await self.resume_small_window_upload.wait()
+        self.button_uploads.append(configs_tuple)
+
+
 class FakeMetrics(SystemMetricsReader):
     """Deterministic metrics source with a call counter."""
 
@@ -501,6 +523,52 @@ async def test_small_window_custom_metrics_render_as_partial_info_window() -> No
         and upload[0].icon_data is not None
         for upload in fake.button_uploads
     )
+
+
+@pytest.mark.asyncio
+async def test_reload_waits_for_custom_small_window_upload(tmp_path: Path) -> None:
+    fake = PausingSmallWindowDeck()
+    metrics = FakeMetrics()
+    cfg = _cfg_with_small_window(
+        enabled=True,
+        interval_s=0.05,
+        metrics_items=("temperature",),
+    )
+    yaml_path = tmp_path / "deck.yaml"
+    yaml_path.write_text(
+        """
+default_page: main
+small_window:
+  enabled: true
+  interval_s: 1.0
+  metrics_items: [temperature]
+pages:
+  main:
+    buttons:
+      - index: 0
+        label: Reloaded
+"""
+    )
+
+    async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
+        daemon = DeckDaemon(svc, cfg, metrics_reader=metrics)
+        stop = asyncio.Event()
+        status_task = asyncio.create_task(daemon._status_loop(stop))
+        await fake.small_window_upload_started.wait()
+
+        reload_task = asyncio.create_task(daemon.reload_config(yaml_path))
+        await asyncio.sleep(0)
+        assert not reload_task.done()
+        assert fake.button_uploads == []
+
+        fake.resume_small_window_upload.set()
+        await reload_task
+        stop.set()
+        await status_task
+
+    assert [upload[0].index for upload in fake.button_uploads[:3]] == [13, 0, 13]
+    assert fake.button_uploads[0][0].icon_data is not None
+    assert fake.button_uploads[2][0].icon_data is None
 
 
 def test_custom_temperature_sensors_preserve_order_and_separator() -> None:

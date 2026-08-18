@@ -432,7 +432,13 @@ window.editorApp = function editorApp() {
             }
             const nextButton = this.buildStateButtonFromForm();
             this.removeButton(this.editor.fixed_buttons, this.selectedIndex);
-            this.removeButton(this.currentPage.buttons, this.selectedIndex);
+            if (this.buttonForm.fixed) {
+                this.editor.pages.forEach((page) => {
+                    this.removeButton(page.buttons, this.selectedIndex);
+                });
+            } else {
+                this.removeButton(this.currentPage.buttons, this.selectedIndex);
+            }
 
             const persistInfoWindowFixedPlaceholder = (
                 this.isInfoWindowSlot(this.selectedIndex)
