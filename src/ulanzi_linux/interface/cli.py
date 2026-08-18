@@ -279,12 +279,10 @@ async def _push_config_async(
 )
 def daemon_command(config_path: str, skip_sync: bool, no_watch: bool) -> None:
     """Run the event-to-action daemon against a YAML config."""
-    try:
-        asyncio.run(_daemon_async(config_path, skip_sync, watch=not no_watch))
-    except DeviceNotFoundError as exc:
-        _bail(str(exc))
-    except DeviceOpenError as exc:
-        _bail(str(exc))
+    asyncio.run(_daemon_async(config_path, skip_sync, watch=not no_watch))
+
+
+_DEVICE_OPEN_RETRY_INTERVAL_S: float = 5.0
 
 
 async def _daemon_async(
@@ -297,26 +295,54 @@ async def _daemon_async(
         with suppress(NotImplementedError):
             loop.add_signal_handler(sig, stop.set)
 
-    async with DeckService.open_default() as service:
-        daemon = DeckDaemon(service, cfg, ActionRunner())
-        if not skip_sync:
-            await daemon.sync_layout()
+    # Retry opening the device instead of crashing when the device is found
+    # but its hidraw node is not yet accessible (e.g. udev rule just applied,
+    # plugdev group membership not yet visible in the running session).
+    # This mirrors _recover_transport's behaviour for reconnects so the
+    # daemon never needs a manual restart just because it raced with udev.
+    attempt = 0
+    while not stop.is_set():
+        attempt += 1
+        try:
+            async with DeckService.open_default() as service:
+                daemon = DeckDaemon(service, cfg, ActionRunner())
+                if not skip_sync:
+                    await daemon.sync_layout()
 
-        watcher: ConfigWatcher | None = None
-        if watch:
-            # The watcher is disk-only glue; the reload decision and
-            # atomic swap live in the daemon itself.
-            watcher = ConfigWatcher(
-                config_path, on_change=daemon.reload_config
+                watcher: ConfigWatcher | None = None
+                if watch:
+                    # The watcher is disk-only glue; the reload decision and
+                    # atomic swap live in the daemon itself.
+                    watcher = ConfigWatcher(
+                        config_path, on_change=daemon.reload_config
+                    )
+
+                page_list = ", ".join(cfg.pages.keys())
+                console.print(
+                    f"[green]daemon running[/] — pages=[{page_list}] "
+                    f"default='{cfg.default_page}' fixed={len(cfg.fixed_buttons)} "
+                    f"watch={'on' if watch else 'off'}. Ctrl-C to stop."
+                )
+                await daemon.run(stop_event=stop, watcher=watcher)
+            break
+        except DeviceNotFoundError as exc:
+            logger.info(
+                "daemon_device_not_found_retrying",
+                attempt=attempt,
+                error=str(exc),
+                retry_in_s=_DEVICE_OPEN_RETRY_INTERVAL_S,
             )
-
-        page_list = ", ".join(cfg.pages.keys())
-        console.print(
-            f"[green]daemon running[/] — pages=[{page_list}] "
-            f"default='{cfg.default_page}' fixed={len(cfg.fixed_buttons)} "
-            f"watch={'on' if watch else 'off'}. Ctrl-C to stop."
-        )
-        await daemon.run(stop_event=stop, watcher=watcher)
+            with suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=_DEVICE_OPEN_RETRY_INTERVAL_S)
+        except DeviceOpenError as exc:
+            logger.warning(
+                "daemon_device_open_failed_retrying",
+                attempt=attempt,
+                error=str(exc),
+                retry_in_s=_DEVICE_OPEN_RETRY_INTERVAL_S,
+            )
+            with suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=_DEVICE_OPEN_RETRY_INTERVAL_S)
 
 
 # ---------------------------------------------------------------------- #
