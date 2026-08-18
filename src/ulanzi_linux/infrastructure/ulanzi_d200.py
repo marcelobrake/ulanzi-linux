@@ -37,6 +37,7 @@ from ulanzi_linux.infrastructure.hid_transport import (
     DeviceOpenError,
     HidApiTransport,
     HidTransport,
+    TransportReconnectExhaustedError,
     enumerate_hid_devices,
 )
 from ulanzi_linux.infrastructure.packet import (
@@ -53,6 +54,22 @@ logger = structlog.get_logger(__name__)
 TransportFactory: TypeAlias = Callable[[], HidTransport]
 
 DEFAULT_RECONNECT_POLL_INTERVAL_S: float = 1.0
+
+# Give up rather than poll forever. python-hidapi exposes no way to reset the
+# library context from inside the process (the Cython binding offers only
+# ``device`` and ``enumerate``), so once a handle is invalidated by an unplug
+# this process may never enumerate the device again — even while a freshly
+# started process sees it immediately. Retrying in-process cannot recover from
+# that, so we exit and let the supervisor (the systemd user unit restarts on
+# failure) hand us a clean context.
+#
+# The budget is a trade-off, not a timeout to minimise. It has to outlast USB
+# re-enumeration and a briefly flaky cable — those recover in-process, with no
+# restart and no dropped state. Below that floor the daemon starts bouncing on
+# glitches it could have absorbed. Above it, a genuinely poisoned context keeps
+# the deck dark for no reason. At the 1 s poll interval, 10 attempts spends
+# ~10 s here before handing over to the supervisor.
+DEFAULT_MAX_RECONNECT_ATTEMPTS: int = 10
 
 DEFAULT_LABEL_STYLE: Final[dict[str, object]] = {
     "Align": "bottom",
@@ -87,10 +104,12 @@ class UlanziD200Device(DeckDevice):
         *,
         transport_factory: TransportFactory | None = None,
         reconnect_poll_interval_s: float = DEFAULT_RECONNECT_POLL_INTERVAL_S,
+        max_reconnect_attempts: int = DEFAULT_MAX_RECONNECT_ATTEMPTS,
     ) -> None:
         self._transport: HidTransport | None = transport
         self._transport_factory = transport_factory or self._open_transport
         self._reconnect_poll_interval_s = reconnect_poll_interval_s
+        self._max_reconnect_attempts = max_reconnect_attempts
         self._spec = D200_SPEC
         self._event_queue: asyncio.Queue[ButtonEvent | DeviceInfoEvent] = (
             asyncio.Queue(maxsize=256)
@@ -513,6 +532,10 @@ class UlanziD200Device(DeckDevice):
                 except (DeviceNotFoundError, DeviceOpenError) as exc:
                     if reopened_transport is not None:
                         await reopened_transport.close()
+                    if self._reconnect_exhausted(attempt):
+                        raise TransportReconnectExhaustedError(
+                            f"gave up reopening the deck after {attempt} attempts: {exc}"
+                        ) from exc
                     logger.info(
                         "transport_reconnect_waiting",
                         operation=operation,
@@ -524,6 +547,10 @@ class UlanziD200Device(DeckDevice):
                 except Exception as exc:
                     if reopened_transport is not None:
                         await reopened_transport.close()
+                    if self._reconnect_exhausted(attempt):
+                        raise TransportReconnectExhaustedError(
+                            f"gave up reopening the deck after {attempt} attempts: {exc}"
+                        ) from exc
                     logger.warning(
                         "transport_reconnect_retry_failed",
                         operation=operation,
@@ -540,6 +567,22 @@ class UlanziD200Device(DeckDevice):
                     attempt=attempt,
                 )
                 return
+
+    def _reconnect_exhausted(self, attempt: int) -> bool:
+        """True once the retry budget is spent (``<= 0`` means retry forever)."""
+        if self._max_reconnect_attempts <= 0:
+            return False
+        if attempt < self._max_reconnect_attempts:
+            return False
+        logger.error(
+            "transport_reconnect_exhausted",
+            attempts=attempt,
+            hint=(
+                "python-hidapi cannot reset its context in-process; exiting so "
+                "the supervisor restarts with a clean one"
+            ),
+        )
+        return True
 
     async def _restore_state(self, transport: HidTransport) -> None:
         if self._cached_brightness is not None:

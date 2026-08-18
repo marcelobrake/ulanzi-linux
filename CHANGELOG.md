@@ -7,6 +7,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.4] — 2026-08-18
+
+### Fixed
+
+- Device reconnection attempts are now bounded by `max_reconnect_attempts` so
+  a permanently invalid hidapi context makes the daemon exit for supervisor
+  recovery instead of retrying forever. Setting the value to `0` preserves
+  unbounded retries.
+- Background worker failures now stop the daemon and propagate to its CLI exit
+  path, allowing the systemd user unit to restart an unhealthy process.
+
 ## [0.11.3] — 2026-08-18
 
 ### Fixed
