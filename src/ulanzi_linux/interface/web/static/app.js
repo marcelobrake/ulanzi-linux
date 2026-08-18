@@ -62,6 +62,54 @@ function emptyAction() {
     };
 }
 
+//: How many catalogue results the grid renders at once.
+const BUILTIN_ICON_RESULT_LIMIT = 120;
+
+//: Sentinel score meaning "this icon does not match at all".
+const NO_MATCH = Number.POSITIVE_INFINITY;
+
+function iconWords(value) {
+    return String(value || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+/**
+ * Rank an icon against a query — lower is better, NO_MATCH excludes it.
+ *
+ * Plain substring matching is not enough: searching "mic" hits "anatomical"
+ * as surely as "microphone", and an unranked list buries the icon actually
+ * being looked for. Matches at the start of a word beat matches buried mid-
+ * word, and the icon's own name beats its keywords.
+ */
+function builtinIconScore(icon, query) {
+    const name = String(icon.name || "").toLowerCase();
+    const terms = (icon.search_terms || []).map((term) => String(term).toLowerCase());
+
+    if (name === query) {
+        return 0;
+    }
+    if (name.startsWith(query)) {
+        return 1;
+    }
+    if (iconWords(name).some((word) => word.startsWith(query))) {
+        return 2;
+    }
+    if (terms.some((term) => term === query)) {
+        return 3;
+    }
+    if (terms.some((term) => iconWords(term).some((word) => word.startsWith(query)))) {
+        return 4;
+    }
+    if (name.includes(query)) {
+        return 5;
+    }
+    if (terms.some((term) => term.includes(query))) {
+        return 6;
+    }
+    if (String(icon.family || "").toLowerCase().includes(query)) {
+        return 7;
+    }
+    return NO_MATCH;
+}
 function emptyTextStyle() {
     return {
         background_color: "#111827",
@@ -481,8 +529,21 @@ window.editorApp = function editorApp() {
 
         toggleBuiltinIconBrowser() {
             this.showBuiltinIconBrowser = !this.showBuiltinIconBrowser;
+            if (!this.showBuiltinIconBrowser) {
+                return;
+            }
+            // The catalogue lives up in the Image section, so a step further
+            // down the inspector would otherwise open it off-screen. The cards
+            // show no names either, so searching is the way in — put the
+            // caret there rather than making the reader go find it.
+            this.$nextTick(() => {
+                this.$refs.builtinBrowser?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "nearest",
+                });
+                this.$refs.builtinSearch?.focus();
+            });
         },
-
         async uploadIcon(event) {
             const file = event.target.files?.[0];
             if (!file) {
@@ -884,18 +945,19 @@ window.editorApp = function editorApp() {
         get filteredBuiltinIcons() {
             const query = (this.builtinIconQuery || "").trim().toLowerCase();
             const style = this.builtinIconStyle || "all";
-            return (this.builtinIcons || [])
-                .filter((icon) => style === "all" || icon.style === style)
-                .filter((icon) => {
-                    if (!query) {
-                        return true;
-                    }
-                    const haystack = [icon.name, icon.style, icon.family, ...(icon.search_terms || [])]
-                        .join(" ")
-                        .toLowerCase();
-                    return haystack.includes(query);
-                })
-                .slice(0, 120);
+            const styled = (this.builtinIcons || [])
+                .filter((icon) => style === "all" || icon.style === style);
+            if (!query) {
+                return styled.slice(0, BUILTIN_ICON_RESULT_LIMIT);
+            }
+            return styled
+                .map((icon) => ({ icon, score: builtinIconScore(icon, query) }))
+                .filter((scored) => scored.score < NO_MATCH)
+                // Ties keep the catalogue's own order, so results are stable
+                // as you type rather than reshuffling on every keystroke.
+                .sort((a, b) => a.score - b.score)
+                .slice(0, BUILTIN_ICON_RESULT_LIMIT)
+                .map((scored) => scored.icon);
         },
 
         get builtinIconSummary() {

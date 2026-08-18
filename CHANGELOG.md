@@ -7,6 +7,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] — 2026-08-18
+
+### Added
+
+- The built-in icon catalogue now uses a larger four-column visual grid with
+  accessible labels, focused full-width search, and a styled scrollbar.
+- Icon search now ranks exact, word-prefix, keyword, substring, and family
+  matches so relevant icons appear before incidental matches. Node-backed
+  tests exercise the shipped browser code directly.
+
 ## [0.11.6] — 2026-08-18
 
 ### Fixed
