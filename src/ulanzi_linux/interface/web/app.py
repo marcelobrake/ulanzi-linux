@@ -27,6 +27,7 @@ Design decisions:
 
 from __future__ import annotations
 
+import hashlib
 import mimetypes
 import os
 import re
@@ -39,7 +40,7 @@ from urllib.parse import quote
 import structlog
 import yaml
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -108,6 +109,42 @@ INFO_WINDOW_INDEX = 13
 EDITOR_DEFAULT_PAGE = "main"
 HOME_DIR = Path.home()
 SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+#: Static assets whose URL carries a content stamp, so a browser can never
+#: pair a cached copy of one with a fresh copy of the page.
+STAMPED_ASSETS = ("/static/app.js", "/static/app.css")
+
+
+class RevalidatingStaticFiles(StaticFiles):
+    """Serve ``static/`` with revalidation forced on every request.
+
+    ``/`` is rendered per request while the assets it references are not, so
+    a heuristically-cached ``app.js`` can be paired with freshly-rendered HTML
+    that calls functions the cached copy has never heard of — the page then
+    half-works in a way no server-side test can reproduce. The URLs are also
+    content-stamped (see ``_stamp_asset_urls``); this header is the belt to
+    that pair of braces, and costs one 304 on localhost.
+    """
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["cache-control"] = "no-cache"
+        return response
+
+
+def _asset_stamp(path: Path) -> str:
+    """Short content hash, so any edit changes the URL."""
+    try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return __version__
+    return digest[:12]
+
+
+def _stamp_asset_urls(html: str) -> str:
+    for asset in STAMPED_ASSETS:
+        stamp = _asset_stamp(STATIC_DIR / Path(asset).name)
+        html = html.replace(f'"{asset}"', f'"{asset}?v={stamp}"')
+    return html
 UPLOADED_ICON_MARGIN_PX = 5
 UPLOAD_FILE_FIELD = File(...)
 
@@ -925,12 +962,14 @@ def create_app(config_path: Path) -> FastAPI:
     # ------------------------------------------------------------------ #
 
     @app.get("/")
-    def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
+    def index() -> HTMLResponse:
+        html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        html = _stamp_asset_urls(html)
+        return HTMLResponse(html)
 
     app.mount(
         "/static",
-        StaticFiles(directory=str(STATIC_DIR)),
+        RevalidatingStaticFiles(directory=str(STATIC_DIR)),
         name="static",
     )
 

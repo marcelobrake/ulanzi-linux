@@ -8,6 +8,7 @@ leave a corrupt config on disk.
 from __future__ import annotations
 
 import io
+import re
 import zipfile
 from pathlib import Path
 
@@ -127,6 +128,42 @@ def test_health_reports_config_and_version(
     # Absolute-path invariant — the client displays this in the UI header.
     assert body["config_path"].endswith(path.name)
     assert isinstance(body["devices_found"], int)
+
+
+def test_index_stamps_asset_urls_with_their_content(
+    client: tuple[TestClient, Path],
+) -> None:
+    """A cached app.js paired with fresh HTML half-works — and looks like a
+    code bug, not a cache bug. The stamp makes that pairing impossible."""
+    c, _ = client
+    html = c.get("/").text
+    assert re.search(r'/static/app\.js\?v=[0-9a-f]{12}"', html)
+    assert re.search(r'/static/app\.css\?v=[0-9a-f]{12}"', html)
+    assert '"/static/app.js"' not in html
+
+
+def test_index_asset_stamp_follows_the_file(
+    client: tuple[TestClient, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    c, _ = client
+    before = re.search(r'/static/app\.js\?v=([0-9a-f]{12})"', c.get("/").text)
+    assert before is not None
+
+    monkeypatch.setattr(
+        "ulanzi_linux.interface.web.app._asset_stamp",
+        lambda path: "deadbeefcafe",
+    )
+    assert "/static/app.js?v=deadbeefcafe" in c.get("/").text
+
+
+def test_static_assets_must_be_revalidated(
+    client: tuple[TestClient, Path],
+) -> None:
+    c, _ = client
+    response = c.get("/static/app.js")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache"
 
 
 def test_get_config_returns_text_and_metadata(
