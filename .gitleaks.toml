@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Keyboard shortcut declarations are not API keys"
+condition = "AND"
+paths = ['''^src/ulanzi_linux/application/predefined_commands\.py$''']
+regexes = ['''^shift\+ctrl\+alt\+Down$''']

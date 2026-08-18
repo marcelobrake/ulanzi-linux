@@ -117,6 +117,7 @@ class UlanziD200Device(DeckDevice):
         self._read_task: asyncio.Task[None] | None = None
         self._closed = False
         self._reconnect_lock = asyncio.Lock()
+        self._write_lock = asyncio.Lock()
 
         # Cached state — avoid redundant writes to a slow USB bus.
         self._cached_brightness: int | None = None
@@ -298,15 +299,16 @@ class UlanziD200Device(DeckDevice):
     # ------------------------------------------------------------------ #
 
     async def _send_chunked(self, command: OutgoingCommand, blob: bytes) -> None:
-        transport = await self._require_transport()
-        try:
-            await self._send_chunked_raw(transport, command, blob)
-        except Exception as exc:
-            await self._recover_transport(
-                failed_transport=transport,
-                operation=f"write_{command.name.lower()}",
-                error=exc,
-            )
+        async with self._write_lock:
+            transport = await self._require_transport()
+            try:
+                await self._send_chunked_raw(transport, command, blob)
+            except Exception as exc:
+                await self._recover_transport(
+                    failed_transport=transport,
+                    operation=f"write_{command.name.lower()}",
+                    error=exc,
+                )
 
     async def _send_chunked_raw(
         self, transport: HidTransport, command: OutgoingCommand, blob: bytes
@@ -367,15 +369,16 @@ class UlanziD200Device(DeckDevice):
             chunk_index += 1
 
     async def _send(self, command: OutgoingCommand, data: bytes) -> None:
-        transport = await self._require_transport()
-        try:
-            await self._send_raw(transport, command, data)
-        except Exception as exc:
-            await self._recover_transport(
-                failed_transport=transport,
-                operation=f"write_{command.name.lower()}",
-                error=exc,
-            )
+        async with self._write_lock:
+            transport = await self._require_transport()
+            try:
+                await self._send_raw(transport, command, data)
+            except Exception as exc:
+                await self._recover_transport(
+                    failed_transport=transport,
+                    operation=f"write_{command.name.lower()}",
+                    error=exc,
+                )
 
     async def _send_raw(
         self, transport: HidTransport, command: OutgoingCommand, data: bytes
@@ -710,7 +713,13 @@ class UlanziD200Device(DeckDevice):
 
     @staticmethod
     def _build_small_window_mode_payload(mode: SmallWindowMode) -> bytes:
-        return bytes([int(mode)])
+        return UlanziD200Device._build_small_window_payload(
+            mode=mode,
+            cpu=0,
+            mem=0,
+            gpu=0,
+            time_str="00:00:00",
+        )
 
     async def _event_iterator(
         self,

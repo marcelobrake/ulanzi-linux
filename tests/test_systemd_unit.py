@@ -67,7 +67,7 @@ def test_service_restart_policy_is_sane(
     # RestartSec must be >=1 to avoid CPU-melting flap loops.
     assert int(unit.get("Service", "RestartSec")) >= 1
     # StartLimit keeps a permanently-broken install from respawning forever.
-    assert int(unit.get("Service", "StartLimitBurst")) >= 1
+    assert int(unit.get("Unit", "StartLimitBurst")) >= 1
 
 
 def test_service_stop_behavior(unit: configparser.ConfigParser) -> None:

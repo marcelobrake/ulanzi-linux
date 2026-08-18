@@ -29,6 +29,18 @@
     box-sizing: border-box;
 }
 
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 html,
 body {
     margin: 0;
@@ -56,6 +68,7 @@ body::before {
         linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
     background-size: 32px 32px;
+    -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.42), transparent 86%);
     mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.42), transparent 86%);
     opacity: 0.22;
 }
@@ -207,6 +220,7 @@ code {
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    min-width: 0;
 }
 
 .panel-card {
@@ -677,56 +691,6 @@ textarea {
     gap: 0.7rem;
 }
 
-.cycle-steps {
-    display: grid;
-    gap: 0.6rem;
-    margin-top: 0.6rem;
-}
-
-.cycle-step {
-    display: grid;
-    grid-template-columns: 64px minmax(0, 1fr);
-    gap: 0.7rem;
-    align-items: center;
-    padding: 0.6rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.03);
-}
-
-.cycle-step-preview {
-    width: 64px;
-    height: 64px;
-    border-radius: var(--radius-sm);
-    border: 1px dashed rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.04);
-    display: grid;
-    place-items: center;
-    overflow: hidden;
-}
-
-.cycle-step-preview img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-}
-
-.cycle-step-preview.empty {
-    color: var(--muted);
-    font-size: 1.1rem;
-}
-
-.cycle-step-body {
-    display: grid;
-    gap: 0.45rem;
-    min-width: 0;
-}
-
-.cycle-step-body strong {
-    font-family: var(--font-mono);
-    word-break: break-word;
-}
-
 .builtin-browser {
     display: grid;
     gap: 0.7rem;
@@ -850,6 +814,92 @@ textarea {
 .style-chip.active {
     background: rgba(86, 194, 255, 0.18);
     border-color: rgba(86, 194, 255, 0.38);
+}
+
+.temperature-config {
+    display: grid;
+    gap: 0.9rem;
+    margin-top: 0.9rem;
+    padding: 0.9rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: rgba(8, 17, 24, 0.42);
+}
+
+.sensor-options,
+.sensor-order {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.55rem;
+}
+
+.sensor-option,
+.sensor-order-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.65rem;
+    align-items: center;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.sensor-copy {
+    display: grid;
+    min-width: 0;
+}
+
+.sensor-copy strong,
+.sensor-copy small,
+.sensor-order-name {
+    overflow-wrap: anywhere;
+}
+
+.sensor-copy small {
+    color: var(--muted);
+    font-family: var(--font-mono);
+}
+
+.sensor-order-row {
+    grid-template-columns: 1.6rem minmax(0, 1fr) 2.25rem 2.25rem;
+}
+
+.sensor-rank {
+    color: var(--accent-warm);
+    font-family: var(--font-mono);
+    text-align: center;
+}
+
+.icon-button {
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border-radius: 8px;
+    font-weight: 700;
+}
+
+.segmented-control {
+    display: inline-grid;
+    grid-template-columns: 1fr 3rem;
+    margin-top: 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.segmented-control button {
+    border: 0;
+    border-radius: 0;
+}
+
+.segmented-control button + button {
+    border-left: 1px solid var(--border);
+}
+
+.segmented-control button.active {
+    background: rgba(121, 221, 248, 0.18);
+    color: var(--accent);
 }
 
 .status-line {

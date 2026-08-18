@@ -7,210 +7,107 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.14.1] — 2026-08-16
+## [0.11.6] — 2026-08-18
 
 ### Fixed
 
-- The editor could serve a freshly-rendered page against a cached `app.js`,
-  leaving the UI half-broken in a way that looked like a code bug: controls
-  added in the new version did nothing, and blocks gated on a new computed
-  property never appeared. `/` is rendered per request while `/static/*` was
-  not, and the assets carried no `Cache-Control`, so browsers were free to
-  pair the two. Asset URLs now carry a content stamp (`app.js?v=<hash>`) and
-  static responses are marked `no-cache`, so the page and its scripts can
-  never come from different versions.
+- The web editor now stamps JavaScript and CSS URLs with their content hashes
+  and forces static asset revalidation, preventing stale cached assets from
+  being paired with a newer HTML page.
 
-## [0.14.0] — 2026-08-16
+## [0.11.5] — 2026-08-18
+
+### Fixed
+
+- Paging tests now record full layout and partial small-window strip uploads
+  separately, so page synchronization assertions count layouts rather than raw
+  HID upload calls.
+
+## [0.11.4] — 2026-08-18
+
+### Fixed
+
+- Device reconnection attempts are now bounded by `max_reconnect_attempts` so
+  a permanently invalid hidapi context makes the daemon exit for supervisor
+  recovery instead of retrying forever. Setting the value to `0` preserves
+  unbounded retries.
+- Background worker failures now stop the daemon and propagate to its CLI exit
+  path, allowing the systemd user unit to restart an unhealthy process.
+
+## [0.11.3] — 2026-08-18
+
+### Fixed
+
+- The `web` and `desktop` extras now install `python-multipart`, which FastAPI
+  requires to register the asset upload endpoint on a clean installation.
+
+## [0.11.2] — 2026-08-18
 
 ### Added
 
-- A cycling shortcut can now give each step its own icon, and the deck
-  repaints the button as it advances. The button always shows the icon of the
-  step the *next* press will send, so it reads as "what happens if I press
-  this" rather than "what happened last time".
-- New `steps:` spelling for `cycle_shortcut`, where each entry is
-  `{keys, icon}` and `icon` is optional — a step without one leaves the button
-  wearing its own image:
+- A versioned pre-commit hook now rejects local artifacts, unapproved root
+  paths, environment dumps, personal home paths, and common credential
+  formats, then scans staged changes with gitleaks.
 
-  ```yaml
-  action:
-    type: cycle_shortcut
-    steps:
-      - { keys: F23, icon: ~/.config/ulanzi/icons/mic-on.png }
-      - { keys: F24, icon: ~/.config/ulanzi/icons/mic-off.png }
-  ```
+### Removed
 
-- The web editor grows one icon slot per chord under the shortcut field, fed
-  by the same upload and built-in-catalogue controls as the button's own
-  image. The catalogue now says which slot it is filling and scrolls itself
-  into view when opened from a step further down the inspector.
+- Tracked shell/session environment dumps and temporary Copilot deck files
+  were removed. Equivalent local files, test output, tool state, and diagnostic
+  screenshots are now covered by `.gitignore`.
 
-### Changed
-
-- `keys: [F23, F24]` keeps working exactly as before and is still what the
-  editor saves when no step has an icon, so a config gains no noise from a
-  feature it does not use. When both spellings appear, `steps:` wins.
-- The repaint is a single-button partial upload, which the device already
-  remembers, so a deck power-cycle restores the face the cursor is on rather
-  than the first step. A repaint that fails is logged and skipped — a wrong
-  icon must never swallow the keystroke.
-
-## [0.13.2] — 2026-08-16
+## [0.11.1] — 2026-08-18
 
 ### Fixed
 
-- Portuguese no longer leaks into the English editor. Two classes of string
-  had been unreachable by the translator: `alt` text, which the reader sees
-  whenever an image fails to load, and string literals written inside Alpine
-  `x-text` expressions — that attribute holds JS, so the server-side HTML
-  translator deliberately never looks inside it. Affected: the **Built-in
-  catalogue** / **Close catalogue** button, the `fixed` button badge, the
-  "Ready to edit" status line, the alternating small-window caption, and both
-  icon `alt` texts. `t()` is now exposed on the editor component so templates
-  can translate, and `alt` joined the translatable-attribute whitelist.
-- The device-count pill was hard-coded to English (`2 device(s)`) and so read
-  wrong in the Portuguese UI; it is now a catalogue entry like everything else.
+- Host-rendered small-window uploads are now serialized with page switches and
+  configuration reloads. Saving a button image can no longer insert a stale
+  small-window ZIP between the full layout upload and slot reset, which could
+  leave the small window blank and the device busy processing queued uploads.
+- Promoting a page button to fixed now removes that slot from every page, and
+  the editor backend canonicalizes stale overlapping payloads. Image saves no
+  longer fail with `reuses fixed_button indices` after changing button scope.
+
+## [0.11.0] — 2026-08-18
 
 ### Added
 
-- Two catalogue-coverage tests: one asserts every `t()` call in the HTML and
-  JS has an English entry, the other that no display literal sits bare inside
-  an `x-text` expression, where no catalogue could ever reach it.
+- Selecting `Temperatura` in the visual editor now exposes the Linux thermal
+  zones detected on the host. Up to three sensors can be selected, reordered,
+  and displayed on one `TEMP` line separated by spaces or `|`.
+- `small_window.temperature_sensors` and `temperature_separator` persist the
+  selected sensor order and formatting while preserving first-valid-sensor
+  behavior for existing configurations.
 
-## [0.13.1] — 2026-08-16
-
-### Fixed
-
-- Five paging tests had been failing since `_push_page` started following each
-  layout sync with a partial push for the small-window background strip: they
-  counted raw `set_buttons` calls, so every page sync read as two uploads. The
-  test deck now records full and partial pushes separately, which restores the
-  "one upload per page sync" assertions and makes the strip push assertable in
-  its own right. No production code changed.
-
-## [0.13.0] — 2026-08-16
-
-### Added
-
-- New `cycle_shortcut` action: one button that emits a different shortcut on
-  each press and wraps around at the end of the list, so
-  `keys: [F23, F24]` alternates F23 / F24 / F23 / F24 forever. Accepts a YAML
-  list or a comma-separated string.
-- The web editor exposes it as **Atalho alternado** / **Alternating
-  shortcut**, taking the chords in one comma-separated field (`F23, F24`) and
-  saving them as a YAML list. Saving fewer than two chords is rejected with a
-  message pointing at the plain shortcut action.
-
-### Changed
-
-- The daemon now resolves cycling shortcuts itself, the same way it already
-  intercepts `switch_page`, and hands the action runner a plain `shortcut`.
-  The cursor is per page and button index — a fixed button keeps one shared
-  cursor across pages, since it is one physical button — and lives in memory
-  only, so a daemon restart begins the sequence again. Hot-reload keeps each
-  cursor unless that button's chord list changed.
-
-## [0.12.0] — 2026-08-13
-
-### Added
-
-- The web editor is translatable, and ships an English translation alongside
-  the original Portuguese. Language is resolved most-specific-first: `?lang=`
-  on the URL, then `--lang` / `$ULANZI_LANG` on the server, then the browser's
-  `Accept-Language`, then pt-BR. An unknown tag logs a warning and falls back
-  rather than refusing to start.
-- Catalogues are GNU gettext `.po` files under
-  `interface/web/locales/<lang>/LC_MESSAGES/ulanzi_web.po`. Adding a language
-  is copying the English catalogue and filling in the `msgstr` values — no
-  build step, no `msgfmt`, no code change. The msgids are the original
-  Portuguese strings, so pt-BR needs no catalogue at all and an untranslated
-  or `#, fuzzy` entry falls through to Portuguese instead of showing nothing.
-- `GET /api/i18n` returns a catalogue as JSON plus the languages found on disk.
-
-### Changed
-
-- The `/` route renders the page instead of serving it as a static file, so
-  the HTML can be translated. Translation parses the document — text nodes
-  plus `placeholder`, `title` and `aria-label` — rather than replacing
-  substrings, which would corrupt JS inside `<script>` and rewrite Alpine.js
-  expression attributes like `x-text`. `/static/*` is unchanged.
-- Front-end strings now go through a `t()` helper reading the catalogue the
-  server injects into the page, so the JS and HTML halves share one `.po` and
-  there is no flash of untranslated toasts. Placeholders are positional:
-  `t("Botão {0} limpo", n)`.
-- `create_app()` and `serve()` take an optional `language`.
-
-## [0.11.1] — 2026-08-13
+## [0.10.7] — 2026-08-18
 
 ### Fixed
 
-- The daemon no longer hangs forever after the deck is unplugged and plugged
-  back in. Reconnection is now bounded by `max_reconnect_attempts` (default
-  10, i.e. ~10 s at the 1 s poll interval); once spent, the daemon raises
-  `TransportReconnectExhaustedError` and exits non-zero so its supervisor
-  restarts it. The budget still has to outlast USB re-enumeration and a
-  briefly flaky cable, both of which recover in-process without a restart.
-  Set the value to `0` to keep the previous unbounded behaviour.
+- HID writes are now serialized for the full duration of each command. Config
+  reloads can no longer interleave page ZIP frames with small-window mode or
+  image updates, which could leave only the small window black after saving
+  custom metrics such as battery in the desktop editor.
 
-  python-hidapi exposes no way to reset the library context from inside the
-  process — the Cython binding offers only `device` and `enumerate` — so a
-  handle invalidated by an unplug can leave that process permanently unable to
-  enumerate the deck, even while a freshly started process finds it
-  immediately. Retrying enumeration in-process therefore cannot recover, and
-  the old loop simply polled a dead context forever: observed at 241
-  consecutive failed attempts against a device that was plugged in, powered,
-  and correctly permissioned the whole time.
-
-  The systemd user unit already carries `Restart=on-failure`, so it recovers
-  on its own; `ulanzi-linux daemon` run by hand now reports the reason instead
-  of an uncaught traceback.
-
-- A background worker that dies now brings the daemon down with it. `run()`
-  waited only on the stop event, so a dead worker went unnoticed: the process
-  stayed alive and looked healthy while the deck was unreachable. It now waits
-  on the stop event *and* the workers, winds the survivors down, and re-raises
-  the failure. The status loop no longer swallows
-  `TransportReconnectExhaustedError` into a `status_loop_tick_failed` warning
-  either — without both halves, bounding the retries changed nothing, because
-  the error never reached the exit path.
-
-## [0.11.0] — 2026-08-13
-
-### Added
-
-- `shortcut` actions now support `ydotool`, and prefer it on Wayland. Backend
-  order is `ydotool` → `xdotool` → `wtype` under Wayland and
-  `xdotool` → `ydotool` → `wtype` under X11, falling through whenever a tool
-  is absent or exits non-zero.
-- New `ulanzi_linux.infrastructure.keysym_evdev` module translating X11 keysym
-  names into evdev codes, since `ydotool` accepts only raw `<code>:<pressed>`
-  pairs. Covers letters, digits, `F1`–`F24`, navigation and punctuation keys,
-  modifiers with their `ctrl` / `super` / `cmd` shorthands, and the common
-  `XF86*` media, brightness, and launcher keys. Chords press in order and
-  release in reverse, so `ctrl+alt+t` emits `29:1 56:1 20:1 20:0 56:0 29:0`.
+## [0.10.6] — 2026-08-18
 
 ### Fixed
 
-- Shortcuts no longer fail silently on Wayland. `xdotool` runs and exits 0
-  under a Wayland compositor, but its events reach only XWayland clients, so
-  shortcuts aimed at native Wayland applications were dropped while the daemon
-  logged success. Untranslatable keysyms still fall back to `xdotool` rather
-  than emitting a wrong chord.
-- `docs/configuration.md` claimed `ydotool` was used on Wayland, which the
-  implementation never did. The documented behaviour and the code now agree.
+- The host-rendered small-window clock now receives a canonical `HH:MM:SS`
+  value, so date-prefixed display formats no longer make its analog face fall
+  back to `00:00`.
+- Custom small-window metrics no longer activate the firmware-native CLOCK or
+  STATS layers while clearing their cache. The strip remains exclusively in
+  BACKGROUND mode using the firmware's complete ASCII wire payload, preventing
+  the native `CPU/RAM/GPU 0%` panel from appearing behind the host-rendered
+  `CPU/MEM/TEMP` page.
 
-## [0.10.5] — 2026-08-13
+## [0.10.5] — 2026-08-18
 
 ### Fixed
 
-- The `web` and `desktop` extras now declare `python-multipart`, which FastAPI
-  requires for the multipart upload endpoint used by the asset browser. A
-  clean `pip install -e ".[web]"` previously produced a working CLI but a
-  `ulanzi-linux gui` that aborted at startup with
-  `RuntimeError: Form data requires "python-multipart" to be installed`.
-  FastAPI raises this while registering routes, before the deck YAML is read,
-  so the failure surfaced as an import-time traceback with no reference to the
-  user's configuration.
+- The daemon now restores the D200 display brightness to 50% before its first
+  layout upload. This recovers devices whose firmware retained zero brightness,
+  where button actions continued to work but all button images and the small
+  window remained black.
 
 ## [0.10.4] — 2026-05-17
 

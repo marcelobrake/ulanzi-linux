@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterable
+from contextlib import suppress
 from typing import Any, Protocol
 
 import hid  # type: ignore[import-untyped]
@@ -89,10 +90,8 @@ class HidApiTransport:
                     f"{entry.get('interface_number', '?')}"
                     f" path={path!r} error={exc}"
                 )
-                try:
+                with suppress(Exception):
                     handle.close()
-                except Exception:  # noqa: BLE001
-                    pass
 
         raise DeviceOpenError(
             f"Failed to open any device for {vendor_id:#06x}:{product_id:#06x}: "
@@ -120,7 +119,7 @@ class HidApiTransport:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self._device.close)
             logger.info("hid_device_closed")
-        except Exception as exc:  # noqa: BLE001 — best effort
+        except Exception as exc:
             logger.warning("hid_close_failed", error=str(exc))
 
 

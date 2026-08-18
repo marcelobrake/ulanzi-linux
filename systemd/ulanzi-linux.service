@@ -37,6 +37,8 @@ Documentation=https://github.com/marcelobrake/ulanzi-linux
 # the target never arrives; it just means visual actions will no-op.
 After=graphical-session.target
 PartOf=graphical-session.target
+StartLimitBurst=5
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
@@ -62,14 +64,12 @@ Environment=PYTHONUNBUFFERED=1
 #   * on-failure  — crash or non-zero exit triggers a restart.
 #   * RestartSec  — back-off so a permanent failure (missing device, bad
 #                   YAML) doesn't hammer the system at 100 % CPU.
-#   * StartLimitBurst/IntervalSec — give up after 5 restarts in 60 s so a
-#                                    truly broken install surfaces as
-#                                    "failed" in status instead of silently
-#                                    flapping forever.
+
+
+
+
 Restart=on-failure
 RestartSec=5
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 # SIGTERM drives the ``stop_event`` path in the daemon; give it a generous
 # window to cancel the event / heartbeat / small-window tasks and flush

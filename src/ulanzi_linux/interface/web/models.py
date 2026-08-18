@@ -80,22 +80,12 @@ class EditorActionModel(BaseModel):
         "none",
         "shell",
         "shortcut",
-        "cycle_shortcut",
         "predefined_command",
         "url",
         "switch_page",
     ] = "none"
     cmd: str = ""
-    #: One chord for ``shortcut``; a comma-separated list for
-    #: ``cycle_shortcut`` (``"F23, F24"``), kept as one field so the editor
-    #: needs a single text input either way.
     keys: str = ""
-    #: Optional per-step icon paths for ``cycle_shortcut``, positional against
-    #: the chords in ``keys``. Shorter than ``keys`` means the trailing steps
-    #: simply have no icon of their own.
-    cycle_icons: list[str] = Field(default_factory=list)
-    #: Read-only preview URLs for ``cycle_icons``; ignored on save.
-    cycle_icon_previews: list[str] = Field(default_factory=list)
     command_id: str = ""
     url: str = ""
     page: str = ""
@@ -141,6 +131,8 @@ class EditorSmallWindowModel(BaseModel):
     rotate_every_s: float | None = None
     background_color: str = DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR
     metrics_items: list[str] = Field(default_factory=list)
+    temperature_sensors: list[str] = Field(default_factory=list)
+    temperature_separator: Literal[" ", "|"] = " "
 
 
 class EditorConfigResponse(BaseModel):
@@ -219,6 +211,20 @@ class SmallWindowPreviewMetric(BaseModel):
     value: str
 
 
+class TemperatureSensorModel(BaseModel):
+    """One Linux thermal zone available for small-window selection."""
+
+    id: str
+    name: str
+    value_celsius: int | None = None
+
+
+class TemperatureSensorListResponse(BaseModel):
+    """Detected Linux thermal zones in kernel order."""
+
+    items: list[TemperatureSensorModel] = Field(default_factory=list)
+
+
 class DeviceSummary(BaseModel):
     """Enumerated D200 device info."""
 
@@ -259,5 +265,7 @@ __all__ = [
     "PageSummary",
     "SmallWindowPreviewMetric",
     "SmallWindowPreviewResponse",
+    "TemperatureSensorListResponse",
+    "TemperatureSensorModel",
     "ValidationSummary",
 ]

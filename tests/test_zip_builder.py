@@ -153,7 +153,9 @@ def test_full_upload_fills_missing_buttons_with_black_tiles(fake_icon: Path) -> 
     assert manifest["1_0"]["ViewParam"] == [{}]
 
 
-def test_label_only_button_uses_manifest_text_without_generated_icon() -> None:
+def test_label_only_button_has_both_text_and_generated_icon() -> None:
+    # Label-only buttons must include a generated PNG tile so the firmware
+    # has a raster asset to blit — manifest Text alone renders a black button.
     blob = build_buttons_zip(
         [ButtonConfig(index=0, label="OpenAI")],
         fill_missing=True,
@@ -161,8 +163,10 @@ def test_label_only_button_uses_manifest_text_without_generated_icon() -> None:
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
         manifest = json.loads(zf.read("manifest.json"))
         names = zf.namelist()
-    assert manifest["0_0"]["ViewParam"][0] == {"Text": "OpenAI"}
-    assert all(not name.startswith("icons/0-") for name in names)
+    view = manifest["0_0"]["ViewParam"][0]
+    assert view["Text"] == "OpenAI"
+    assert view["Icon"].startswith("icons/0-")
+    assert any(name.startswith("icons/0-") for name in names)
 
 
 def test_label_only_button_text_changes_manifest_content() -> None:
@@ -209,7 +213,9 @@ def test_real_icon_is_flattened_onto_opaque_button_background(tmp_path: Path) ->
     assert rendered.getpixel((4, 4)) == (17, 34, 51, 255)
 
 
-def test_text_only_button_does_not_emit_generated_icon() -> None:
+def test_text_only_button_emits_generated_icon_and_text() -> None:
+    # Text-only (label + custom style) buttons generate a PNG tile so the
+    # firmware has a raster asset — and still carry Text for metadata.
     blob = build_buttons_zip(
         [
             ButtonConfig(
@@ -222,11 +228,16 @@ def test_text_only_button_does_not_emit_generated_icon() -> None:
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
         manifest = json.loads(zf.read("manifest.json"))
         names = zf.namelist()
-    assert manifest["0_0"]["ViewParam"][0] == {"Text": "Hi"}
-    assert all(not name.startswith("icons/0-") for name in names)
+    view = manifest["0_0"]["ViewParam"][0]
+    assert view["Text"] == "Hi"
+    assert view["Icon"].startswith("icons/0-")
+    assert any(name.startswith("icons/0-") for name in names)
 
 
-def test_missing_icon_with_label_falls_back_to_manifest_text() -> None:
+def test_missing_icon_with_label_generates_text_tile() -> None:
+    # When the configured icon_path doesn't exist but a label is set,
+    # the builder treats the button as label-only: it generates a text-tile
+    # PNG and includes both Icon and Text in the manifest.
     blob = build_buttons_zip(
         [
             ButtonConfig(
@@ -240,8 +251,10 @@ def test_missing_icon_with_label_falls_back_to_manifest_text() -> None:
         manifest = json.loads(zf.read("manifest.json"))
         names = zf.namelist()
 
-    assert manifest["0_0"]["ViewParam"][0] == {"Text": "Term"}
-    assert all(not name.startswith("icons/0-") for name in names)
+    view = manifest["0_0"]["ViewParam"][0]
+    assert view["Text"] == "Term"
+    assert view["Icon"].startswith("icons/0-")
+    assert any(name.startswith("icons/0-") for name in names)
 
 
 def test_full_upload_preserves_last_physical_button(fake_icon: Path) -> None:

@@ -24,34 +24,18 @@ const FONT_OPTIONS = Object.freeze([
     "Liberation Serif",
 ]);
 
-// --- i18n -----------------------------------------------------------------
-// Strings come from the catalogue the server injects into the page, so the
-// JS half stays in the same .po file as the HTML. An unknown msgid falls
-// through unchanged, which is exactly the pt-BR (source language) path.
-const I18N = (typeof window !== "undefined" && window.__I18N__) || {};
-const I18N_CATALOG = I18N.catalog || {};
-
-function t(message, ...args) {
-    const template = I18N_CATALOG[message] || message;
-    return template.replace(/\{(\d+)\}/g, (match, index) => {
-        const value = args[Number(index)];
-        return value === undefined ? match : String(value);
-    });
-}
-
 const ACTION_LABELS = Object.freeze({
-    none: t("Sem ação"),
-    shell: t("Comando"),
+    none: "Sem ação",
+    shell: "Comando",
     shortcut: "Atalho",
-    cycle_shortcut: t("Atalho alternado"),
-    predefined_command: t("Comando pré-definido"),
+    predefined_command: "Comando pré-definido",
     url: "Link",
-    switch_page: t("Troca de página"),
+    switch_page: "Troca de página",
 });
 
 const BUILTIN_ICON_STYLES = Object.freeze([
     { value: "all", label: "Todos" },
-    { value: "brands", label: t("Apps/brands") },
+    { value: "brands", label: "Apps/brands" },
     { value: "emoji", label: "Emojis" },
     { value: "regular", label: "Regular" },
     { value: "solid", label: "Solid" },
@@ -59,10 +43,10 @@ const BUILTIN_ICON_STYLES = Object.freeze([
 
 const SMALL_WINDOW_METRICS = Object.freeze([
     { value: "cpu", label: "CPU" },
-    { value: "memory", label: t("Memória") },
+    { value: "memory", label: "Memória" },
     { value: "gpu", label: "GPU" },
     { value: "temperature", label: "Temperatura" },
-    { value: "disk", label: t("Uso de disco") },
+    { value: "disk", label: "Uso de disco" },
     { value: "network", label: "Rede" },
     { value: "battery", label: "Bateria" },
 ]);
@@ -72,17 +56,11 @@ function emptyAction() {
         type: "none",
         cmd: "",
         keys: "",
-        // Positional against the chords in `keys`, for cycle_shortcut only.
-        cycle_icons: [],
-        cycle_icon_previews: [],
         command_id: "",
         url: "",
         page: "",
     };
 }
-
-//: Where the next picked icon lands: the button's own face.
-const BUTTON_ICON_TARGET = null;
 
 function emptyTextStyle() {
     return {
@@ -121,17 +99,14 @@ function makeResetEditor(defaultPage = "main") {
             rotate_every_s: null,
             background_color: "#000000",
             metrics_items: [],
+            temperature_sensors: [],
+            temperature_separator: " ",
         },
     };
 }
 
 window.editorApp = function editorApp() {
     return {
-        // Exposed on the component so Alpine expressions can translate too.
-        // A string literal inside x-text is invisible to the server-side HTML
-        // translator — that attribute holds JS, not prose — so any wording
-        // chosen in a template has to come through here instead.
-        t,
         health: { ok: false, version: "", config_path: "", devices_found: 0 },
         editor: makeResetEditor(),
         saveFirmwareBundle: false,
@@ -154,18 +129,16 @@ window.editorApp = function editorApp() {
         fontOptions: FONT_OPTIONS,
         builtinIconStyles: BUILTIN_ICON_STYLES,
         smallWindowMetricOptions: SMALL_WINDOW_METRICS,
+        temperatureSensors: [],
         builtinIcons: [],
         builtinIconQuery: "",
         builtinIconStyle: "all",
         showBuiltinIconBrowser: false,
-        // null = the button's own icon; a number = that cycle step's icon.
-        // Both the file picker and the built-in catalogue write here, so one
-        // set of controls serves every icon slot on the inspector.
-        iconTarget: BUTTON_ICON_TARGET,
 
         async init() {
             await this.refreshHealth();
             await this.loadBuiltinIcons();
+            await this.loadTemperatureSensors();
             await this.loadEditor();
             await this.refreshSmallWindowPreview();
             setInterval(() => this.refreshHealth(), 5000);
@@ -196,12 +169,25 @@ window.editorApp = function editorApp() {
                 const response = await fetch("/api/builtin-assets");
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || t("Falha ao carregar catálogo"));
+                    throw new Error(payload.detail || payload.error || "Falha ao carregar catálogo");
                 }
                 this.builtinIcons = payload.items || [];
             } catch (error) {
                 this.builtinIcons = [];
-                this.setStatus(t("Catálogo embutido indisponível: {0}", error.message), "warn");
+                this.setStatus(`Catálogo embutido indisponível: ${error.message}`, "warn");
+            }
+        },
+
+        async loadTemperatureSensors() {
+            try {
+                const response = await fetch("/api/temperature-sensors");
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.detail || "Falha ao detectar sensores");
+                }
+                this.temperatureSensors = Array.isArray(payload.items) ? payload.items : [];
+            } catch (_error) {
+                this.temperatureSensors = [];
             }
         },
 
@@ -212,7 +198,7 @@ window.editorApp = function editorApp() {
                 const response = await fetch("/api/editor");
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || t("Falha ao carregar o editor"));
+                    throw new Error(payload.detail || payload.error || "Falha ao carregar o editor");
                 }
                 this.editor = this.normalizeEditor(payload);
                 if (!this.selectedPage || !this.editor.pages.some((page) => page.name === this.selectedPage)) {
@@ -223,12 +209,12 @@ window.editorApp = function editorApp() {
                 await this.refreshSmallWindowPreview();
                 this.setStatus(
                     this.editor.config_exists
-                        ? t("Configuração carregada")
-                        : t("Novo layout pronto para salvar"),
+                        ? "Configuração carregada"
+                        : "Novo layout pronto para salvar",
                     "ok",
                 );
             } catch (error) {
-                this.setStatus(t("Falha ao carregar: {0}", error.message), "err");
+                this.setStatus(`Falha ao carregar: ${error.message}`, "err");
             } finally {
                 this.busy = false;
             }
@@ -244,11 +230,13 @@ window.editorApp = function editorApp() {
                     `/api/small-window/preview?${new URLSearchParams([
                         ["time_format", timeFormat],
                         ...((this.editor.small_window?.metrics_items || []).map((item) => ["metrics_items", item])),
+                        ...((this.editor.small_window?.temperature_sensors || []).map((item) => ["temperature_sensors", item])),
+                        ["temperature_separator", this.editor.small_window?.temperature_separator || " "],
                     ]).toString()}`,
                 );
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || t("Falha ao atualizar a prévia"));
+                    throw new Error(payload.detail || payload.error || "Falha ao atualizar a prévia");
                 }
                 this.smallWindowPreview = {
                     time_text: payload.time_text || "--:--",
@@ -284,6 +272,8 @@ window.editorApp = function editorApp() {
                 rotate_every_s: null,
                 background_color: "#000000",
                 metrics_items: [],
+                temperature_sensors: [],
+                temperature_separator: " ",
             };
             editor.small_window.show_metrics = editor.small_window.show_metrics !== false;
             editor.small_window.rotate_every_s = this.parseOptionalNumber(editor.small_window.rotate_every_s);
@@ -291,6 +281,12 @@ window.editorApp = function editorApp() {
             editor.small_window.metrics_items = Array.isArray(editor.small_window.metrics_items)
                 ? editor.small_window.metrics_items.slice(0, 3)
                 : [];
+            editor.small_window.temperature_sensors = Array.isArray(editor.small_window.temperature_sensors)
+                ? editor.small_window.temperature_sensors.slice(0, 3)
+                : [];
+            editor.small_window.temperature_separator = editor.small_window.temperature_separator === "|"
+                ? "|"
+                : " ";
             return editor;
         },
 
@@ -366,7 +362,6 @@ window.editorApp = function editorApp() {
             this.buttonForm = this.formForIndex(index);
             this.validationError = "";
             this.showBuiltinIconBrowser = false;
-            this.iconTarget = BUTTON_ICON_TARGET;
         },
 
         formForIndex(index) {
@@ -394,14 +389,6 @@ window.editorApp = function editorApp() {
                 return { ...emptyAction(), type: "shell", cmd: action.cmd || "" };
             case "shortcut":
                 return { ...emptyAction(), type: "shortcut", keys: action.keys || "" };
-            case "cycle_shortcut":
-                return {
-                    ...emptyAction(),
-                    type: "cycle_shortcut",
-                    keys: action.keys || "",
-                    cycle_icons: [...(action.cycle_icons || [])],
-                    cycle_icon_previews: [...(action.cycle_icon_previews || [])],
-                };
             case "predefined_command":
                 return {
                     ...emptyAction(),
@@ -445,7 +432,13 @@ window.editorApp = function editorApp() {
             }
             const nextButton = this.buildStateButtonFromForm();
             this.removeButton(this.editor.fixed_buttons, this.selectedIndex);
-            this.removeButton(this.currentPage.buttons, this.selectedIndex);
+            if (this.buttonForm.fixed) {
+                this.editor.pages.forEach((page) => {
+                    this.removeButton(page.buttons, this.selectedIndex);
+                });
+            } else {
+                this.removeButton(this.currentPage.buttons, this.selectedIndex);
+            }
 
             const persistInfoWindowFixedPlaceholder = (
                 this.isInfoWindowSlot(this.selectedIndex)
@@ -467,12 +460,12 @@ window.editorApp = function editorApp() {
             const keepFixed = this.buttonForm?.fixed || false;
             this.buttonForm = makeEmptyButton(this.selectedIndex, keepFixed);
             this.syncSelectedButton();
-            this.setStatus(t("Botão {0} limpo", this.selectedIndex + 1), "warn");
+            this.setStatus(`Botão ${this.selectedIndex + 1} limpo`, "warn");
         },
 
         resetSelectedButton() {
             this.buttonForm = this.formForIndex(this.selectedIndex);
-            this.setStatus(t("Botão {0} recarregado", this.selectedIndex + 1), "");
+            this.setStatus(`Botão ${this.selectedIndex + 1} recarregado`, "");
         },
 
         handleIconPathInput() {
@@ -490,79 +483,6 @@ window.editorApp = function editorApp() {
             this.showBuiltinIconBrowser = !this.showBuiltinIconBrowser;
         },
 
-        // --- icon slots -------------------------------------------------- //
-
-        /** One row per chord, so the icons line up with what they send. */
-        get cycleSteps() {
-            const action = this.buttonForm?.action || {};
-            const icons = action.cycle_icons || [];
-            const previews = action.cycle_icon_previews || [];
-            return (action.keys || "")
-                .split(",")
-                .map((chord) => chord.trim())
-                .filter(Boolean)
-                .map((chord, index) => ({
-                    index,
-                    keys: chord,
-                    icon_path: icons[index] || "",
-                    preview_url: previews[index] || this.assetUrl(icons[index] || ""),
-                }));
-        },
-
-        setCycleIcon(index, path, previewUrl) {
-            const action = this.buttonForm.action;
-            const icons = [...(action.cycle_icons || [])];
-            const previews = [...(action.cycle_icon_previews || [])];
-            while (icons.length <= index) {
-                icons.push("");
-            }
-            while (previews.length <= index) {
-                previews.push("");
-            }
-            icons[index] = path;
-            previews[index] = previewUrl || this.assetUrl(path);
-            action.cycle_icons = icons;
-            action.cycle_icon_previews = previews;
-            this.syncSelectedButton();
-        },
-
-        clearCycleIcon(index) {
-            this.setCycleIcon(index, "", "");
-        },
-
-        pickIconFor(target) {
-            this.iconTarget = target;
-            this.$refs.iconPicker.click();
-        },
-
-        browseIconsFor(target) {
-            const reopening = !this.showBuiltinIconBrowser || this.iconTarget !== target;
-            this.iconTarget = target;
-            this.showBuiltinIconBrowser = reopening;
-            if (!reopening) {
-                return;
-            }
-            // The catalogue lives up in the Image section, so a step further
-            // down the inspector would otherwise open it off-screen.
-            this.$nextTick(() => {
-                this.$refs.builtinBrowser?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "nearest",
-                });
-            });
-        },
-
-        /** Route a freshly chosen icon to whichever slot asked for it. */
-        applyIcon(path, previewUrl) {
-            if (this.iconTarget === BUTTON_ICON_TARGET) {
-                this.buttonForm.icon_path = path;
-                this.buttonForm.preview_url = previewUrl;
-                this.syncSelectedButton();
-                return;
-            }
-            this.setCycleIcon(this.iconTarget, path, previewUrl);
-        },
-
         async uploadIcon(event) {
             const file = event.target.files?.[0];
             if (!file) {
@@ -578,12 +498,14 @@ window.editorApp = function editorApp() {
                 });
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || t("Falha no upload da imagem"));
+                    throw new Error(payload.detail || payload.error || "Falha no upload da imagem");
                 }
-                this.applyIcon(payload.path, payload.preview_url);
-                this.setStatus(t("Imagem enviada: {0}", file.name), "ok");
+                this.buttonForm.icon_path = payload.path;
+                this.buttonForm.preview_url = payload.preview_url;
+                this.syncSelectedButton();
+                this.setStatus(`Imagem enviada: ${file.name}`, "ok");
             } catch (error) {
-                this.setStatus(t("Falha no upload: {0}", error.message), "err");
+                this.setStatus(`Falha no upload: ${error.message}`, "err");
             } finally {
                 this.busy = false;
                 event.target.value = "";
@@ -600,13 +522,15 @@ window.editorApp = function editorApp() {
                 });
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || t("Falha ao importar ícone embutido"));
+                    throw new Error(payload.detail || payload.error || "Falha ao importar ícone embutido");
                 }
-                this.applyIcon(payload.path, payload.preview_url);
+                this.buttonForm.icon_path = payload.path;
+                this.buttonForm.preview_url = payload.preview_url;
+                this.syncSelectedButton();
                 this.showBuiltinIconBrowser = false;
-                this.setStatus(t("Ícone embutido aplicado: {0}", icon.name), "ok");
+                this.setStatus(`Ícone embutido aplicado: ${icon.name}`, "ok");
             } catch (error) {
-                this.setStatus(t("Falha ao importar catálogo: {0}", error.message), "err");
+                this.setStatus(`Falha ao importar catálogo: ${error.message}`, "err");
             } finally {
                 this.busy = false;
             }
@@ -666,6 +590,8 @@ window.editorApp = function editorApp() {
                     rotate_every_s: this.parseOptionalNumber(this.editor.small_window.rotate_every_s),
                     background_color: this.editor.small_window.background_color || "#000000",
                     metrics_items: (this.editor.small_window.metrics_items || []).slice(0, 3),
+                    temperature_sensors: (this.editor.small_window.temperature_sensors || []).slice(0, 3),
+                    temperature_separator: this.editor.small_window.temperature_separator === "|" ? "|" : " ",
                 },
                 save_firmware_bundle: Boolean(this.saveFirmwareBundle),
             };
@@ -691,6 +617,48 @@ window.editorApp = function editorApp() {
                 && (this.editor.small_window.metrics_items || []).length >= 3;
         },
 
+        temperatureSensorSelected(sensorId) {
+            return (this.editor.small_window.temperature_sensors || []).includes(sensorId);
+        },
+
+        temperatureSensorDisabled(sensorId) {
+            return !this.temperatureSensorSelected(sensorId)
+                && (this.editor.small_window.temperature_sensors || []).length >= 3;
+        },
+
+        toggleTemperatureSensor(sensorId) {
+            const current = this.editor.small_window.temperature_sensors || [];
+            this.editor.small_window.temperature_sensors = current.includes(sensorId)
+                ? current.filter((item) => item !== sensorId)
+                : [...current, sensorId].slice(0, 3);
+            this.dirty = true;
+            void this.refreshSmallWindowPreview();
+        },
+
+        moveTemperatureSensor(sensorId, direction) {
+            const current = [...(this.editor.small_window.temperature_sensors || [])];
+            const index = current.indexOf(sensorId);
+            const target = index + direction;
+            if (index < 0 || target < 0 || target >= current.length) {
+                return;
+            }
+            [current[index], current[target]] = [current[target], current[index]];
+            this.editor.small_window.temperature_sensors = current;
+            this.dirty = true;
+            void this.refreshSmallWindowPreview();
+        },
+
+        temperatureSensorById(sensorId) {
+            return this.temperatureSensors.find((sensor) => sensor.id === sensorId)
+                || { id: sensorId, name: sensorId, value_celsius: null };
+        },
+
+        setTemperatureSeparator(separator) {
+            this.editor.small_window.temperature_separator = separator === "|" ? "|" : " ";
+            this.dirty = true;
+            void this.refreshSmallWindowPreview();
+        },
+
         smallWindowPreviewStyle() {
             return {
                 background: this.editor?.small_window?.background_color || "#000000",
@@ -698,7 +666,7 @@ window.editorApp = function editorApp() {
         },
 
         async resetDeck() {
-            if (!window.confirm(t("Resetar o deck vai remover todos os botões configurados e deixar o visor só com a hora. Continuar?"))) {
+            if (!window.confirm("Resetar o deck vai remover todos os botões configurados e deixar o visor só com a hora. Continuar?")) {
                 return;
             }
             const defaultPage = this.editor?.default_page || this.selectedPage || "main";
@@ -709,7 +677,7 @@ window.editorApp = function editorApp() {
             this.selectedPage = this.editor.default_page;
             this.selectSlot(0);
             this.dirty = true;
-            this.setStatus(t("Deck resetado. Clique em Salvar no deck para aplicar."), "warn");
+            this.setStatus("Deck resetado. Clique em Salvar no deck para aplicar.", "warn");
         },
 
         async validateDeck() {
@@ -727,17 +695,17 @@ window.editorApp = function editorApp() {
                 });
                 const payload = await response.json();
                 if (!response.ok) {
-                    throw new Error(payload.detail || payload.error || t("Falha ao validar"));
+                    throw new Error(payload.detail || payload.error || "Falha ao validar");
                 }
                 if (!payload.ok) {
-                    this.validationError = payload.error || t("Layout inválido");
-                    this.setStatus(t("Layout inválido"), "err");
+                    this.validationError = payload.error || "Layout inválido";
+                    this.setStatus("Layout inválido", "err");
                     return;
                 }
-                this.setStatus(t("Layout válido"), "ok");
+                this.setStatus("Layout válido", "ok");
             } catch (error) {
                 this.validationError = error.message;
-                this.setStatus(t("Falha ao validar: {0}", error.message), "err");
+                this.setStatus(`Falha ao validar: ${error.message}`, "err");
             } finally {
                 this.busy = false;
             }
@@ -758,8 +726,8 @@ window.editorApp = function editorApp() {
                 });
                 const payload = await response.json();
                 if (!response.ok) {
-                    this.validationError = payload.error || payload.detail || t("Não foi possível salvar");
-                    this.setStatus(t("Salvar falhou"), "err");
+                    this.validationError = payload.error || payload.detail || "Não foi possível salvar";
+                    this.setStatus("Salvar falhou", "err");
                     return;
                 }
                 this.editor = this.normalizeEditor(payload);
@@ -775,13 +743,13 @@ window.editorApp = function editorApp() {
                 ].filter(Boolean);
                 this.setStatus(
                     savedItems.length
-                        ? t("Salvo às {0} · {1}", new Date().toLocaleTimeString(), savedItems.join(" · "))
-                        : t("Salvo às {0}", new Date().toLocaleTimeString()),
+                        ? `Salvo às ${new Date().toLocaleTimeString()} · ${savedItems.join(" · ")}`
+                        : `Salvo às ${new Date().toLocaleTimeString()}`,
                     "ok",
                 );
             } catch (error) {
                 this.validationError = error.message;
-                this.setStatus(t("Falha ao salvar: {0}", error.message), "err");
+                this.setStatus(`Falha ao salvar: ${error.message}`, "err");
             } finally {
                 this.busy = false;
             }
@@ -790,11 +758,11 @@ window.editorApp = function editorApp() {
         addPage() {
             const nextName = this.newPageName.trim();
             if (!nextName) {
-                this.setStatus(t("Informe um nome para a página"), "err");
+                this.setStatus("Informe um nome para a página", "err");
                 return;
             }
             if (this.editor.pages.some((page) => page.name === nextName)) {
-                this.setStatus(t("A página {0} já existe", nextName), "err");
+                this.setStatus(`A página ${nextName} já existe`, "err");
                 return;
             }
             this.editor.pages.push({ name: nextName, buttons: [] });
@@ -803,12 +771,12 @@ window.editorApp = function editorApp() {
             this.selectedPage = nextName;
             this.selectSlot(0);
             this.dirty = true;
-            this.setStatus(t("Página {0} criada", nextName), "ok");
+            this.setStatus(`Página ${nextName} criada`, "ok");
         },
 
         removeCurrentPage() {
             if (!this.editor || this.editor.pages.length <= 1) {
-                this.setStatus(t("É preciso manter ao menos uma página"), "err");
+                this.setStatus("É preciso manter ao menos uma página", "err");
                 return;
             }
             const removedPage = this.selectedPage;
@@ -831,7 +799,7 @@ window.editorApp = function editorApp() {
             this.selectedPage = this.editor.pages[0].name;
             this.selectSlot(this.selectedIndex);
             this.dirty = true;
-            this.setStatus(t("Página {0} removida", removedPage), "warn");
+            this.setStatus(`Página ${removedPage} removida`, "warn");
         },
 
         refreshFromDisk() {
@@ -898,30 +866,19 @@ window.editorApp = function editorApp() {
                     fixed: Boolean(fixedButton),
                     empty: !button,
                     label: button?.label || "",
-                    preview_url: this.buttonPreviewUrl(button),
+                    preview_url: button?.preview_url || this.assetUrl(button?.icon_path),
                     textOnly: this.hasTextOnlyPreview(button),
                     text_style: this.normalizeTextStyle(button?.text_style),
                     actionLabel: this.actionLabel(button?.action?.type || "none"),
                     placeholder: slot.span === 2
-                        ? t("Botão {0} · {1}", slot.index + 1, "2x1")
-                        : t("Botão {0}", slot.index + 1),
+                        ? `Botão ${slot.index + 1} · 2x1`
+                        : `Botão ${slot.index + 1}`,
                 };
             });
         },
 
-        /** What the deck shows at rest: the button's icon, else step 1's. */
-        buttonPreviewUrl(button) {
-            const own = button?.preview_url || this.assetUrl(button?.icon_path);
-            if (own || button?.action?.type !== "cycle_shortcut") {
-                return own;
-            }
-            const previews = button.action.cycle_icon_previews || [];
-            const icons = button.action.cycle_icons || [];
-            return previews[0] || this.assetUrl(icons[0] || "");
-        },
-
         get currentPreviewUrl() {
-            return this.buttonPreviewUrl(this.buttonForm);
+            return this.buttonForm?.preview_url || this.assetUrl(this.buttonForm?.icon_path);
         },
 
         get filteredBuiltinIcons() {
@@ -944,7 +901,7 @@ window.editorApp = function editorApp() {
         get builtinIconSummary() {
             const total = (this.builtinIcons || []).length;
             const visible = this.filteredBuiltinIcons.length;
-            return t("{0} de {1} assets embutidos", visible, total);
+            return `${visible} de ${total} assets embutidos`;
         },
 
         get currentTextOnlyPreview() {
@@ -976,10 +933,10 @@ window.editorApp = function editorApp() {
                 return "Botão";
             }
             if (this.isInfoWindowSlot(slot.index)) {
-                return t("Info window · ação ao toque");
+                return "Info window · ação ao toque";
             }
             const size = slot.span === 2 ? "2x1" : "1x1";
-            return t("Botão {0} · {1}", slot.index + 1, size);
+            return `Botão ${slot.index + 1} · ${size}`;
         },
 
         get pageOptions() {
@@ -993,14 +950,14 @@ window.editorApp = function editorApp() {
             if (this.smallWindowAlternates) {
                 const seconds = this.formatSeconds(this.editor.small_window.rotate_every_s);
                 return this.usesCustomSmallWindowMetrics
-                    ? t("Relógio {0}s / métricas {1}s", seconds, seconds)
-                    : t("Relógio {0}s / estatísticas {1}s", seconds, seconds);
+                    ? `Relógio ${seconds}s / métricas ${seconds}s`
+                    : `Relógio ${seconds}s / estatísticas ${seconds}s`;
             }
             return this.editor.small_window.show_metrics === false
-                ? t("Somente relógio")
+                ? "Somente relógio"
                 : this.usesCustomSmallWindowMetrics
-                    ? t("Métricas customizadas")
-                    : t("Estatísticas nativas");
+                    ? "Métricas customizadas"
+                    : "Estatísticas nativas";
         },
 
         get smallWindowAlternates() {
