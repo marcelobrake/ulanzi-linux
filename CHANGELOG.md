@@ -7,6 +7,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] — 2026-08-18
+
+### Added
+
+- A versioned pre-commit hook now rejects local artifacts, unapproved root
+  paths, environment dumps, personal home paths, and common credential
+  formats, then scans staged changes with gitleaks.
+
+### Removed
+
+- Tracked shell/session environment dumps and temporary Copilot deck files
+  were removed. Equivalent local files, test output, tool state, and diagnostic
+  screenshots are now covered by `.gitignore`.
+
 ## [0.11.1] — 2026-08-18
 
 ### Fixed
