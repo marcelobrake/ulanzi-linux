@@ -75,6 +75,11 @@ digital clock page, and can display `CPU`, `Memória`, `GPU`,
 `Temperatura`, `Uso de disco`, `Rede`, or `Bateria` on the alternating
 stats page.
 
+When `Temperatura` is selected, the inspector lists the Linux thermal zones
+with their kernel names and current readings. Up to three sensors can be
+selected, reordered with the arrow controls, and rendered on the same `TEMP`
+line separated by spaces or `|`.
+
 The image inspector also ships with a built-in asset catalog backed by Font
 Awesome Free plus Unicode emoji metadata rendered locally through Noto Color
 Emoji when the font is present on the host. The editor can browse application
@@ -90,67 +95,6 @@ optionally persist the generated ZIP payload next to the config file.
 URL actions entered through the editor are normalized on save: if the
 operator pastes only a hostname like `claude.ai`, the saved action becomes
 `https://claude.ai`.
-
-The **Alternating shortcut** action takes its chords in one comma-separated
-field — `F23, F24` — and saves them as a YAML list under
-`action: { type: cycle_shortcut, keys: [...] }`. At least two chords are
-required; a single one belongs in the plain shortcut action, and saving one
-is rejected with HTTP 422 and that message in `error`. Each press sends the
-next chord and wraps back to the first after the last. See
-[configuration.md](configuration.md) §5.3 for where the cursor lives and when
-it resets.
-
-## Language
-
-The editor ships in Portuguese (pt-BR) and English. Language is resolved
-most-specific-first:
-
-1. `?lang=` on the URL — `http://127.0.0.1:8765/?lang=en`
-2. `--lang` / `$ULANZI_LANG` on the server — `ulanzi-linux gui --lang en …`
-3. the browser's `Accept-Language`
-4. pt-BR
-
-```bash
-ulanzi-linux gui --lang en ~/.config/ulanzi/deck.yaml
-ULANZI_LANG=en ulanzi-linux gui ~/.config/ulanzi/deck.yaml
-```
-
-An unknown tag logs a warning and falls back to pt-BR, so a typo in `--lang`
-degrades to the shipped UI instead of refusing to start.
-
-### Adding a language
-
-Catalogues are GNU gettext `.po` files under
-`src/ulanzi_linux/interface/web/locales/<lang>/LC_MESSAGES/ulanzi_web.po`.
-Copy the English one, replace each `msgstr`, and the language is picked up on
-next start — no build step, no `msgfmt`, no code change:
-
-```bash
-cd src/ulanzi_linux/interface/web/locales
-mkdir -p de/LC_MESSAGES && cp en/LC_MESSAGES/ulanzi_web.po de/LC_MESSAGES/
-```
-
-The `.po` is read directly rather than compiled to `.mo`. It is the file a
-translator edits, and keeping it as the only artifact removes the class of bug
-where a stale `.mo` silently overrides an edited `.po`. `msgfmt --check` still
-validates these files if you want it to.
-
-**The msgids are the original Portuguese strings.** gettext places no
-constraint on the source language, and this keeps pt-BR working with no
-catalogue at all — an untranslated msgid falls through unchanged. English is
-therefore an ordinary translation, and an entry left empty simply shows the
-Portuguese rather than showing nothing. Entries marked `#, fuzzy` are ignored
-for the same reason.
-
-Both halves of the UI share one catalogue. The HTML is translated server-side
-by parsing it — text nodes plus `placeholder`, `title` and `aria-label` — so
-`<script>` bodies and Alpine.js expression attributes such as `x-text` are
-never touched. The JS strings go through a `t()` helper reading the catalogue
-the server injects into the page, so there is no second request and no flash
-of untranslated toasts. Placeholders are positional: `t("Botão {0} limpo", n)`.
-
-`GET /api/i18n?lang=en` returns a catalogue as JSON, along with the list of
-languages found on disk.
 
 ## Design
 
@@ -203,6 +147,7 @@ home directory.
 | `GET` | `/api/devices` | Enumerate D200 units currently attached. |
 | `GET` | `/api/editor` | Read the structured visual-editor payload. |
 | `GET` | `/api/small-window/preview` | Return live clock and CPU/MEM values for the simulator tile. |
+| `GET` | `/api/temperature-sensors` | List Linux thermal zones, kernel names and current temperatures. |
 | `GET` | `/api/config` | Read the YAML file as text + metadata. |
 | `POST` | `/api/config/validate` | Parse without saving — for live feedback. |
 | `POST` | `/api/editor/validate` | Validate the structured editor payload before saving. |

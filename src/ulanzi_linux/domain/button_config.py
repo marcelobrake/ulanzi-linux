@@ -39,33 +39,6 @@ class ShortcutAction:
 
 
 @dataclass(frozen=True, slots=True)
-class CycleShortcutAction:
-    """Emit a different shortcut on each press, looping over ``keys``.
-
-    Press 1 emits ``keys[0]``, press 2 ``keys[1]``, and after the last entry
-    the cursor wraps back to the first — so ``["F23", "F24"]`` alternates
-    forever. The action itself is stateless; whoever dispatches it owns the
-    cursor (the daemon keys it per page + button index).
-    """
-
-    type: Literal["cycle_shortcut"]
-    keys: tuple[str, ...]
-
-    def __post_init__(self) -> None:
-        cleaned = tuple(str(key).strip() for key in self.keys if str(key).strip())
-        if len(cleaned) < 2:
-            raise ValueError(
-                "cycle_shortcut requires at least two shortcuts; use a plain "
-                "shortcut action for a single one"
-            )
-        object.__setattr__(self, "keys", cleaned)
-
-    def shortcut_at(self, cursor: int) -> ShortcutAction:
-        """Resolve the chord for press number ``cursor`` (0-based, wrapping)."""
-        return ShortcutAction(type="shortcut", keys=self.keys[cursor % len(self.keys)])
-
-
-@dataclass(frozen=True, slots=True)
 class UrlAction:
     """Open a URL in the default browser."""
 
@@ -96,7 +69,6 @@ class PredefinedCommandAction:
 Action = (
     ShellAction
     | ShortcutAction
-    | CycleShortcutAction
     | UrlAction
     | SwitchPageAction
     | PredefinedCommandAction
@@ -206,6 +178,8 @@ DEFAULT_TIME_FORMAT = "%H:%M"
 # mean "push as fast as possible" and blow the USB bus).
 SMALL_WINDOW_MIN_INTERVAL_S = 0.05
 SMALL_WINDOW_MAX_INTERVAL_S = 4.5
+SMALL_WINDOW_TEMPERATURE_SEPARATORS = (" ", "|")
+SMALL_WINDOW_MAX_TEMPERATURE_SENSORS = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +203,8 @@ class SmallWindowConfig:
     rotate_every_s: float | None = None
     background_color: str = DEFAULT_SMALL_WINDOW_BACKGROUND_COLOR
     metrics_items: tuple[str, ...] = field(default_factory=tuple)
+    temperature_sensors: tuple[str, ...] = field(default_factory=tuple)
+    temperature_separator: str = " "
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -267,6 +243,21 @@ class SmallWindowConfig:
         if normalized_metrics and not 1 <= len(normalized_metrics) <= 3:
             raise ValueError("small_window.metrics_items must select between 1 and 3 items")
         object.__setattr__(self, "metrics_items", normalized_metrics)
+        normalized_sensors = tuple(
+            str(sensor).strip() for sensor in self.temperature_sensors if str(sensor).strip()
+        )
+        if len(set(normalized_sensors)) != len(normalized_sensors):
+            raise ValueError("small_window.temperature_sensors contains duplicates")
+        if len(normalized_sensors) > SMALL_WINDOW_MAX_TEMPERATURE_SENSORS:
+            raise ValueError(
+                "small_window.temperature_sensors must select at most "
+                f"{SMALL_WINDOW_MAX_TEMPERATURE_SENSORS} sensors"
+            )
+        if self.temperature_separator not in SMALL_WINDOW_TEMPERATURE_SEPARATORS:
+            raise ValueError(
+                "small_window.temperature_separator must be a space or pipe"
+            )
+        object.__setattr__(self, "temperature_sensors", normalized_sensors)
 
 
 @dataclass(frozen=True, slots=True)
@@ -349,7 +340,6 @@ __all__ = [
     "SMALL_WINDOW_MIN_INTERVAL_S",
     "Action",
     "ButtonConfig",
-    "CycleShortcutAction",
     "DeckConfig",
     "Page",
     "PredefinedCommandAction",

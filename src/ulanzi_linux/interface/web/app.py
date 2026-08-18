@@ -27,7 +27,6 @@ Design decisions:
 
 from __future__ import annotations
 
-import json
 import mimetypes
 import os
 import re
@@ -39,8 +38,8 @@ from urllib.parse import quote
 
 import structlog
 import yaml
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -56,7 +55,6 @@ from ulanzi_linux.domain.button_config import (
     DEFAULT_TIME_FORMAT,
     SMALL_WINDOW_METRIC_CHOICES,
     ButtonConfig,
-    CycleShortcutAction,
     DeckConfig,
     PredefinedCommandAction,
     ShellAction,
@@ -77,14 +75,6 @@ from ulanzi_linux.infrastructure.system_metrics import (
 )
 from ulanzi_linux.infrastructure.ulanzi_d200 import D200_SPEC
 from ulanzi_linux.infrastructure.zip_builder import ICON_SIZE
-from ulanzi_linux.interface.web.i18n import (
-    DEFAULT_LANGUAGE,
-    SOURCE_LANGUAGE,
-    Translator,
-    available_languages,
-    normalize_language,
-    parse_accept_language,
-)
 from ulanzi_linux.interface.web.models import (
     AssetUploadResponse,
     BuiltinAssetImportRequest,
@@ -105,6 +95,8 @@ from ulanzi_linux.interface.web.models import (
     PageSummary,
     SmallWindowPreviewMetric,
     SmallWindowPreviewResponse,
+    TemperatureSensorListResponse,
+    TemperatureSensorModel,
     ValidationSummary,
 )
 
@@ -116,9 +108,6 @@ INFO_WINDOW_INDEX = 13
 EDITOR_DEFAULT_PAGE = "main"
 HOME_DIR = Path.home()
 SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
-#: How a cycling shortcut's chords are joined into the editor's single text
-#: field. A chord is never allowed a comma, so splitting back is unambiguous.
-CYCLE_KEYS_SEPARATOR = ", "
 UPLOADED_ICON_MARGIN_PX = 5
 UPLOAD_FILE_FIELD = File(...)
 
@@ -173,11 +162,6 @@ def _action_to_editor(action: object | None) -> EditorActionModel:
         return EditorActionModel(type="shell", cmd=action.cmd)
     if isinstance(action, ShortcutAction):
         return EditorActionModel(type="shortcut", keys=action.keys)
-    if isinstance(action, CycleShortcutAction):
-        return EditorActionModel(
-            type="cycle_shortcut",
-            keys=CYCLE_KEYS_SEPARATOR.join(action.keys),
-        )
     if isinstance(action, PredefinedCommandAction):
         return EditorActionModel(
             type="predefined_command",
@@ -242,6 +226,8 @@ def _config_to_editor_response(
             rotate_every_s=cfg.small_window.rotate_every_s,
             background_color=cfg.small_window.background_color,
             metrics_items=list(cfg.small_window.metrics_items),
+            temperature_sensors=list(cfg.small_window.temperature_sensors),
+            temperature_separator=cfg.small_window.temperature_separator,
         ),
         versioned_config_path=versioned_config_path,
         saved_firmware_bundle_path=saved_firmware_bundle_path,
@@ -280,7 +266,7 @@ def _validate_button_indices(
         seen.add(button.index)
 
 
-def _editor_action_to_doc(action: EditorActionModel) -> dict[str, Any] | None:
+def _editor_action_to_doc(action: EditorActionModel) -> dict[str, str] | None:
     if action.type == "none":
         return None
     if action.type == "shell":
@@ -291,14 +277,6 @@ def _editor_action_to_doc(action: EditorActionModel) -> dict[str, Any] | None:
         if not action.keys.strip():
             raise ValueError("shortcut action requires keys")
         return {"type": "shortcut", "keys": action.keys}
-    if action.type == "cycle_shortcut":
-        keys = [part.strip() for part in action.keys.split(",") if part.strip()]
-        if len(keys) < 2:
-            raise ValueError(
-                "cycle_shortcut action requires at least two shortcuts "
-                "separated by commas"
-            )
-        return {"type": "cycle_shortcut", "keys": keys}
     if action.type == "predefined_command":
         if not action.command_id.strip():
             raise ValueError("predefined_command action requires command_id")
@@ -342,6 +320,8 @@ def _editor_button_to_doc(button: EditorButtonModel) -> dict[str, Any]:
 
 
 def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
+    _validate_button_indices(req.fixed_buttons, scope="fixed_buttons")
+    fixed_indices = {button.index for button in req.fixed_buttons}
     pages_doc: dict[str, Any] = {}
     page_names: list[str] = []
     for page in req.pages:
@@ -355,6 +335,7 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
             "buttons": [
                 _editor_button_to_doc(button)
                 for button in sorted(page.buttons, key=lambda item: item.index)
+                if button.index not in fixed_indices
             ]
         }
         page_names.append(page_name)
@@ -369,8 +350,6 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
         raise ValueError(
             f"default_page {default_page!r} is not in pages {page_names!r}"
         )
-
-    _validate_button_indices(req.fixed_buttons, scope="fixed_buttons")
 
     doc: dict[str, Any] = {
         "default_page": default_page,
@@ -390,6 +369,14 @@ def _editor_payload_to_yaml_text(req: EditorConfigPutRequest) -> str:
         doc["small_window"]["rotate_every_s"] = req.small_window.rotate_every_s
     if req.small_window.metrics_items:
         doc["small_window"]["metrics_items"] = req.small_window.metrics_items
+    if req.small_window.temperature_sensors:
+        doc["small_window"]["temperature_sensors"] = (
+            req.small_window.temperature_sensors
+        )
+    if req.small_window.temperature_separator != " ":
+        doc["small_window"]["temperature_separator"] = (
+            req.small_window.temperature_separator
+        )
     if req.fixed_buttons:
         doc["fixed_buttons"] = [
             _editor_button_to_doc(button)
@@ -547,27 +534,14 @@ def _atomic_write(path: Path, text: str) -> None:
 # ---------------------------------------------------------------------- #
 
 
-def create_app(config_path: Path, *, language: str | None = None) -> FastAPI:
+def create_app(config_path: Path) -> FastAPI:
     """Build the FastAPI instance bound to a specific YAML path.
 
     The path is fixed per-process: an editor that lets the URL pick the
     file would be a path-traversal foot-gun on a tool with filesystem
     write access.
-
-    ``language`` pins the UI language for this process. Left as ``None`` the
-    page follows the browser's ``Accept-Language``, and ``?lang=`` overrides
-    either.
     """
     config_path = Path(config_path).expanduser().resolve()
-
-    # Catalogues are immutable once read, so parse each at most once per
-    # process rather than on every page load.
-    translator_cache: dict[str, Translator] = {}
-
-    def _translator_for(lang: str) -> Translator:
-        if lang not in translator_cache:
-            translator_cache[lang] = Translator(lang)
-        return translator_cache[lang]
 
     app = FastAPI(
         title="ulanzi-linux web editor",
@@ -654,6 +628,8 @@ def create_app(config_path: Path, *, language: str | None = None) -> FastAPI:
     def get_small_window_preview(
         time_format: str = DEFAULT_TIME_FORMAT,
         metrics_items: Annotated[list[str] | None, Query()] = None,
+        temperature_sensors: Annotated[list[str] | None, Query()] = None,
+        temperature_separator: str = " ",
     ) -> SmallWindowPreviewResponse:
         selected_metrics = [
             metric
@@ -669,10 +645,33 @@ def create_app(config_path: Path, *, language: str | None = None) -> FastAPI:
                 SmallWindowPreviewMetric(
                     id=metric,
                     label=SMALL_WINDOW_METRIC_LABELS.get(metric, metric.upper()),
-                    value=metrics_reader.read_metric_value(metric),
+                    value=(
+                        metrics_reader.read_temperature_value(
+                            tuple(temperature_sensors or ()),
+                            temperature_separator,
+                        )
+                        if metric == "temperature"
+                        else metrics_reader.read_metric_value(metric)
+                    ),
                 )
                 for metric in selected_metrics
             ],
+        )
+
+    @app.get(
+        "/api/temperature-sensors",
+        response_model=TemperatureSensorListResponse,
+    )
+    def get_temperature_sensors() -> TemperatureSensorListResponse:
+        return TemperatureSensorListResponse(
+            items=[
+                TemperatureSensorModel(
+                    id=sensor.id,
+                    name=sensor.name,
+                    value_celsius=sensor.value_celsius,
+                )
+                for sensor in metrics_reader.list_temperature_sensors()
+            ]
         )
 
     # ------------------------------------------------------------------ #
@@ -926,53 +925,8 @@ def create_app(config_path: Path, *, language: str | None = None) -> FastAPI:
     # ------------------------------------------------------------------ #
 
     @app.get("/")
-    def index(request: Request) -> Response:
-        """Serve the editor, translated into the requested language.
-
-        Language resolution, most specific first: an explicit ``?lang=``,
-        then the language the server was started with, then the browser's
-        ``Accept-Language``. The source language needs no catalogue, so the
-        untranslated page is always reachable.
-        """
-        requested = request.query_params.get("lang")
-        if not requested and language is None:
-            for tag in parse_accept_language(request.headers.get("accept-language")):
-                candidate = normalize_language(tag)
-                if candidate != DEFAULT_LANGUAGE:
-                    requested = candidate
-                    break
-        resolved = normalize_language(requested or language)
-        translator = _translator_for(resolved)
-
-        html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-        html = translator.translate_html(html)
-        # The JS half reads its strings from here rather than fetching a
-        # second time; keeps the page a single request and avoids a flash of
-        # untranslated toasts.
-        payload = json.dumps(
-            {"language": resolved, "catalog": translator.catalog},
-            ensure_ascii=False,
-        )
-        html = html.replace(
-            "</head>",
-            f'<script>window.__I18N__ = {payload};</script>\n</head>',
-            1,
-        )
-        if resolved != SOURCE_LANGUAGE:
-            html = html.replace('<html lang="pt-BR"', f'<html lang="{resolved}"', 1)
-        return HTMLResponse(html)
-
-    @app.get("/api/i18n")
-    def i18n_catalog(lang: str | None = None) -> JSONResponse:
-        """Expose a catalogue, for tooling and for switching without a reload."""
-        resolved = normalize_language(lang or language)
-        return JSONResponse(
-            {
-                "language": resolved,
-                "available": available_languages(),
-                "catalog": _translator_for(resolved).catalog,
-            }
-        )
+    def index() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
 
     app.mount(
         "/static",

@@ -25,7 +25,6 @@ HID, with no dependency on the proprietary app.
 | Icon + label upload (ZIP protocol) | ✅ | `ulanzi-linux push-config deck.yaml` |
 | Multi-page layouts + page switchers | ✅ | `fixed_buttons` + `switch_page` action |
 | Daemon with action runner (shell / shortcut / url / switch_page) | ✅ | `ulanzi-linux daemon deck.yaml` |
-| Alternating shortcut on one button (`F23`, then `F24`, …) | ✅ | `cycle_shortcut` action |
 | YAML hot-reload (no restart) | ✅ | on by default in daemon |
 | Small-window panel (clock, native stats, or up to 3 custom Linux metrics) | ✅ | `small_window:` in YAML |
 | Configurable small-window background strip | ✅ | `small_window.background_color` |
@@ -72,6 +71,19 @@ sudo usermod -aG plugdev "$USER"   # log out / in to pick up the group
 ```
 
 Then replug the deck.
+
+### Repository security hook
+
+Contributors must enable the versioned pre-commit hook and install
+[`gitleaks`](https://github.com/gitleaks/gitleaks):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook checks only staged content. It rejects unapproved top-level paths,
+local shell/editor artifacts, environment dumps, personal absolute paths, and
+common credential formats before running the full gitleaks ruleset.
 
 ## Five-minute tour
 

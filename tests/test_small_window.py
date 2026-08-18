@@ -88,6 +88,28 @@ class RecordingFakeDeck(DeckDevice):
         return _iter()
 
 
+class PausingSmallWindowDeck(RecordingFakeDeck):
+    def __init__(self) -> None:
+        super().__init__()
+        self.small_window_upload_started = asyncio.Event()
+        self.resume_small_window_upload = asyncio.Event()
+        self._paused = False
+
+    async def set_buttons(self, configs, *, partial: bool = False) -> None:  # type: ignore[override]
+        configs_tuple = tuple(configs)
+        if (
+            partial
+            and configs_tuple
+            and configs_tuple[0].index == 13
+            and configs_tuple[0].icon_data is not None
+            and not self._paused
+        ):
+            self._paused = True
+            self.small_window_upload_started.set()
+            await self.resume_small_window_upload.wait()
+        self.button_uploads.append(configs_tuple)
+
+
 class FakeMetrics(SystemMetricsReader):
     """Deterministic metrics source with a call counter."""
 
@@ -140,6 +162,16 @@ class FakeMetrics(SystemMetricsReader):
             "battery": "82%",
         }
         return values[metric]
+
+    def read_temperature_value(
+        self, sensor_ids: tuple[str, ...], separator: str
+    ) -> str:
+        values = {
+            "thermal_zone5": "81C",
+            "thermal_zone8": "77C",
+        }
+        selected = [values.get(sensor_id, "n/a") for sensor_id in sensor_ids]
+        return (" | " if separator == "|" else " ").join(selected) or "55C"
 
 
 def _cfg_with_small_window(
@@ -205,6 +237,13 @@ def test_small_window_payload_supports_time_only_clock_updates() -> None:
     assert payload == b"1|0|0|14:32:00|0"
 
 
+def test_small_window_background_uses_ascii_wire_format() -> None:
+    payload = UlanziD200Device._build_small_window_mode_payload(
+        SmallWindowMode.BACKGROUND
+    )
+    assert payload == b"2|0|0|00:00:00|0"
+
+
 @pytest.mark.asyncio
 async def test_small_window_data_respects_cached_stats_mode_zero() -> None:
     from tests.test_reconnect import FakeTransport, _raw_small_window_payloads
@@ -252,6 +291,8 @@ def test_loader_parses_small_window_block(tmp_path: Path) -> None:
         "  time_format: \"%H:%M\"\n"
         "  background_color: \"#123456\"\n"
         "  metrics_items: [cpu, temperature, disk]\n"
+        "  temperature_sensors: [thermal_zone5, thermal_zone8]\n"
+        "  temperature_separator: '|'\n"
         "pages:\n"
         "  main:\n"
         "    buttons:\n"
@@ -267,6 +308,11 @@ def test_loader_parses_small_window_block(tmp_path: Path) -> None:
     assert cfg.small_window.time_format == "%H:%M"
     assert cfg.small_window.background_color == "#123456"
     assert cfg.small_window.metrics_items == ("cpu", "temperature", "disk")
+    assert cfg.small_window.temperature_sensors == (
+        "thermal_zone5",
+        "thermal_zone8",
+    )
+    assert cfg.small_window.temperature_separator == "|"
 
 
 def test_loader_small_window_block_on_legacy_schema(tmp_path: Path) -> None:
@@ -450,7 +496,7 @@ async def test_small_window_custom_metrics_render_as_partial_info_window() -> No
         enabled=True,
         interval_s=0.05,
         show_metrics=True,
-        metrics_items=("cpu", "temperature", "disk"),
+        metrics_items=("cpu", "memory", "battery"),
     )
 
     async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
@@ -467,21 +513,87 @@ async def test_small_window_custom_metrics_render_as_partial_info_window() -> No
         )
 
     assert SmallWindowMode.BACKGROUND in fake.small_window_modes
-    assert SmallWindowMode.CLOCK in fake.small_window_modes
-    assert SmallWindowMode.STATS in fake.small_window_modes
-    assert any(
-        call["time_str"] == ""
-        and call["cpu"] == ""
-        and call["mem"] == ""
-        and call["gpu"] == ""
-        for call in fake.small_window_data_calls
-    )
+    assert SmallWindowMode.CLOCK not in fake.small_window_modes
+    assert SmallWindowMode.STATS not in fake.small_window_modes
+    assert fake.small_window_data_calls == []
+    assert metrics.read_metric_value("battery") == "82%"
     assert any(
         upload
         and upload[0].index == 13
         and upload[0].icon_data is not None
         for upload in fake.button_uploads
     )
+
+
+@pytest.mark.asyncio
+async def test_reload_waits_for_custom_small_window_upload(tmp_path: Path) -> None:
+    fake = PausingSmallWindowDeck()
+    metrics = FakeMetrics()
+    cfg = _cfg_with_small_window(
+        enabled=True,
+        interval_s=0.05,
+        metrics_items=("temperature",),
+    )
+    yaml_path = tmp_path / "deck.yaml"
+    yaml_path.write_text(
+        """
+default_page: main
+small_window:
+  enabled: true
+  interval_s: 1.0
+  metrics_items: [temperature]
+pages:
+  main:
+    buttons:
+      - index: 0
+        label: Reloaded
+"""
+    )
+
+    async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
+        daemon = DeckDaemon(svc, cfg, metrics_reader=metrics)
+        stop = asyncio.Event()
+        status_task = asyncio.create_task(daemon._status_loop(stop))
+        await fake.small_window_upload_started.wait()
+
+        reload_task = asyncio.create_task(daemon.reload_config(yaml_path))
+        await asyncio.sleep(0)
+        assert not reload_task.done()
+        assert fake.button_uploads == []
+
+        fake.resume_small_window_upload.set()
+        await reload_task
+        stop.set()
+        await status_task
+
+    assert [upload[0].index for upload in fake.button_uploads[:3]] == [13, 0, 13]
+    assert fake.button_uploads[0][0].icon_data is not None
+    assert fake.button_uploads[2][0].icon_data is None
+
+
+def test_custom_temperature_sensors_preserve_order_and_separator() -> None:
+    fake = RecordingFakeDeck()
+    metrics = FakeMetrics()
+    cfg = _cfg_with_small_window(
+        enabled=True,
+        metrics_items=("temperature",),
+    )
+    cfg = DeckConfig(
+        pages=cfg.pages,
+        default_page=cfg.default_page,
+        small_window=SmallWindowConfig(
+            enabled=True,
+            metrics_items=("temperature",),
+            temperature_sensors=("thermal_zone5", "thermal_zone8"),
+            temperature_separator="|",
+        ),
+    )
+
+    daemon = DeckDaemon(cast(DeckService, fake), cfg, metrics_reader=metrics)
+
+    assert daemon._custom_metric_lines(cfg.small_window) == [
+        "TEMP 81C | 77C"
+    ]
 
 
 @pytest.mark.asyncio
@@ -509,17 +621,9 @@ async def test_small_window_custom_metrics_rotation_stays_fully_host_rendered() 
             _stop_after(),
         )
 
-    assert fake.small_window_modes.count(SmallWindowMode.CLOCK) == 1
-    assert fake.small_window_modes.count(SmallWindowMode.STATS) == 1
-    assert SmallWindowMode.BACKGROUND in fake.small_window_modes
-    assert len(fake.small_window_data_calls) == 2
-    assert all(
-        call["time_str"] == ""
-        and call["cpu"] == ""
-        and call["mem"] == ""
-        and call["gpu"] == ""
-        for call in fake.small_window_data_calls
-    )
+    assert fake.small_window_modes == [SmallWindowMode.BACKGROUND]
+    assert fake.small_window_data_calls == []
+    assert metrics.last_format_fmt == "%H:%M:%S"
     assert sum(
         1
         for upload in fake.button_uploads

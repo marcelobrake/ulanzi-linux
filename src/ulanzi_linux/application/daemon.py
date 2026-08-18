@@ -30,7 +30,6 @@ from ulanzi_linux.application.config_watcher import ConfigWatcher
 from ulanzi_linux.application.deck_service import DeckService
 from ulanzi_linux.domain.button_config import (
     ButtonConfig,
-    CycleShortcutAction,
     DeckConfig,
     PredefinedCommandAction,
     ShellAction,
@@ -61,12 +60,7 @@ INFO_WINDOW_INDEX = 13
 # Firmware watchdog fires around the 5s mark; we ping well below that to
 # tolerate scheduling jitter and USB latency.
 DEFAULT_HEARTBEAT_INTERVAL_S: float = 2.0
-
-#: Identity of a cycling shortcut's cursor: the page it lives on (empty for a
-#: fixed button, which is the same physical button on every page), the button
-#: index, and the chord list itself. Including the chords means editing them
-#: restarts the cycle, while an unrelated config edit keeps the position.
-CycleCursorKey = tuple[str, int, tuple[str, ...]]
+DEFAULT_DAEMON_BRIGHTNESS: int = 50
 
 
 def _looks_like_hhmm(value: str) -> bool:
@@ -81,8 +75,6 @@ def _action_log_fields(action: object) -> dict[str, object]:
         fields["cmd"] = action.cmd
     elif isinstance(action, ShortcutAction):
         fields["keys"] = action.keys
-    elif isinstance(action, CycleShortcutAction):
-        fields["keys"] = list(action.keys)
     elif isinstance(action, UrlAction):
         fields["url"] = action.url
     elif isinstance(action, PredefinedCommandAction):
@@ -101,32 +93,6 @@ def _rotates_small_window(sw_cfg: object) -> bool:
 
 def _uses_custom_small_window(sw_cfg: object) -> bool:
     return bool(getattr(sw_cfg, "metrics_items", ()))
-
-
-async def _scrub_native_small_window_cache(device: DeckService) -> None:
-    """Overwrite the firmware-native clock/stats cache with blank payloads.
-
-    Some D200 firmware builds keep resurrecting the most recent native
-    CLOCK/STATS frame even after the host pins the strip to BACKGROUND.
-    Priming both native layouts with empty values makes that fallback blank
-    instead of reviving stale CPU/RAM/GPU content.
-    """
-
-    await device._device.set_small_window_mode(SmallWindowMode.CLOCK)
-    await device._device.set_small_window_data(
-        cpu="",
-        mem="",
-        gpu="",
-        time_str="",
-    )
-    await device._device.set_small_window_mode(SmallWindowMode.STATS)
-    await device._device.set_small_window_data(
-        cpu="",
-        mem="",
-        gpu="",
-        time_str="",
-    )
-    await device._device.set_small_window_mode(SmallWindowMode.BACKGROUND)
 
 
 def _small_window_clock_button(*, background_color: str, time_str: str) -> ButtonConfig:
@@ -189,9 +155,6 @@ class DeckDaemon:
         # Guards reload_config / switch_to against racing the event loop
         # uploading a stale layout mid-swap.
         self._state_lock = asyncio.Lock()
-        # Where each cycling shortcut is in its sequence. Written only from
-        # the event loop, so it needs no lock of its own.
-        self._cycle_cursors: dict[CycleCursorKey, int] = {}
 
     # ------------------------------------------------------------------ #
     # Public API                                                         #
@@ -208,6 +171,7 @@ class DeckDaemon:
     async def sync_layout(self) -> None:
         """Push the current page's icons/labels to the device."""
         async with self._state_lock:
+            await self._service.set_brightness(DEFAULT_DAEMON_BRIGHTNESS)
             await self._push_page(self._current_page)
 
     async def switch_to(self, page_name: str) -> None:
@@ -265,7 +229,6 @@ class DeckDaemon:
                 )
             self._config = new_config
             self._current_page = next_page
-            self._prune_cycle_cursors(new_config)
             await self._push_page(next_page)
             logger.info(
                 "config_reloaded",
@@ -389,55 +352,6 @@ class DeckDaemon:
             small_window_background_color=self._config.small_window.background_color,
         )
 
-    # ------------------------------------------------------------------ #
-    # Cycling shortcuts                                                  #
-    # ------------------------------------------------------------------ #
-
-    def _cycle_cursor_key(
-        self,
-        index: int,
-        action: CycleShortcutAction,
-    ) -> CycleCursorKey:
-        is_fixed = any(button.index == index for button in self._config.fixed_buttons)
-        scope = "" if is_fixed else self._current_page
-        return (scope, index, action.keys)
-
-    def _next_cycle_shortcut(
-        self,
-        index: int,
-        action: CycleShortcutAction,
-    ) -> ShortcutAction:
-        """Take the chord for this press and advance the button's cursor."""
-        key = self._cycle_cursor_key(index, action)
-        position = self._cycle_cursors.get(key, 0)
-        self._cycle_cursors[key] = (position + 1) % len(action.keys)
-        resolved = action.shortcut_at(position)
-        logger.info(
-            "cycle_shortcut_advanced",
-            index=index,
-            page=self._current_page,
-            position=position,
-            total=len(action.keys),
-            keys=resolved.keys,
-        )
-        return resolved
-
-    def _prune_cycle_cursors(self, config: DeckConfig) -> None:
-        """Drop cursors for buttons the new config no longer defines."""
-        live: set[CycleCursorKey] = set()
-        for button in config.fixed_buttons:
-            if isinstance(button.action, CycleShortcutAction):
-                live.add(("", button.index, button.action.keys))
-        for page in config.pages.values():
-            for button in page.buttons:
-                if isinstance(button.action, CycleShortcutAction):
-                    live.add((page.name, button.index, button.action.keys))
-        self._cycle_cursors = {
-            key: position
-            for key, position in self._cycle_cursors.items()
-            if key in live
-        }
-
     def _wire_time_string(self, configured_format: str) -> str:
         rendered = self._metrics_reader.format_time(configured_format)
         if _looks_like_hhmm(rendered):
@@ -446,13 +360,27 @@ class DeckDaemon:
             return rendered
         return self._metrics_reader.format_time("%H:%M:%S")
 
-    def _custom_metric_lines(self, metrics_items: tuple[str, ...]) -> list[str]:
+    def _custom_metric_lines(self, sw_cfg: object) -> list[str]:
         lines: list[str] = []
-        for metric in metrics_items:
+        for metric in getattr(sw_cfg, "metrics_items", ()):
             label = SMALL_WINDOW_METRIC_LABELS.get(metric, metric.upper())
-            value = self._metrics_reader.read_metric_value(metric)
+            if metric == "temperature":
+                value = self._metrics_reader.read_temperature_value(
+                    tuple(getattr(sw_cfg, "temperature_sensors", ())),
+                    str(getattr(sw_cfg, "temperature_separator", " ")),
+                )
+            else:
+                value = self._metrics_reader.read_metric_value(metric)
             lines.append(f"{label:<4} {value}")
         return lines
+
+    async def _push_custom_small_window(
+        self, sw_cfg: object, button: ButtonConfig
+    ) -> None:
+        async with self._state_lock:
+            if sw_cfg is not self._config.small_window:
+                return
+            await self._service._device.set_buttons((button,), partial=True)
 
     async def _status_loop(self, stop_event: asyncio.Event) -> None:
         logger.info("status_loop_started")
@@ -460,7 +388,6 @@ class DeckDaemon:
         device_mode: SmallWindowMode | None = None
         mode_started_at: float | None = None
         metrics_primed = False
-        native_cache_scrubbed = False
         strategy_key: tuple[bool, bool, float | None, tuple[str, ...]] | None = None
         try:
             while not stop_event.is_set():
@@ -477,7 +404,6 @@ class DeckDaemon:
                         device_mode = None
                         mode_started_at = None
                         metrics_primed = False
-                        native_cache_scrubbed = False
                         strategy_key = current_strategy
                     if sw_cfg.enabled:
                         now = time.monotonic()
@@ -512,10 +438,6 @@ class DeckDaemon:
                         else:
                             desired_mode = SmallWindowMode.CLOCK
                         if _uses_custom_small_window(sw_cfg):
-                            if not native_cache_scrubbed:
-                                await _scrub_native_small_window_cache(self._service)
-                                device_mode = SmallWindowMode.BACKGROUND
-                                native_cache_scrubbed = True
                             if device_mode != SmallWindowMode.BACKGROUND:
                                 await self._service._device.set_small_window_mode(
                                     SmallWindowMode.BACKGROUND
@@ -533,28 +455,22 @@ class DeckDaemon:
                                         if metric in {"cpu", "network"}:
                                             self._metrics_reader.read_metric_value(metric)
                                     metrics_primed = True
-                                await self._service._device.set_buttons(
-                                    (
-                                        _small_window_metrics_button(
-                                            background_color=sw_cfg.background_color,
-                                            metric_lines=self._custom_metric_lines(
-                                                sw_cfg.metrics_items
-                                            ),
-                                        ),
+                                await self._push_custom_small_window(
+                                    sw_cfg,
+                                    _small_window_metrics_button(
+                                        background_color=sw_cfg.background_color,
+                                        metric_lines=self._custom_metric_lines(sw_cfg),
                                     ),
-                                    partial=True,
                                 )
                             else:
-                                await self._service._device.set_buttons(
-                                    (
-                                        _small_window_clock_button(
-                                            background_color=sw_cfg.background_color,
-                                            time_str=self._wire_time_string(
-                                                sw_cfg.time_format
-                                            ),
+                                await self._push_custom_small_window(
+                                    sw_cfg,
+                                    _small_window_clock_button(
+                                        background_color=sw_cfg.background_color,
+                                        time_str=self._metrics_reader.format_time(
+                                            "%H:%M:%S"
                                         ),
                                     ),
-                                    partial=True,
                                 )
                         else:
                             if active_mode != desired_mode:
@@ -600,7 +516,6 @@ class DeckDaemon:
                             active_mode = SmallWindowMode.BACKGROUND
                             mode_started_at = None
                             metrics_primed = False
-                            native_cache_scrubbed = False
                         await self._service._device.keep_alive()
                         timeout = self._heartbeat_interval_s
                 except TransportReconnectExhaustedError:
@@ -639,13 +554,7 @@ class DeckDaemon:
                     page=self._current_page,
                 )
                 continue
-            # Cycling shortcuts are resolved here for the same reason paging
-            # is: the cursor is deck state (page + button), which the runner
-            # has no business knowing about.
-            action = button.action
-            if isinstance(action, CycleShortcutAction):
-                action = self._next_cycle_shortcut(event.index, action)
-            action_fields = _action_log_fields(action)
+            action_fields = _action_log_fields(button.action)
             logger.info(
                 "button_action_dispatch",
                 index=event.index,
@@ -655,8 +564,8 @@ class DeckDaemon:
             # Paging is handled by the daemon, not the runner — keeps the
             # runner ignorant of deck-internal state and prevents a
             # subprocess from being spawned for a page switch.
-            if isinstance(action, SwitchPageAction):
-                await self.switch_to(action.page)
+            if isinstance(button.action, SwitchPageAction):
+                await self.switch_to(button.action.page)
                 logger.info(
                     "button_action_completed",
                     index=event.index,
@@ -666,7 +575,7 @@ class DeckDaemon:
                 )
                 continue
             try:
-                await self._runner.run(action)
+                await self._runner.run(button.action)
                 logger.info(
                     "button_action_accepted",
                     index=event.index,
@@ -679,7 +588,7 @@ class DeckDaemon:
                     index=event.index,
                     page=self._current_page,
                     **action_fields,
-                    action=repr(action),
+                    action=repr(button.action),
                     error=str(exc),
                 )
 

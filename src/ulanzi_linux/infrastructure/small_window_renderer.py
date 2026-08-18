@@ -141,10 +141,14 @@ def render_small_window_metrics_png(
     draw = ImageDraw.Draw(img)
 
     title_font = _load_font(_LABEL_FONT_CANDIDATES, size=20)
-    line_font = _load_font(_DIGITAL_FONT_CANDIDATES, size=34 if len(metric_lines) >= 3 else 40)
     draw.text((24, 18), "STATS", font=title_font, fill=(191, 219, 254, 255))
     top = 56 if len(metric_lines) >= 3 else 64
     spacing = 36 if len(metric_lines) >= 3 else 46
     for idx, line in enumerate(metric_lines):
+        default_size = 34 if len(metric_lines) >= 3 else 40
+        line_font = _load_font(
+            _DIGITAL_FONT_CANDIDATES,
+            size=min(default_size, max(22, 560 // max(len(line), 1))),
+        )
         draw.text((24, top + (idx * spacing)), line, font=line_font, fill=(248, 250, 252, 255))
     return _png_bytes(img)
