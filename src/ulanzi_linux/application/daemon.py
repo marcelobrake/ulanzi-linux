@@ -57,6 +57,7 @@ INFO_WINDOW_INDEX = 13
 # Firmware watchdog fires around the 5s mark; we ping well below that to
 # tolerate scheduling jitter and USB latency.
 DEFAULT_HEARTBEAT_INTERVAL_S: float = 2.0
+DEFAULT_DAEMON_BRIGHTNESS: int = 50
 
 
 def _looks_like_hhmm(value: str) -> bool:
@@ -193,6 +194,7 @@ class DeckDaemon:
     async def sync_layout(self) -> None:
         """Push the current page's icons/labels to the device."""
         async with self._state_lock:
+            await self._service.set_brightness(DEFAULT_DAEMON_BRIGHTNESS)
             await self._push_page(self._current_page)
 
     async def switch_to(self, page_name: str) -> None:

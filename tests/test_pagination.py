@@ -217,6 +217,7 @@ class FakeDeck(DeckDevice):
             icon_height=196,
         )
         self.button_uploads: list[tuple[ButtonConfig, ...]] = []
+        self.brightness_calls: list[int] = []
         self.closed = False
         self.keep_alive_calls = 0
         self._queue: asyncio.Queue[ButtonEvent | DeviceInfoEvent] = asyncio.Queue()
@@ -229,7 +230,7 @@ class FakeDeck(DeckDevice):
         self.closed = True
 
     async def set_brightness(self, brightness: int, *, force: bool = False) -> None:
-        pass
+        self.brightness_calls.append(brightness)
 
     async def keep_alive(self) -> None:
         self.keep_alive_calls += 1
@@ -323,6 +324,7 @@ async def test_sync_layout_pushes_default_page_with_fixed_buttons() -> None:
         await daemon.sync_layout()
 
     assert daemon.current_page == "main"
+    assert fake.brightness_calls == [50]
     # _push_page makes 2 set_buttons calls: visible buttons + partial INFO_WINDOW
     assert len(fake.button_uploads) == 2
     uploaded_indices = [b.index for b in fake.button_uploads[0]]

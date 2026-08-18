@@ -7,6 +7,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.5] — 2026-08-18
+
+### Fixed
+
+- The daemon now restores the D200 display brightness to 50% before its first
+  layout upload. This recovers devices whose firmware retained zero brightness,
+  where button actions continued to work but all button images and the small
+  window remained black.
+
 ## [0.10.4] — 2026-05-17
 
 ### Fixed
