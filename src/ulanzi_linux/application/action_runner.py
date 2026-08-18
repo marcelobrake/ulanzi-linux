@@ -37,7 +37,6 @@ from ulanzi_linux.domain.button_config import (
     ShortcutAction,
     UrlAction,
 )
-from ulanzi_linux.infrastructure.keysym_evdev import translate_shortcut
 
 logger = structlog.get_logger(__name__)
 
@@ -233,84 +232,27 @@ class ActionRunner:
         )
         self._track_background_task(wait_task)
 
-    def _is_wayland_session(self) -> bool:
-        if self._env.get("WAYLAND_DISPLAY"):
-            return True
-        return self._env.get("XDG_SESSION_TYPE", "").lower() == "wayland"
-
-    def _shortcut_tool_order(self) -> tuple[str, ...]:
-        """Rank the shortcut backends for the current session.
-
-        Under Wayland ``xdotool`` still runs and still exits 0, but the
-        compositor only routes its synthetic events to XWayland clients — so a
-        shortcut aimed at a native Wayland application is silently dropped
-        while the log claims success. ``ydotool`` writes to ``/dev/uinput``,
-        below the display server, and therefore reaches every client; it goes
-        first there. On X11 ``xdotool`` leads because it consumes keysym names
-        directly, with no translation step that could lose fidelity.
-        """
-        if self._is_wayland_session():
-            return ("ydotool", "xdotool", "wtype")
-        return ("xdotool", "ydotool", "wtype")
-
-    def _shortcut_argv(self, tool: str, keys: str) -> list[str] | None:
-        """Build the argv for ``tool``, or ``None`` if it cannot express ``keys``."""
-        if tool == "xdotool":
-            return ["xdotool", "key", keys]
-        if tool == "ydotool":
-            # ydotool speaks raw evdev codes, never keysym names.
-            codes = translate_shortcut(keys)
-            return ["ydotool", "key", *codes] if codes else None
-        if tool == "wtype":
-            # wtype uses different syntax; best-effort approximation.
-            return ["wtype", "-M", keys]
-        return None
-
     async def _run_shortcut(self, action: ShortcutAction) -> None:
         logger.info("action_shortcut", keys=action.keys)
-        wayland = self._is_wayland_session()
-        attempted = False
-        for tool in self._shortcut_tool_order():
-            if not self._which(tool):
-                continue
-            argv = self._shortcut_argv(tool, action.keys)
-            if argv is None:
-                logger.debug(
-                    "shortcut_tool_skipped",
-                    tool=tool,
-                    keys=action.keys,
-                    reason="keys_not_translatable",
-                )
-                continue
-            attempted = True
-            exit_code = await self._try_exec(argv)
-            if exit_code == 0:
-                logger.info(
-                    "action_exec_succeeded",
-                    argv=argv,
-                    action_type="shortcut",
-                    keys=action.keys,
-                    tool=tool,
-                    wayland=wayland,
-                )
-                return
-            logger.warning(
-                "action_exec_failed",
-                argv=argv,
-                exit_code=exit_code,
+        if self._which("xdotool"):
+            await self._exec(
+                ["xdotool", "key", action.keys],
                 action_type="shortcut",
                 keys=action.keys,
-                tool=tool,
+                tool="xdotool",
             )
-        if not attempted:
+        elif self._which("wtype"):
+            # wtype uses different syntax; best-effort approximation.
+            await self._exec(
+                ["wtype", "-M", action.keys],
+                action_type="shortcut",
+                keys=action.keys,
+                tool="wtype",
+            )
+        else:
             logger.error(
                 "no_shortcut_tool",
-                hint=(
-                    "install ydotool (Wayland, needs ydotoold running) "
-                    "or xdotool (X11)"
-                ),
-                keys=action.keys,
-                wayland=wayland,
+                hint="install xdotool (X11) or wtype (Wayland)",
                 path=self._env.get("PATH"),
             )
 

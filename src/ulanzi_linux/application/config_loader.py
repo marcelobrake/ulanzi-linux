@@ -175,6 +175,8 @@ def _parse_small_window(raw: dict[str, Any] | None) -> SmallWindowConfig:
             )
         ),
         metrics_items=tuple(raw.get("metrics_items") or ()),
+        temperature_sensors=tuple(raw.get("temperature_sensors") or ()),
+        temperature_separator=str(raw.get("temperature_separator", " ")),
     )
 
 

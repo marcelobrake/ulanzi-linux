@@ -46,6 +46,24 @@ class FakeTransport:
         self.closed = True
 
 
+class PausingButtonTransport(FakeTransport):
+    def __init__(self) -> None:
+        super().__init__()
+        self.button_upload_started = asyncio.Event()
+        self.resume_button_upload = asyncio.Event()
+
+    async def write(self, packet: bytes) -> None:
+        self.writes.append(packet)
+        if (
+            packet[:3] == b"\x00\x7c\x7c"
+            and int.from_bytes(packet[3:5], "big")
+            == int(OutgoingCommand.SET_BUTTONS)
+            and not self.button_upload_started.is_set()
+        ):
+            self.button_upload_started.set()
+            await self.resume_button_upload.wait()
+
+
 def _build_button_packet(*, index: int, pressed: bool, state: int = 0x00) -> bytes:
     header = b"\x7c\x7c" + int(IncomingCommand.BUTTON).to_bytes(2, "big")
     length_wire = (4).to_bytes(4, "little")
@@ -82,6 +100,32 @@ def _raw_small_window_payloads(writes: list[bytes]) -> list[bytes]:
         length = int.from_bytes(packet[5:9][::-1], "big")
         payloads.append(packet[9 : 9 + length])
     return payloads
+
+
+@pytest.mark.asyncio
+async def test_concurrent_commands_do_not_interrupt_chunked_button_upload() -> None:
+    transport = PausingButtonTransport()
+    device = UlanziD200Device(transport)
+
+    upload = asyncio.create_task(
+        device.set_buttons((ButtonConfig(index=0, label="A"),))
+    )
+    await transport.button_upload_started.wait()
+    background = asyncio.create_task(
+        device.set_small_window_mode(SmallWindowMode.BACKGROUND)
+    )
+    await asyncio.sleep(0)
+
+    assert not background.done()
+    transport.resume_button_upload.set()
+    await asyncio.gather(upload, background)
+    await device.close()
+
+    codes = _framed_command_codes(transport.writes)
+    assert codes[-2:] == [
+        int(OutgoingCommand.SET_BUTTONS),
+        int(OutgoingCommand.SET_SMALL_WINDOW_DATA),
+    ]
 
 
 @pytest.mark.asyncio
@@ -152,6 +196,25 @@ async def test_write_failure_reconnects_and_replays_cached_clock_state() -> None
     assert first.closed is True
     payloads = _raw_small_window_payloads(second.writes)
     assert b"1|0|0|18:42:00|0" in payloads
+
+
+@pytest.mark.asyncio
+async def test_background_mode_uses_ascii_payload_and_restores_after_reconnect() -> None:
+    first = FakeTransport()
+    second = FakeTransport()
+    device = UlanziD200Device(
+        first,
+        transport_factory=lambda: second,
+        reconnect_poll_interval_s=0.001,
+    )
+
+    await device.set_small_window_mode(SmallWindowMode.BACKGROUND)
+    first.write_failures = 1
+    await device.keep_alive()
+    await device.close()
+
+    assert b"2|0|0|00:00:00|0" in _raw_small_window_payloads(first.writes)
+    assert b"2|0|0|00:00:00|0" in _raw_small_window_payloads(second.writes)
 
 
 @pytest.mark.asyncio

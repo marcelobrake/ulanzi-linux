@@ -72,6 +72,19 @@ sudo usermod -aG plugdev "$USER"   # log out / in to pick up the group
 
 Then replug the deck.
 
+### Repository security hook
+
+Contributors must enable the versioned pre-commit hook and install
+[`gitleaks`](https://github.com/gitleaks/gitleaks):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook checks only staged content. It rejects unapproved top-level paths,
+local shell/editor artifacts, environment dumps, personal absolute paths, and
+common credential formats before running the full gitleaks ruleset.
+
 ## Five-minute tour
 
 ```bash

@@ -18,6 +18,8 @@ small_window:                   # optional block
   rotate_every_s: 5.0           # optional: alternate clock/stats every 5s
   background_color: "#000000"  # optional: solid background for the strip
   metrics_items: [cpu, disk]    # optional: up to 3 custom Linux metrics
+  temperature_sensors: []       # optional: ordered thermal_zone IDs
+  temperature_separator: " "    # " " or "|"
 pages:                          # multi-page schema (preferred)
   <page-name>:
     buttons:
@@ -76,6 +78,8 @@ the host and uploaded as the wide strip while the device stays pinned to
 | `rotate_every_s` | float or null | `null` | Optional. When set together with `show_metrics: true`, the daemon alternates clock and stats after this many seconds per mode while still refreshing under `interval_s`. |
 | `background_color` | hex color | `"#000000"` | Optional. Uploaded as a solid background for the wide info strip so the firmware logo can be replaced with a chosen matte color. |
 | `metrics_items` | list[string] | `[]` | Optional. Up to 3 unique values chosen from `cpu`, `memory`, `gpu`, `temperature`, `disk`, `network`, `battery`. Empty keeps the firmware-native stats mode; a non-empty list enables the Linux-rendered custom strip for both clock and stats pages. |
+| `temperature_sensors` | list[string] | `[]` | Optional. Up to 3 `/sys/class/thermal/thermal_zoneN` IDs, displayed in the listed order when `temperature` is selected. Empty preserves the legacy first-valid-sensor behavior. |
+| `temperature_separator` | string | `" "` | Separator between multiple temperature values. Accepts a single space or a pipe character; pipe is rendered with surrounding spaces. |
 
 ```yaml
 small_window:
@@ -86,6 +90,8 @@ small_window:
   rotate_every_s: 5.0            # 5 s de relógio, 5 s de estatísticas
   background_color: "#000000"
   metrics_items: [cpu, temperature, disk]
+  temperature_sensors: [thermal_zone5, thermal_zone8]
+  temperature_separator: "|"
 ```
 
 When `show_metrics: false`, the daemon still sends a clock-safe payload
@@ -103,7 +109,9 @@ three custom Linux metrics on the selected background color.
 ### Metric notes
 
 - `cpu` and `memory` come from `/proc`.
-- `temperature` is best-effort from `/sys/class/thermal`.
+- `temperature` is best-effort from `/sys/class/thermal`. The editor lists
+  each zone with its kernel type (for example, `TCPU` or `x86_pkg_temp`) and
+  current value. Selected zones retain their order in `temperature_sensors`.
 - `disk` uses the `/` filesystem percentage.
 - `network` is aggregate non-loopback throughput.
 - `battery` reads `BAT*/capacity` when available.
@@ -223,9 +231,9 @@ action: { type: shell, cmd: "gnome-terminal -- bash -lc 'docker ps; exec bash'" 
 
 ### 5.2 — `shortcut`
 
-Emit a keyboard shortcut. `keys` is always written in X11 keysym grammar —
-`ctrl+alt+t`, `XF86AudioPlay`, `Super_L` — regardless of which backend
-ends up delivering it.
+Emit a keyboard shortcut via `xdotool` (X11) or `ydotool` (Wayland).
+Key names follow the underlying tool's grammar — `ctrl+alt+t`,
+`XF86AudioPlay`, `Super_L`.
 
 ```yaml
 action: { type: shortcut, keys: "ctrl+alt+t" }
@@ -234,45 +242,6 @@ action: { type: shortcut, keys: "XF86AudioPlay" }
 
 Relies on the daemon running inside a session where `$DISPLAY` /
 `$WAYLAND_DISPLAY` are set — hence the user-unit choice for systemd.
-
-#### Backend selection
-
-The backend is chosen from the session type, and the daemon falls through
-to the next candidate whenever one is missing or exits non-zero:
-
-| Session | Order |
-| --- | --- |
-| Wayland (`$WAYLAND_DISPLAY` set, or `XDG_SESSION_TYPE=wayland`) | `ydotool` → `xdotool` → `wtype` |
-| X11 | `xdotool` → `ydotool` → `wtype` |
-
-Wayland leads with `ydotool` because `xdotool` under a Wayland compositor
-still runs and still exits 0, but its synthetic events only reach
-**XWayland** clients — a shortcut aimed at a native Wayland application is
-dropped while the log reports success. `ydotool` writes to `/dev/uinput`,
-below the display server, so it reaches every client.
-
-X11 leads with `xdotool` because it consumes keysym names directly, with
-no translation step that could lose fidelity.
-
-**`ydotool` requires `ydotoold` to be running**, and your user needs access
-to its socket (typically `/run/user/$UID/.ydotool_socket`). Without the
-daemon, `ydotool` exits non-zero and the chain falls back to `xdotool`.
-
-#### Keysym translation
-
-`ydotool` speaks raw evdev codes (`<code>:<pressed>`), never keysym names,
-so `keys` is translated through
-`ulanzi_linux.infrastructure.keysym_evdev`. It covers letters, digits,
-`F1`–`F24`, navigation and punctuation keys, modifiers (including the
-`ctrl` / `super` / `cmd` shorthands), and the common `XF86*` media,
-brightness, and launcher keys.
-
-A chord presses in order and releases in reverse, so `ctrl+alt+t` becomes
-`29:1 56:1 20:1 20:0 56:0 29:0`.
-
-If a keysym is outside the table, translation returns nothing and the
-shortcut falls through to `xdotool` rather than emitting a wrong chord —
-so uncommon keysyms still work on X11 and under XWayland.
 
 ### 5.3 — `url`
 

@@ -7,77 +7,91 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.11.1] — 2026-08-13
+## [0.11.4] — 2026-08-18
 
 ### Fixed
 
-- The daemon no longer hangs forever after the deck is unplugged and plugged
-  back in. Reconnection is now bounded by `max_reconnect_attempts` (default
-  10, i.e. ~10 s at the 1 s poll interval); once spent, the daemon raises
-  `TransportReconnectExhaustedError` and exits non-zero so its supervisor
-  restarts it. The budget still has to outlast USB re-enumeration and a
-  briefly flaky cable, both of which recover in-process without a restart.
-  Set the value to `0` to keep the previous unbounded behaviour.
+- Device reconnection attempts are now bounded by `max_reconnect_attempts` so
+  a permanently invalid hidapi context makes the daemon exit for supervisor
+  recovery instead of retrying forever. Setting the value to `0` preserves
+  unbounded retries.
+- Background worker failures now stop the daemon and propagate to its CLI exit
+  path, allowing the systemd user unit to restart an unhealthy process.
 
-  python-hidapi exposes no way to reset the library context from inside the
-  process — the Cython binding offers only `device` and `enumerate` — so a
-  handle invalidated by an unplug can leave that process permanently unable to
-  enumerate the deck, even while a freshly started process finds it
-  immediately. Retrying enumeration in-process therefore cannot recover, and
-  the old loop simply polled a dead context forever: observed at 241
-  consecutive failed attempts against a device that was plugged in, powered,
-  and correctly permissioned the whole time.
+## [0.11.3] — 2026-08-18
 
-  The systemd user unit already carries `Restart=on-failure`, so it recovers
-  on its own; `ulanzi-linux daemon` run by hand now reports the reason instead
-  of an uncaught traceback.
+### Fixed
 
-- A background worker that dies now brings the daemon down with it. `run()`
-  waited only on the stop event, so a dead worker went unnoticed: the process
-  stayed alive and looked healthy while the deck was unreachable. It now waits
-  on the stop event *and* the workers, winds the survivors down, and re-raises
-  the failure. The status loop no longer swallows
-  `TransportReconnectExhaustedError` into a `status_loop_tick_failed` warning
-  either — without both halves, bounding the retries changed nothing, because
-  the error never reached the exit path.
+- The `web` and `desktop` extras now install `python-multipart`, which FastAPI
+  requires to register the asset upload endpoint on a clean installation.
 
-## [0.11.0] — 2026-08-13
+## [0.11.2] — 2026-08-18
 
 ### Added
 
-- `shortcut` actions now support `ydotool`, and prefer it on Wayland. Backend
-  order is `ydotool` → `xdotool` → `wtype` under Wayland and
-  `xdotool` → `ydotool` → `wtype` under X11, falling through whenever a tool
-  is absent or exits non-zero.
-- New `ulanzi_linux.infrastructure.keysym_evdev` module translating X11 keysym
-  names into evdev codes, since `ydotool` accepts only raw `<code>:<pressed>`
-  pairs. Covers letters, digits, `F1`–`F24`, navigation and punctuation keys,
-  modifiers with their `ctrl` / `super` / `cmd` shorthands, and the common
-  `XF86*` media, brightness, and launcher keys. Chords press in order and
-  release in reverse, so `ctrl+alt+t` emits `29:1 56:1 20:1 20:0 56:0 29:0`.
+- A versioned pre-commit hook now rejects local artifacts, unapproved root
+  paths, environment dumps, personal home paths, and common credential
+  formats, then scans staged changes with gitleaks.
+
+### Removed
+
+- Tracked shell/session environment dumps and temporary Copilot deck files
+  were removed. Equivalent local files, test output, tool state, and diagnostic
+  screenshots are now covered by `.gitignore`.
+
+## [0.11.1] — 2026-08-18
 
 ### Fixed
 
-- Shortcuts no longer fail silently on Wayland. `xdotool` runs and exits 0
-  under a Wayland compositor, but its events reach only XWayland clients, so
-  shortcuts aimed at native Wayland applications were dropped while the daemon
-  logged success. Untranslatable keysyms still fall back to `xdotool` rather
-  than emitting a wrong chord.
-- `docs/configuration.md` claimed `ydotool` was used on Wayland, which the
-  implementation never did. The documented behaviour and the code now agree.
+- Host-rendered small-window uploads are now serialized with page switches and
+  configuration reloads. Saving a button image can no longer insert a stale
+  small-window ZIP between the full layout upload and slot reset, which could
+  leave the small window blank and the device busy processing queued uploads.
+- Promoting a page button to fixed now removes that slot from every page, and
+  the editor backend canonicalizes stale overlapping payloads. Image saves no
+  longer fail with `reuses fixed_button indices` after changing button scope.
 
-## [0.10.5] — 2026-08-13
+## [0.11.0] — 2026-08-18
+
+### Added
+
+- Selecting `Temperatura` in the visual editor now exposes the Linux thermal
+  zones detected on the host. Up to three sensors can be selected, reordered,
+  and displayed on one `TEMP` line separated by spaces or `|`.
+- `small_window.temperature_sensors` and `temperature_separator` persist the
+  selected sensor order and formatting while preserving first-valid-sensor
+  behavior for existing configurations.
+
+## [0.10.7] — 2026-08-18
 
 ### Fixed
 
-- The `web` and `desktop` extras now declare `python-multipart`, which FastAPI
-  requires for the multipart upload endpoint used by the asset browser. A
-  clean `pip install -e ".[web]"` previously produced a working CLI but a
-  `ulanzi-linux gui` that aborted at startup with
-  `RuntimeError: Form data requires "python-multipart" to be installed`.
-  FastAPI raises this while registering routes, before the deck YAML is read,
-  so the failure surfaced as an import-time traceback with no reference to the
-  user's configuration.
+- HID writes are now serialized for the full duration of each command. Config
+  reloads can no longer interleave page ZIP frames with small-window mode or
+  image updates, which could leave only the small window black after saving
+  custom metrics such as battery in the desktop editor.
+
+## [0.10.6] — 2026-08-18
+
+### Fixed
+
+- The host-rendered small-window clock now receives a canonical `HH:MM:SS`
+  value, so date-prefixed display formats no longer make its analog face fall
+  back to `00:00`.
+- Custom small-window metrics no longer activate the firmware-native CLOCK or
+  STATS layers while clearing their cache. The strip remains exclusively in
+  BACKGROUND mode using the firmware's complete ASCII wire payload, preventing
+  the native `CPU/RAM/GPU 0%` panel from appearing behind the host-rendered
+  `CPU/MEM/TEMP` page.
+
+## [0.10.5] — 2026-08-18
+
+### Fixed
+
+- The daemon now restores the D200 display brightness to 50% before its first
+  layout upload. This recovers devices whose firmware retained zero brightness,
+  where button actions continued to work but all button images and the small
+  window remained black.
 
 ## [0.10.4] — 2026-05-17
 

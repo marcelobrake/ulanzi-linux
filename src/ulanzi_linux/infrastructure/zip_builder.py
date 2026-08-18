@@ -457,7 +457,14 @@ def _archive_icon_name(cfg: ButtonConfig) -> str:
 
 
 def _needs_icon_asset(cfg: ButtonConfig) -> bool:
-    return int(cfg.index) == _INFO_WINDOW_INDEX or _has_real_icon(cfg)
+    # Label-only buttons need a generated text-tile PNG so the firmware
+    # has an asset to render — without it the button appears black even
+    # though the manifest carries a ``Text`` key.
+    return (
+        int(cfg.index) == _INFO_WINDOW_INDEX
+        or _has_real_icon(cfg)
+        or bool(cfg.label)
+    )
 
 
 def _build_manifest(configs: list[ButtonConfig]) -> dict:
@@ -477,8 +484,12 @@ def _build_manifest(configs: list[ButtonConfig]) -> dict:
             continue
         has_real_icon = _has_real_icon(cfg)
         if cfg.label and not has_real_icon:
+            # Include both Text (firmware metadata) and Icon (the rendered
+            # text-tile PNG that _normalize_icon generates for label-only
+            # buttons). Without the Icon key the firmware renders nothing.
             view_param["Text"] = cfg.label
-        if has_real_icon:
+            view_param["Icon"] = _archive_icon_name(cfg)
+        elif has_real_icon:
             view_param["Icon"] = _archive_icon_name(cfg)
         manifest[f"{col}_{row}"] = {
             "State": 0,

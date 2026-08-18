@@ -75,6 +75,11 @@ digital clock page, and can display `CPU`, `Memória`, `GPU`,
 `Temperatura`, `Uso de disco`, `Rede`, or `Bateria` on the alternating
 stats page.
 
+When `Temperatura` is selected, the inspector lists the Linux thermal zones
+with their kernel names and current readings. Up to three sensors can be
+selected, reordered with the arrow controls, and rendered on the same `TEMP`
+line separated by spaces or `|`.
+
 The image inspector also ships with a built-in asset catalog backed by Font
 Awesome Free plus Unicode emoji metadata rendered locally through Noto Color
 Emoji when the font is present on the host. The editor can browse application
@@ -142,6 +147,7 @@ home directory.
 | `GET` | `/api/devices` | Enumerate D200 units currently attached. |
 | `GET` | `/api/editor` | Read the structured visual-editor payload. |
 | `GET` | `/api/small-window/preview` | Return live clock and CPU/MEM values for the simulator tile. |
+| `GET` | `/api/temperature-sensors` | List Linux thermal zones, kernel names and current temperatures. |
 | `GET` | `/api/config` | Read the YAML file as text + metadata. |
 | `POST` | `/api/config/validate` | Parse without saving — for live feedback. |
 | `POST` | `/api/editor/validate` | Validate the structured editor payload before saving. |
