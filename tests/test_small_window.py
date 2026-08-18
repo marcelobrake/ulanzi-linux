@@ -457,7 +457,7 @@ async def test_small_window_custom_metrics_render_as_partial_info_window() -> No
         enabled=True,
         interval_s=0.05,
         show_metrics=True,
-        metrics_items=("cpu", "temperature", "disk"),
+        metrics_items=("cpu", "memory", "battery"),
     )
 
     async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
@@ -477,6 +477,7 @@ async def test_small_window_custom_metrics_render_as_partial_info_window() -> No
     assert SmallWindowMode.CLOCK not in fake.small_window_modes
     assert SmallWindowMode.STATS not in fake.small_window_modes
     assert fake.small_window_data_calls == []
+    assert metrics.read_metric_value("battery") == "82%"
     assert any(
         upload
         and upload[0].index == 13

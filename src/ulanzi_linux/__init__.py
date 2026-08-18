@@ -1,5 +1,5 @@
 """ulanzi-linux: Unofficial Linux client for the Ulanzi Stream Controller D200."""
 
-__version__ = "0.10.6"
+__version__ = "0.10.7"
 __author__ = "Marcelo Brake"
 __license__ = "MIT"
